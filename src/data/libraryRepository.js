@@ -1,5 +1,10 @@
 import { STORE_NAMES } from "../config.js";
-import { getAllRecords, putRecord } from "./database.js";
+import {
+  applyBatch,
+  deleteRecord,
+  getAllRecords,
+  putRecord,
+} from "./database.js";
 
 export async function loadLibrary() {
   const [movies, categories, franchises, participants, rollSessions] =
@@ -38,5 +43,21 @@ export function saveParticipant(participant) {
 
 export function saveRollSession(session) {
   return putRecord(STORE_NAMES.rollSessions, session);
+}
+
+export function deleteMovieRecord(movieId) {
+  return deleteRecord(STORE_NAMES.movies, movieId);
+}
+
+export function deleteCategoryRecord(categoryId) {
+  return deleteRecord(STORE_NAMES.categories, categoryId);
+}
+
+export function deleteFranchiseRecord(franchiseId) {
+  return deleteRecord(STORE_NAMES.franchises, franchiseId);
+}
+
+export function commitLibraryChanges(commands) {
+  return applyBatch(commands);
 }
 

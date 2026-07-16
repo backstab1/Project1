@@ -82,6 +82,30 @@ export async function countRecords(storeName) {
   );
 }
 
+export async function applyBatch(commands) {
+  if (!Array.isArray(commands) || commands.length === 0) {
+    return;
+  }
+
+  const database = await openDatabase();
+  const storeNames = [...new Set(commands.map((command) => command.storeName))];
+  const transaction = database.transaction(storeNames, "readwrite");
+
+  for (const command of commands) {
+    const store = transaction.objectStore(command.storeName);
+    if (command.type === "put") {
+      store.put(command.value);
+    } else if (command.type === "delete") {
+      store.delete(command.key);
+    } else {
+      transaction.abort();
+      throw new TypeError(`Неизвестная пакетная операция: ${command.type}`);
+    }
+  }
+
+  await transactionToPromise(transaction);
+}
+
 async function ensureRecord(storeName, value) {
   const current = await getRecord(storeName, value.key);
   if (!current) {
@@ -89,30 +113,32 @@ async function ensureRecord(storeName, value) {
   }
 }
 
-function applySchema(database) {
-  createStore(database, STORE_NAMES.meta, { keyPath: "key" });
-  createStore(database, STORE_NAMES.settings, { keyPath: "key" });
+function applySchema(database, transaction) {
+  createStore(database, transaction, STORE_NAMES.meta, { keyPath: "key" });
+  createStore(database, transaction, STORE_NAMES.settings, { keyPath: "key" });
 
-  const categories = createStore(database, STORE_NAMES.categories, {
+  const categories = createStore(database, transaction, STORE_NAMES.categories, {
     keyPath: "id",
   });
   createIndex(categories, "parentId", "parentId");
   createIndex(categories, "position", "position");
-  createIndex(categories, "normalizedName", "normalizedName", { unique: true });
+  createIndex(categories, "normalizedName", "normalizedName");
 
-  const movies = createStore(database, STORE_NAMES.movies, { keyPath: "id" });
+  const movies = createStore(database, transaction, STORE_NAMES.movies, {
+    keyPath: "id",
+  });
   createIndex(movies, "categoryId", "categoryId");
   createIndex(movies, "categoryPosition", "categoryPosition");
   createIndex(movies, "normalizedTitle", "normalizedTitle");
   createIndex(movies, "watchedAt", "watchedAt");
 
-  const franchises = createStore(database, STORE_NAMES.franchises, {
+  const franchises = createStore(database, transaction, STORE_NAMES.franchises, {
     keyPath: "id",
   });
   createIndex(franchises, "categoryId", "categoryId");
   createIndex(franchises, "normalizedName", "normalizedName", { unique: true });
 
-  const participants = createStore(database, STORE_NAMES.participants, {
+  const participants = createStore(database, transaction, STORE_NAMES.participants, {
     keyPath: "id",
   });
   createIndex(participants, "normalizedName", "normalizedName", {
@@ -120,23 +146,37 @@ function applySchema(database) {
   });
   createIndex(participants, "lastUsedAt", "lastUsedAt");
 
-  const sessions = createStore(database, STORE_NAMES.rollSessions, {
+  const sessions = createStore(database, transaction, STORE_NAMES.rollSessions, {
     keyPath: "id",
   });
   createIndex(sessions, "createdAt", "createdAt");
   createIndex(sessions, "status", "status");
 }
 
-function createStore(database, name, options) {
+function createStore(database, transaction, name, options) {
   return database.objectStoreNames.contains(name)
-    ? null
+    ? transaction.objectStore(name)
     : database.createObjectStore(name, options);
 }
 
 function createIndex(store, name, keyPath, options) {
-  if (store && !store.indexNames.contains(name)) {
-    store.createIndex(name, keyPath, options);
+  if (!store) {
+    return;
   }
+
+  if (store.indexNames.contains(name)) {
+    const existing = store.index(name);
+    const requestedUnique = Boolean(options?.unique);
+    if (
+      String(existing.keyPath) === String(keyPath) &&
+      existing.unique === requestedUnique
+    ) {
+      return;
+    }
+    store.deleteIndex(name);
+  }
+
+  store.createIndex(name, keyPath, options);
 }
 
 function requestToPromise(request) {
@@ -153,4 +193,3 @@ function transactionToPromise(transaction) {
     transaction.onabort = () => reject(transaction.error);
   });
 }
-
