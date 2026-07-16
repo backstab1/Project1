@@ -9,6 +9,7 @@ import {
   normalizeScore,
   upsertRating,
 } from "../src/domain/entities.js";
+import { buildLibraryStatistics } from "../src/domain/statistics.js";
 
 test("категория требует непустое название", () => {
   assert.throws(() => createCategory({ name: "   " }), /обязательно/);
@@ -53,3 +54,27 @@ test("рейтинг франшизы не учитывает фильмы бе�
   );
 });
 
+test("статистика считает оценки и длительность из исходных данных", () => {
+  const statistics = buildLibraryStatistics({
+    movies: [
+      createMovie({
+        title: "A",
+        durationMinutes: 100,
+        watchedAt: "2026-07-16T00:00:00.000Z",
+        ratings: [{ participantName: "Антон", value: 8 }],
+      }),
+      createMovie({
+        title: "B",
+        durationMinutes: 120,
+        ratings: [{ participantName: "Иван", value: 10 }],
+      }),
+    ],
+    categories: [],
+    franchises: [],
+  });
+
+  assert.equal(statistics.totalRatingCount, 2);
+  assert.equal(statistics.libraryAverageRating, 9);
+  assert.equal(statistics.totalDurationMinutes, 220);
+  assert.equal(statistics.watchedDurationMinutes, 100);
+});

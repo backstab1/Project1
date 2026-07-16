@@ -16,6 +16,7 @@ import {
   createMovie,
   createParticipant,
   normalizeText,
+  upsertRating,
 } from "./domain/entities.js";
 import {
   buildCategoryDeletionCommands,
@@ -134,9 +135,125 @@ async function handleAction(action, payload) {
     "roll-confirm-elimination": () => eliminatePendingParticipant(),
     "roll-restore": () =>
       restoreRollParticipant(payload.entityType, payload.id),
+    "watch-add": () => openWatchDateDialog(payload.id),
+    "watch-edit": () => openWatchDateDialog(payload.id),
+    "watch-remove": () => confirmWatchRemoval(payload.id),
+    "rating-add": () => openRatingDialog(payload.id),
+    "rating-delete": () => confirmRatingDeletion(payload.id, payload.ratingId),
   };
 
   await handlers[action]?.();
+}
+
+function openWatchDateDialog(movieId) {
+  const movie = state.library.movies.find((item) => item.id === movieId);
+  if (!movie) return;
+
+  openDialog({
+    title: movie.watchedAt ? "Изменить дату просмотра" : "Отметить просмотренным",
+    body: `
+      <p class="confirmation-text">${escapeHtml(movie.title)}</p>
+      <label class="field">
+        <span>Дата просмотра</span>
+        <input name="watchedDate" type="date" required
+          value="${toDateInput(movie.watchedAt ?? new Date().toISOString())}">
+      </label>
+    `,
+    onSubmit: async (formData) => {
+      const watchedAt = dateInputToIso(formData.get("watchedDate"));
+      await saveMovie({
+        ...movie,
+        watchedAt,
+        updatedAt: new Date().toISOString(),
+      });
+      await reloadLibrary();
+    },
+  });
+}
+
+function confirmWatchRemoval(movieId) {
+  const movie = state.library.movies.find((item) => item.id === movieId);
+  if (!movie) return;
+
+  openConfirmation(
+    "Вернуть фильм в каталог?",
+    `Дата просмотра «${movie.title}» будет удалена. Существующие оценки сохранятся.`,
+    async () => {
+      await saveMovie({
+        ...movie,
+        watchedAt: null,
+        updatedAt: new Date().toISOString(),
+      });
+      await reloadLibrary();
+    },
+    "Вернуть",
+  );
+}
+
+function openRatingDialog(movieId) {
+  const movie = state.library.movies.find((item) => item.id === movieId);
+  if (!movie) return;
+  const names = new Set([
+    ...state.library.participants.map((participant) => participant.name),
+    ...(movie.ratings ?? []).map((rating) => rating.participantName),
+  ]);
+
+  openDialog({
+    title: "Оценить фильм",
+    body: `
+      <p class="confirmation-text">${escapeHtml(movie.title)}</p>
+      <label class="field">
+        <span>Имя зрителя</span>
+        <input name="participantName" required maxlength="80"
+          list="rating-participant-names">
+        <datalist id="rating-participant-names">
+          ${[...names].map((name) =>
+            `<option value="${escapeAttribute(name)}"></option>`
+          ).join("")}
+        </datalist>
+      </label>
+      <label class="field">
+        <span>Оценка от 1 до 10, шаг 0,5</span>
+        <input name="ratingValue" type="number" required min="1" max="10"
+          step="0.5" value="8">
+      </label>
+      <p class="form-hint">Если этот зритель уже оценивал фильм, старая
+      оценка будет заменена.</p>
+    `,
+    onSubmit: async (formData) => {
+      const participantName = formData.get("participantName");
+      const ratings = upsertRating(movie.ratings, {
+        participantName,
+        value: formData.get("ratingValue"),
+      });
+      await saveMovie({
+        ...movie,
+        ratings,
+        updatedAt: new Date().toISOString(),
+      });
+      await rememberParticipants([{ name: participantName, saves: 0 }]);
+      await reloadLibrary();
+    },
+  });
+}
+
+function confirmRatingDeletion(movieId, ratingId) {
+  const movie = state.library.movies.find((item) => item.id === movieId);
+  const rating = movie?.ratings.find((item) => item.id === ratingId);
+  if (!movie || !rating) return;
+
+  openConfirmation(
+    "Удалить оценку?",
+    `Оценка ${rating.value} от «${rating.participantName}» будет удалена.`,
+    async () => {
+      await saveMovie({
+        ...movie,
+        ratings: movie.ratings.filter((item) => item.id !== ratingId),
+        updatedAt: new Date().toISOString(),
+      });
+      await reloadLibrary();
+    },
+  );
 }
 
 function shuffleRollDraft() {
@@ -276,6 +393,11 @@ async function finishRollSession(session) {
     submitLabel: "Продолжить",
     body: `
       <div class="winner-dialog">
+        <div class="confetti" aria-hidden="true">
+          ${Array.from({ length: 28 }, (_, index) =>
+            `<i style="--i:${index}"></i>`
+          ).join("")}
+        </div>
         <div class="winner-dialog__trophy">★</div>
         <p class="eyebrow">${winner.type === "franchise" ? "Франшиза" : "Фильм"}</p>
         <h3>${escapeHtml(winner.title)}</h3>
@@ -631,10 +753,10 @@ async function commitQueueMove(commands) {
   await reloadLibrary();
 }
 
-function openConfirmation(title, message, onConfirm) {
+function openConfirmation(title, message, onConfirm, submitLabel = "Удалить") {
   openDialog({
     title,
-    submitLabel: "Удалить",
+    submitLabel,
     body: `<p class="confirmation-text">${escapeHtml(message)}</p>`,
     onSubmit: onConfirm,
   });
@@ -736,6 +858,31 @@ function escapeHtml(value) {
 
 function escapeAttribute(value) {
   return escapeHtml(value).replaceAll("`", "&#096;");
+}
+
+function toDateInput(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function dateInputToIso(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value));
+  if (!match) {
+    throw new Error("Укажите корректную дату просмотра.");
+  }
+  const [, year, month, day] = match;
+  return new Date(
+    Number(year),
+    Number(month) - 1,
+    Number(day),
+    12,
+    0,
+    0,
+  ).toISOString();
 }
 
 function detectLegacyData() {

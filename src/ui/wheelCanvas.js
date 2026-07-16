@@ -60,20 +60,71 @@ export function animateWheel(canvas, pool, selectedIndex, duration = 3200) {
   const targetBase = normalizeAngle(-selectedCenter);
   const totalRotation = Math.PI * 2 * 8 + targetBase;
   const startedAt = performance.now();
+  const audio = createAudioFeedback();
+  let previousSegment = -1;
 
   return new Promise((resolve) => {
     const frame = (now) => {
       const progress = Math.min(1, (now - startedAt) / duration);
       const eased = 1 - Math.pow(1 - progress, 4);
-      drawWheel(canvas, pool, totalRotation * eased);
+      const rotation = totalRotation * eased;
+      drawWheel(canvas, pool, rotation);
+      const segment = Math.floor(rotation / arc);
+      if (segment !== previousSegment) {
+        previousSegment = segment;
+        audio.tick();
+      }
       if (progress < 1) {
         requestAnimationFrame(frame);
       } else {
+        audio.finish();
         resolve();
       }
     };
     requestAnimationFrame(frame);
   });
+}
+
+function createAudioFeedback() {
+  const AudioContext = globalThis.AudioContext ?? globalThis.webkitAudioContext;
+  if (!AudioContext) {
+    return { tick() {}, finish() {} };
+  }
+
+  let context;
+  try {
+    context = new AudioContext();
+  } catch {
+    return { tick() {}, finish() {} };
+  }
+
+  const tone = (frequency, duration, volume) => {
+    if (context.state === "suspended") {
+      context.resume().catch(() => {});
+    }
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    const now = context.currentTime;
+    oscillator.type = "sine";
+    oscillator.frequency.setValueAtTime(frequency, now);
+    gain.gain.setValueAtTime(volume, now);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+    oscillator.connect(gain);
+    gain.connect(context.destination);
+    oscillator.start(now);
+    oscillator.stop(now + duration);
+  };
+
+  return {
+    tick() {
+      tone(760, 0.025, 0.025);
+    },
+    finish() {
+      tone(520, 0.18, 0.06);
+      setTimeout(() => tone(780, 0.24, 0.045), 90);
+      setTimeout(() => context.close().catch(() => {}), 700);
+    },
+  };
 }
 
 function normalizeAngle(value) {
@@ -93,4 +144,3 @@ function shorten(value, count) {
   const text = String(value);
   return text.length > limit ? `${text.slice(0, limit - 1)}…` : text;
 }
-

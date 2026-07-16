@@ -14,6 +14,15 @@ export function buildLibraryStatistics({ movies, categories, franchises }) {
     .filter((entry) => entry.rating !== null);
 
   const sortedRatings = [...ratedMovies].sort((a, b) => b.rating - a.rating);
+  const allRatings = movies.flatMap((movie) => movie.ratings ?? []);
+  const totalDurationMinutes = movies.reduce(
+    (total, movie) => total + (movie.durationMinutes ?? 0),
+    0,
+  );
+  const watchedDurationMinutes = watchedMovies.reduce(
+    (total, movie) => total + (movie.durationMinutes ?? 0),
+    0,
+  );
   const watchedFranchises = franchises.filter((franchise) => {
     const members = franchise.movieIds
       .map((movieId) => movieById.get(movieId))
@@ -28,6 +37,16 @@ export function buildLibraryStatistics({ movies, categories, franchises }) {
     categoryCount: categories.length,
     franchiseCount: franchises.length,
     watchedFranchiseCount: watchedFranchises.length,
+    totalRatingCount: allRatings.length,
+    libraryAverageRating: allRatings.length
+      ? Math.round(
+        (allRatings.reduce((sum, rating) => sum + rating.value, 0) /
+          allRatings.length) *
+          10,
+      ) / 10
+      : null,
+    totalDurationMinutes,
+    watchedDurationMinutes,
     highestRatedMovie: sortedRatings[0] ?? null,
     lowestRatedMovie: sortedRatings.at(-1) ?? null,
     franchiseRatings: franchises.map((franchise) => ({
@@ -36,4 +55,3 @@ export function buildLibraryStatistics({ movies, categories, franchises }) {
     })),
   };
 }
-

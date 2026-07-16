@@ -150,6 +150,16 @@ function renderCurrentView(container, state) {
     return;
   }
 
+  if (state.view === "watched") {
+    renderWatched(container, state.library);
+    return;
+  }
+
+  if (state.view === "sessions") {
+    renderSessions(container, state.library.rollSessions);
+    return;
+  }
+
   const descriptions = {
     catalog: "Здесь появятся фильмы, поиск, фильтры и создание карточек.",
     categories: "Здесь будет дерево категорий и ручное управление очередями.",
@@ -167,6 +177,88 @@ function renderCurrentView(container, state) {
       <h2>${escapeHtml(getViewTitle(state.view))}</h2>
       <p>${escapeHtml(descriptions[state.view] ?? "Раздел находится в разработке.")}</p>
     </section>
+  `;
+}
+
+function renderWatched(container, library) {
+  const watchedMovies = library.movies
+    .filter((movie) => movie.watchedAt)
+    .sort((a, b) => String(b.watchedAt).localeCompare(String(a.watchedAt)));
+  const categoryById = new Map(
+    library.categories.map((category) => [category.id, category]),
+  );
+
+  container.innerHTML = `
+    <div class="view-toolbar">
+      <div>
+        <p class="eyebrow">История просмотров</p>
+        <h2>${watchedMovies.length}
+          ${pluralize(watchedMovies.length, ["фильм", "фильма", "фильмов"])}
+        </h2>
+      </div>
+    </div>
+
+    ${watchedMovies.length === 0 ? emptyBlock(
+      "Просмотренных фильмов пока нет",
+      "Победитель колеса появится здесь автоматически. Фильм также можно отметить вручную из каталога.",
+    ) : `
+      <div class="watched-list">
+        ${watchedMovies.map((movie) => watchedRow(
+          movie,
+          categoryById.get(movie.categoryId),
+        )).join("")}
+      </div>
+    `}
+  `;
+}
+
+function renderSessions(container, sessions) {
+  const completed = [...sessions]
+    .filter((session) => session.status === "completed")
+    .sort((a, b) => String(b.completedAt).localeCompare(String(a.completedAt)));
+
+  container.innerHTML = `
+    <div class="view-toolbar">
+      <div>
+        <p class="eyebrow">Архив</p>
+        <h2>${completed.length}
+          ${pluralize(completed.length, ["сессия", "сессии", "сессий"])}
+        </h2>
+      </div>
+    </div>
+
+    ${completed.length === 0 ? emptyBlock(
+      "Завершённых роллов пока нет",
+      "После определения первого победителя здесь появится состав, журнал выбываний и использованные сейвы.",
+    ) : `
+      <div class="session-list">
+        ${completed.map((session) => {
+          const savesUsed = session.events.filter(
+            (event) => event.type === "save-used",
+          ).length;
+          return `
+            <article class="session-card">
+              <div>
+                <p class="eyebrow">${formatDateTime(session.completedAt)}</p>
+                <h3>${escapeHtml(session.winner?.title ?? "Победитель не указан")}</h3>
+                <p class="card-meta">
+                  Старт: ${session.originalPool.length} ·
+                  Выбыли: ${session.eliminated.length} ·
+                  Сейвы: ${savesUsed}
+                </p>
+              </div>
+              <div class="session-players">
+                ${session.participants.map((participant) => `
+                  <span>${escapeHtml(participant.name)}
+                    <small>${participant.savesRemaining}/${participant.savesInitial}</small>
+                  </span>
+                `).join("")}
+              </div>
+            </article>
+          `;
+        }).join("")}
+      </div>
+    `}
   `;
 }
 
@@ -463,15 +555,23 @@ function renderDashboard(container, statistics, legacyDataFound) {
       ${metricCard("Просмотрено", statistics.watchedMovieCount, "Без повторных просмотров")}
       ${metricCard("В очереди", statistics.unwatchedMovieCount, "Ожидают выбора")}
       ${metricCard("Категорий", statistics.categoryCount, "Включая подкатегории")}
+      ${metricCard("Средняя оценка", statistics.libraryAverageRating ?? "—", "По всем оценкам")}
+      ${metricCard("Оценок", statistics.totalRatingCount, "От всех зрителей")}
+      ${metricCard("Франшиз", statistics.franchiseCount, "Коллекции фильмов")}
+      ${metricCard("Просмотрено часов", formatHours(statistics.watchedDurationMinutes), "По указанной длительности")}
     </div>
 
     <div class="dashboard-grid">
       <section class="panel">
         <p class="eyebrow">Библиотека</p>
-        <h2>База готова к наполнению</h2>
-        <p>Автоматические демонстрационные фильмы отключены. Пустая библиотека
-        теперь является нормальным состоянием и не заполнится снова после
-        перезапуска.</p>
+        <h2>${statistics.highestRatedMovie
+          ? `Лидер: ${escapeHtml(statistics.highestRatedMovie.movie.title)}`
+          : "База готова к наполнению"}</h2>
+        <p>${statistics.highestRatedMovie
+          ? `Средняя оценка ${statistics.highestRatedMovie.rating}. Худший оценённый фильм: ${
+              escapeHtml(statistics.lowestRatedMovie.movie.title)
+            } (${statistics.lowestRatedMovie.rating}).`
+          : "Автоматические демонстрационные фильмы отключены. Пустая библиотека является нормальным состоянием."}</p>
       </section>
 
       <section class="panel panel--accent">
@@ -484,11 +584,53 @@ function renderDashboard(container, statistics, legacyDataFound) {
   `;
 }
 
+function watchedRow(movie, category) {
+  const average = calculateAverageRating(movie.ratings);
+  return `
+    <article class="watched-row">
+      <div class="watched-row__cover">
+        ${movie.coverUrl
+          ? `<img src="${escapeAttribute(movie.coverUrl)}" alt="" loading="lazy"
+              referrerpolicy="no-referrer">`
+          : '<span aria-hidden="true">CV</span>'}
+      </div>
+      <div class="watched-row__main">
+        <p class="eyebrow">${escapeHtml(category?.name ?? "Без категории")}</p>
+        <h3>${escapeHtml(movie.title)}</h3>
+        <p class="card-meta">Просмотрен: ${formatDate(movie.watchedAt)}
+          ${movie.durationMinutes ? ` · ${movie.durationMinutes} мин` : ""}</p>
+        <div class="rating-list">
+          ${(movie.ratings ?? []).map((rating) => `
+            <span class="rating-chip">
+              ${escapeHtml(rating.participantName)}: <strong>${rating.value}</strong>
+              <button type="button" data-action="rating-delete"
+                data-id="${movie.id}" data-rating-id="${rating.id}"
+                aria-label="Удалить оценку">×</button>
+            </span>
+          `).join("") || '<span class="muted">Оценок пока нет</span>'}
+        </div>
+      </div>
+      <div class="watched-row__aside">
+        <strong class="watched-rating">${average === null ? "—" : `★ ${average}`}</strong>
+        <button class="button button--primary" type="button"
+          data-action="rating-add" data-id="${movie.id}">Оценить</button>
+        <button class="button button--ghost" type="button"
+          data-action="watch-edit" data-id="${movie.id}">Изменить дату</button>
+        <button class="button button--danger" type="button"
+          data-action="watch-remove" data-id="${movie.id}">Вернуть в каталог</button>
+      </div>
+    </article>
+  `;
+}
+
 function metricCard(label, value, description) {
+  const displayValue = typeof value === "number"
+    ? value.toLocaleString("ru-RU")
+    : escapeHtml(value);
   return `
     <article class="metric-card">
       <span>${escapeHtml(label)}</span>
-      <strong>${Number(value).toLocaleString("ru-RU")}</strong>
+      <strong>${displayValue}</strong>
       <small>${escapeHtml(description)}</small>
     </article>
   `;
@@ -525,6 +667,12 @@ function movieCard(movie, category, franchise) {
           <span>${movie.watchedAt ? "Просмотрен" : "Не просмотрен"}</span>
           <strong>${rating === null ? "—" : `★ ${rating}`}</strong>
         </div>
+        ${!movie.watchedAt ? `
+          <button class="text-button" type="button"
+            data-action="watch-add" data-id="${movie.id}">
+            Отметить просмотренным
+          </button>
+        ` : ""}
       </div>
     </article>
   `;
@@ -610,6 +758,31 @@ function pluralize(number, forms) {
   if (mod10 === 1) return forms[0];
   if (mod10 >= 2 && mod10 <= 4) return forms[1];
   return forms[2];
+}
+
+function formatDate(value) {
+  if (!value) return "—";
+  return new Intl.DateTimeFormat("ru-RU", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  }).format(new Date(value));
+}
+
+function formatDateTime(value) {
+  if (!value) return "Дата не указана";
+  return new Intl.DateTimeFormat("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
+function formatHours(minutes) {
+  if (!minutes) return "0";
+  return Math.round((minutes / 60) * 10) / 10;
 }
 
 function getViewTitle(view) {
