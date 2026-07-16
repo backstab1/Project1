@@ -1,5 +1,5 @@
 export const APP_NAME = "CineVault";
-export const APP_VERSION = "0.1.0";
+export const APP_VERSION = "0.9.0";
 export const DATABASE_NAME = "cinevault";
 export const DATABASE_VERSION = 2;
 
