@@ -303,7 +303,10 @@ function getDescendantCategoryIds(categories, categoryId) {
 
 function isQueueItemEligible(item, library) {
   if (item.type === "movie") {
-    return !item.value.watchedAt;
+    const belongsToFranchise = library.franchises.some((franchise) =>
+      franchise.movieIds.includes(item.id),
+    );
+    return !belongsToFranchise && !item.value.watchedAt;
   }
 
   const members = item.value.movieIds
@@ -356,4 +359,3 @@ function createEvent(type, details) {
     ...details,
   };
 }
-

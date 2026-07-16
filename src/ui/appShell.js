@@ -130,6 +130,7 @@ export function renderAppShell(root, state) {
       control.setSelectionRange(end, end);
     }
   }
+  setupImageFallbacks(root);
 }
 
 function renderCurrentView(container, state) {
@@ -279,6 +280,10 @@ function renderSessions(container, sessions) {
                     <small>${participant.savesRemaining}/${participant.savesInitial}</small>
                   </span>
                 `).join("")}
+                <button class="button button--ghost" type="button"
+                  data-action="session-open" data-id="${session.id}">
+                  Подробнее
+                </button>
               </div>
             </article>
           `;
@@ -585,7 +590,13 @@ function renderSettings(container, state) {
         <h2>Сохранённые имена</h2>
         <div class="participant-tags">
           ${state.library.participants.map((participant) =>
-            `<span>${escapeHtml(participant.name)}</span>`
+            `<span>
+              ${escapeHtml(participant.name)}
+              <button type="button" data-action="participant-edit"
+                data-id="${participant.id}" aria-label="Редактировать">✎</button>
+              <button type="button" data-action="participant-delete"
+                data-id="${participant.id}" aria-label="Удалить">×</button>
+            </span>`
           ).join("") || '<span class="muted">Имена появятся после первой сессии или оценки.</span>'}
         </div>
       </section>
@@ -1034,4 +1045,20 @@ function escapeHtml(value) {
 
 function escapeAttribute(value) {
   return escapeHtml(value).replaceAll("`", "&#096;");
+}
+
+function setupImageFallbacks(root) {
+  root.querySelectorAll(".movie-card__cover img, .watched-row__cover img")
+    .forEach((image) => {
+      image.addEventListener("error", () => {
+        image.hidden = true;
+        const parent = image.parentElement;
+        if (parent && !parent.querySelector(".image-error")) {
+          const fallback = document.createElement("span");
+          fallback.className = "image-error";
+          fallback.textContent = "Постер недоступен";
+          parent.append(fallback);
+        }
+      }, { once: true });
+    });
 }

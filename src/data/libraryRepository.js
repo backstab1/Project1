@@ -63,6 +63,10 @@ export function deleteFranchiseRecord(franchiseId) {
   return deleteRecord(STORE_NAMES.franchises, franchiseId);
 }
 
+export function deleteParticipantRecord(participantId) {
+  return deleteRecord(STORE_NAMES.participants, participantId);
+}
+
 export function commitLibraryChanges(commands) {
   return applyBatch(commands);
 }

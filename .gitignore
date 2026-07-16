@@ -7,6 +7,8 @@ dist/
 coverage/
 __pycache__/
 *.py[cod]
+release/
+
 
 # Local environment
 .env

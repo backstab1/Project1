@@ -43,6 +43,21 @@ python launch.py
 Прямое открытие `index.html` не рекомендуется, поскольку приложение
 использует ES-модули и IndexedDB.
 
+Также приложение можно запустить двойным кликом по `CineVault.cmd`.
+
+## Переносимая сборка
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\build-portable.ps1
+```
+
+Скрипт создаст:
+
+- `release/CineVault/` — чистую папку приложения;
+- `release/CineVault-portable.zip` — архив для переноса.
+
+На целевом компьютере требуется Python 3. Установка зависимостей не нужна.
+
 ## Проверка
 
 Модульные тесты используют встроенный test runner Node.js:

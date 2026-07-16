@@ -61,6 +61,50 @@ test("пул формируется по квоте и исключает про
   );
 });
 
+test("фильмы франшизы не дублируют франшизу в колесе", () => {
+  const library = {
+    categories: [
+      {
+        id: "cat",
+        name: "Категория",
+        parentId: null,
+        position: 0,
+        rollQuota: 3,
+      },
+    ],
+    movies: [
+      {
+        id: "member",
+        title: "Часть франшизы",
+        categoryId: "cat",
+        categoryPosition: 0,
+        watchedAt: null,
+      },
+      {
+        id: "single",
+        title: "Самостоятельный",
+        categoryId: "cat",
+        categoryPosition: 1,
+        watchedAt: null,
+      },
+    ],
+    franchises: [
+      {
+        id: "franchise",
+        name: "Франшиза",
+        categoryId: "cat",
+        categoryPosition: 0,
+        movieIds: ["member"],
+      },
+    ],
+  };
+
+  assert.deepEqual(
+    buildRollPool(library).map((item) => `${item.type}:${item.id}`).sort(),
+    ["franchise:franchise", "movie:single"],
+  );
+});
+
 test("сейв отменяет выбывание и уменьшает счётчик игрока", () => {
   let session = createRollSession({
     pool: samplePool(),
@@ -104,4 +148,3 @@ test("выбывшего участника можно вернуть", () => {
   assert.equal(session.pool.length, 3);
   assert.equal(session.eliminated.length, 0);
 });
-

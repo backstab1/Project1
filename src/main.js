@@ -3,6 +3,7 @@ import { initializeDatabase } from "./data/database.js";
 import {
   commitLibraryChanges,
   deleteFranchiseRecord,
+  deleteParticipantRecord,
   loadLibrary,
   saveCategory,
   saveFranchise,
@@ -55,6 +56,7 @@ import { createReminderDismissalDate } from "./domain/backupReminder.js";
 import { renderAppShell } from "./ui/appShell.js";
 import { openDialog } from "./ui/dialog.js";
 import { animateWheel } from "./ui/wheelCanvas.js";
+import { showToast } from "./ui/toast.js";
 
 const root = document.querySelector("#app");
 
@@ -166,6 +168,9 @@ async function handleAction(action, payload) {
     "backup-export": () => exportBackup(),
     "legacy-migrate": () => migrateLegacyLibrary(),
     "backup-remind-later": () => dismissBackupReminder(),
+    "participant-edit": () => openParticipantDialog(payload.id),
+    "participant-delete": () => confirmParticipantDeletion(payload.id),
+    "session-open": () => openSessionDetails(payload.id),
   };
 
   await handlers[action]?.();
@@ -210,6 +215,7 @@ async function exportBackup() {
   await saveSetting("lastBackupAt", new Date().toISOString());
   await saveSetting("backupReminderDismissedUntil", null);
   await reloadLibrary();
+  showToast("Резервная копия сохранена.");
 }
 
 async function importBackupFile(file) {
@@ -217,6 +223,7 @@ async function importBackupFile(file) {
   const merged = mergeLibraries(state.library, incoming);
   await persistMergedLibrary(merged);
   await reloadLibrary();
+  showToast("Резервная копия импортирована.");
   openDialog({
     title: "Импорт завершён",
     submitLabel: "Готово",
@@ -235,6 +242,7 @@ async function migrateLegacyLibrary() {
   localStorage.setItem("cinevault_legacy_migrated", "1");
   state.legacyDataFound = false;
   await reloadLibrary();
+  showToast("Старая библиотека перенесена.");
   openDialog({
     title: "Миграция завершена",
     submitLabel: "Готово",
@@ -272,6 +280,7 @@ async function importTableFile(file) {
   const merged = mergeLibraries(state.library, incoming);
   await persistMergedLibrary(merged);
   await reloadLibrary();
+  showToast(`Импортировано строк: ${rows.length}.`);
   openDialog({
     title: "Таблица импортирована",
     submitLabel: "Готово",
@@ -288,6 +297,86 @@ async function dismissBackupReminder() {
   const dismissedUntil = createReminderDismissalDate(days);
   await saveSetting("backupReminderDismissedUntil", dismissedUntil);
   await reloadLibrary();
+  showToast(`Напоминание отложено на ${days} дней.`);
+}
+
+function openParticipantDialog(participantId) {
+  const participant = state.library.participants.find(
+    (item) => item.id === participantId,
+  );
+  if (!participant) return;
+
+  openDialog({
+    title: "Редактировать игрока",
+    body: `
+      <label class="field">
+        <span>Имя</span>
+        <input name="name" required maxlength="80"
+          value="${escapeAttribute(participant.name)}">
+      </label>
+      <p class="form-hint">Изменение имени не переписывает исторические
+      снимки уже завершённых сессий.</p>
+    `,
+    onSubmit: async (formData) => {
+      const name = String(formData.get("name")).trim();
+      const duplicate = state.library.participants.find(
+        (item) =>
+          item.id !== participant.id &&
+          item.normalizedName === normalizeText(name),
+      );
+      if (duplicate) {
+        throw new Error("Игрок с таким именем уже существует.");
+      }
+      await saveParticipant(createParticipant({ ...participant, name }));
+      await reloadLibrary();
+      showToast("Имя игрока обновлено.");
+    },
+  });
+}
+
+function confirmParticipantDeletion(participantId) {
+  const participant = state.library.participants.find(
+    (item) => item.id === participantId,
+  );
+  if (!participant) return;
+  openConfirmation(
+    "Удалить сохранённое имя?",
+    `«${participant.name}» исчезнет из быстрых подсказок. Оценки и история останутся без изменений.`,
+    async () => {
+      await deleteParticipantRecord(participantId);
+      await reloadLibrary();
+      showToast("Сохранённое имя удалено.");
+    },
+  );
+}
+
+function openSessionDetails(sessionId) {
+  const session = state.library.rollSessions.find(
+    (item) => item.id === sessionId,
+  );
+  if (!session) return;
+
+  openDialog({
+    title: "Журнал сессии",
+    submitLabel: "Закрыть",
+    body: `
+      <div class="session-detail-summary">
+        <p><strong>Победитель:</strong>
+          ${escapeHtml(session.winner?.title ?? "—")}</p>
+        <p><strong>Завершена:</strong>
+          ${escapeHtml(formatDateTimeValue(session.completedAt))}</p>
+      </div>
+      <ol class="event-log">
+        ${session.events.map((event) => `
+          <li>
+            <time>${escapeHtml(formatTimeValue(event.createdAt))}</time>
+            <span>${escapeHtml(describeSessionEvent(event))}</span>
+          </li>
+        `).join("")}
+      </ol>
+    `,
+    onSubmit: async () => {},
+  });
 }
 
 async function persistMergedLibrary(library) {
@@ -1059,6 +1148,36 @@ async function readTextFile(file) {
   } catch {
     return new TextDecoder("windows-1251").decode(bytes);
   }
+}
+
+function describeSessionEvent(event) {
+  const descriptions = {
+    "session-started": `Сессия началась: ${event.participantCount} участников`,
+    "spin-result": `Колесо указало на «${event.title}»`,
+    reroll: `Результат «${event.title}» был перекручен`,
+    "save-used": `${event.participantName} спасает «${event.title}»`,
+    "entity-eliminated": `«${event.title}» выбывает, осталось ${event.remaining}`,
+    "entity-restored": `«${event.title}» возвращён в колесо`,
+    "winner-declared": `Победитель — «${event.title}»`,
+  };
+  return descriptions[event.type] ?? event.type;
+}
+
+function formatDateTimeValue(value) {
+  if (!value) return "—";
+  return new Intl.DateTimeFormat("ru-RU", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
+}
+
+function formatTimeValue(value) {
+  if (!value) return "—";
+  return new Intl.DateTimeFormat("ru-RU", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).format(new Date(value));
 }
 
 function detectLegacyData() {
