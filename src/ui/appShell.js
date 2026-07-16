@@ -100,6 +100,16 @@ export function renderAppShell(root, state) {
       state.onAction(button.dataset.action, { ...button.dataset });
     });
   });
+  root.querySelectorAll("[data-control]").forEach((control) => {
+    const eventName = control.matches('input[type="search"]') ? "input" : "change";
+    control.addEventListener(eventName, () => {
+      state.onControl(control.dataset.control, {
+        value: control.value,
+        files: control.files,
+        checked: control.checked,
+      });
+    });
+  });
 
   setupDialog();
   const wheelCanvas = root.querySelector("#wheel-canvas");
@@ -108,6 +118,16 @@ export function renderAppShell(root, state) {
       wheelCanvas,
       state.activeSession?.pool ?? state.rollDraftPool,
     );
+  }
+  if (state.focusControl) {
+    const control = root.querySelector(
+      `[data-control="${state.focusControl}"]`,
+    );
+    control?.focus();
+    if (control?.setSelectionRange) {
+      const end = control.value.length;
+      control.setSelectionRange(end, end);
+    }
   }
 }
 
@@ -131,7 +151,7 @@ function renderCurrentView(container, state) {
   }
 
   if (state.view === "catalog") {
-    renderCatalog(container, state.library);
+    renderCatalog(container, state);
     return;
   }
 
@@ -157,6 +177,11 @@ function renderCurrentView(container, state) {
 
   if (state.view === "sessions") {
     renderSessions(container, state.library.rollSessions);
+    return;
+  }
+
+  if (state.view === "settings") {
+    renderSettings(container, state);
     return;
   }
 
@@ -405,14 +430,41 @@ function renderWheel(container, state) {
   `;
 }
 
-function renderCatalog(container, library) {
+function renderCatalog(container, state) {
+  const { library, catalogFilters } = state;
   const categories = new Map(
     library.categories.map((category) => [category.id, category]),
   );
   const franchiseByMovieId = getMovieFranchiseMap(library.franchises);
-  const movies = [...library.movies].sort((a, b) =>
-    a.title.localeCompare(b.title, "ru-RU"),
-  );
+  const query = catalogFilters.query.trim().toLocaleLowerCase("ru-RU");
+  const movies = library.movies
+    .filter((movie) => {
+      if (
+        query &&
+        ![
+          movie.title,
+          movie.originalTitle,
+          movie.country,
+          categories.get(movie.categoryId)?.name,
+          franchiseByMovieId.get(movie.id)?.name,
+          movie.releaseYear,
+        ].some((value) =>
+          String(value ?? "").toLocaleLowerCase("ru-RU").includes(query)
+        )
+      ) {
+        return false;
+      }
+      if (
+        catalogFilters.categoryId &&
+        movie.categoryId !== catalogFilters.categoryId
+      ) {
+        return false;
+      }
+      if (catalogFilters.status === "watched" && !movie.watchedAt) return false;
+      if (catalogFilters.status === "unwatched" && movie.watchedAt) return false;
+      return true;
+    })
+    .sort(getMovieSorter(catalogFilters.sort));
 
   container.innerHTML = `
     <div class="view-toolbar">
@@ -423,6 +475,35 @@ function renderCatalog(container, library) {
       <button class="button button--primary" type="button" data-action="movie-add">
         + Добавить фильм
       </button>
+    </div>
+
+    <div class="filter-bar">
+      <label class="filter-search">
+        <span class="sr-only">Поиск</span>
+        <input type="search" data-control="catalog-query"
+          placeholder="Поиск по названию, стране, категории…"
+          value="${escapeAttribute(catalogFilters.query)}">
+      </label>
+      <select data-control="catalog-category" aria-label="Категория">
+        <option value="">Все категории</option>
+        ${[...library.categories].sort(sortByPosition).map((category) => `
+          <option value="${category.id}"
+            ${catalogFilters.categoryId === category.id ? "selected" : ""}>
+            ${escapeHtml(category.name)}
+          </option>
+        `).join("")}
+      </select>
+      <select data-control="catalog-status" aria-label="Статус">
+        <option value="all" ${catalogFilters.status === "all" ? "selected" : ""}>Все статусы</option>
+        <option value="unwatched" ${catalogFilters.status === "unwatched" ? "selected" : ""}>Не просмотрено</option>
+        <option value="watched" ${catalogFilters.status === "watched" ? "selected" : ""}>Просмотрено</option>
+      </select>
+      <select data-control="catalog-sort" aria-label="Сортировка">
+        <option value="title" ${catalogFilters.sort === "title" ? "selected" : ""}>По названию</option>
+        <option value="year" ${catalogFilters.sort === "year" ? "selected" : ""}>По году</option>
+        <option value="rating" ${catalogFilters.sort === "rating" ? "selected" : ""}>По рейтингу</option>
+        <option value="queue" ${catalogFilters.sort === "queue" ? "selected" : ""}>По очереди</option>
+      </select>
     </div>
 
     ${movies.length === 0 ? emptyBlock(
@@ -437,6 +518,66 @@ function renderCatalog(container, library) {
         )).join("")}
       </div>
     `}
+  `;
+}
+
+function renderSettings(container, state) {
+  container.innerHTML = `
+    <div class="view-toolbar">
+      <div>
+        <p class="eyebrow">Обслуживание</p>
+        <h2>Настройки и данные</h2>
+      </div>
+    </div>
+
+    <div class="settings-grid">
+      <section class="panel">
+        <p class="eyebrow">Резервная копия</p>
+        <h2>Экспорт и импорт</h2>
+        <p>Экспорт содержит фильмы, категории, франшизы, оценки, игроков и
+        историю завершённых роллов.</p>
+        <div class="settings-actions">
+          <button class="button button--primary" type="button"
+            data-action="backup-export">Скачать JSON</button>
+          <label class="button button--ghost file-button">
+            Импортировать JSON
+            <input type="file" accept=".json,application/json"
+              data-control="backup-import">
+          </label>
+        </div>
+      </section>
+
+      <section class="panel ${state.legacyDataFound ? "panel--accent" : ""}">
+        <p class="eyebrow">Movie Manager V13</p>
+        <h2>${state.legacyDataFound
+          ? "Найдены старые данные"
+          : "Старая база не обнаружена"}</h2>
+        <p>${state.legacyDataFound
+          ? "Миграция объединит старую библиотеку с новой и не удалит текущие записи."
+          : "Если старая версия использовалась в другом браузере, сначала экспортируйте её данные там."}</p>
+        <button class="button button--primary" type="button"
+          data-action="legacy-migrate" ${state.legacyDataFound ? "" : "disabled"}>
+          Перенести данные
+        </button>
+      </section>
+
+      <section class="panel">
+        <p class="eyebrow">Игроки</p>
+        <h2>Сохранённые имена</h2>
+        <div class="participant-tags">
+          ${state.library.participants.map((participant) =>
+            `<span>${escapeHtml(participant.name)}</span>`
+          ).join("") || '<span class="muted">Имена появятся после первой сессии или оценки.</span>'}
+        </div>
+      </section>
+
+      <section class="panel">
+        <p class="eyebrow">Формат данных</p>
+        <h2>IndexedDB · схема v2</h2>
+        <p>Данные сохраняются автоматически в профиле текущего браузера.
+        Для переноса на другой компьютер используйте резервный JSON.</p>
+      </section>
+    </div>
   `;
 }
 
@@ -684,6 +825,14 @@ function categoryNode(category, library, depth) {
     .sort(sortByPosition);
   const queue = buildCategoryQueue(library, category.id);
   const movieCount = queue.filter((item) => item.type === "movie").length;
+  const subtreeCategoryIds = new Set([
+    category.id,
+    ...getDescendantIds(library.categories, category.id),
+  ]);
+  const subtreeMovies = library.movies.filter((movie) =>
+    subtreeCategoryIds.has(movie.categoryId),
+  );
+  const watchedCount = subtreeMovies.filter((movie) => movie.watchedAt).length;
 
   return `
     <section class="category-node" style="--depth:${depth}">
@@ -691,7 +840,11 @@ function categoryNode(category, library, depth) {
         <div>
           <p class="eyebrow">Квота колеса: ${category.rollQuota}</p>
           <h3>${escapeHtml(category.name)}</h3>
-          <small>${movieCount} фильмов · ${children.length} подкатегорий</small>
+          <small>
+            В ветке: ${subtreeMovies.length} · просмотрено: ${watchedCount} ·
+            осталось: ${subtreeMovies.length - watchedCount} ·
+            напрямую: ${movieCount}
+          </small>
         </div>
         <div class="row-actions">
           <button class="icon-button" type="button" data-action="category-up"
@@ -749,6 +902,40 @@ function emptyBlock(title, text) {
 
 function sortByPosition(a, b) {
   return a.position - b.position || a.name.localeCompare(b.name, "ru-RU");
+}
+
+function getMovieSorter(sort) {
+  if (sort === "year") {
+    return (a, b) =>
+      (b.releaseYear ?? -1) - (a.releaseYear ?? -1) ||
+      a.title.localeCompare(b.title, "ru-RU");
+  }
+  if (sort === "rating") {
+    return (a, b) =>
+      (calculateAverageRating(b.ratings) ?? -1) -
+        (calculateAverageRating(a.ratings) ?? -1) ||
+      a.title.localeCompare(b.title, "ru-RU");
+  }
+  if (sort === "queue") {
+    return (a, b) =>
+      String(a.categoryId ?? "").localeCompare(String(b.categoryId ?? "")) ||
+      a.categoryPosition - b.categoryPosition;
+  }
+  return (a, b) => a.title.localeCompare(b.title, "ru-RU");
+}
+
+function getDescendantIds(categories, categoryId) {
+  const result = [];
+  const visit = (parentId) => {
+    for (const category of categories) {
+      if (category.parentId === parentId) {
+        result.push(category.id);
+        visit(category.id);
+      }
+    }
+  };
+  visit(categoryId);
+  return result;
 }
 
 function pluralize(number, forms) {

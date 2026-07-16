@@ -40,6 +40,12 @@ import {
   useSave,
 } from "./domain/rollEngine.js";
 import { buildLibraryStatistics } from "./domain/statistics.js";
+import {
+  createBackup,
+  mergeLibraries,
+  parseBackup,
+  readLegacyLocalStorage,
+} from "./domain/backup.js";
 import { renderAppShell } from "./ui/appShell.js";
 import { openDialog } from "./ui/dialog.js";
 import { animateWheel } from "./ui/wheelCanvas.js";
@@ -65,13 +71,24 @@ const state = {
   rollDraftPool: [],
   activeSession: null,
   isSpinning: false,
+  catalogFilters: {
+    query: "",
+    categoryId: "",
+    status: "all",
+    sort: "title",
+  },
+  focusControl: null,
   error: null,
   onNavigate(view) {
     state.view = view;
+    state.focusControl = null;
     render();
   },
   onAction(action, payload) {
     handleAction(action, payload).catch(showUnexpectedError);
+  },
+  onControl(control, payload) {
+    handleControl(control, payload).catch(showUnexpectedError);
   },
 };
 
@@ -140,9 +157,95 @@ async function handleAction(action, payload) {
     "watch-remove": () => confirmWatchRemoval(payload.id),
     "rating-add": () => openRatingDialog(payload.id),
     "rating-delete": () => confirmRatingDeletion(payload.id, payload.ratingId),
+    "backup-export": () => exportBackup(),
+    "legacy-migrate": () => migrateLegacyLibrary(),
   };
 
   await handlers[action]?.();
+}
+
+async function handleControl(control, payload) {
+  const catalogControls = {
+    "catalog-query": "query",
+    "catalog-category": "categoryId",
+    "catalog-status": "status",
+    "catalog-sort": "sort",
+  };
+  if (catalogControls[control]) {
+    state.catalogFilters[catalogControls[control]] = payload.value;
+    state.focusControl = control === "catalog-query" ? control : null;
+    render();
+    return;
+  }
+
+  if (control === "backup-import" && payload.files?.[0]) {
+    await importBackupFile(payload.files[0]);
+  }
+}
+
+function exportBackup() {
+  const backup = createBackup(state.library);
+  const json = JSON.stringify(backup, null, 2);
+  const blob = new Blob([json], { type: "application/json;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  const date = new Date().toISOString().slice(0, 10);
+  link.href = url;
+  link.download = `cinevault-backup-${date}.json`;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function importBackupFile(file) {
+  const incoming = parseBackup(await file.text());
+  const merged = mergeLibraries(state.library, incoming);
+  await persistMergedLibrary(merged);
+  await reloadLibrary();
+  openDialog({
+    title: "Импорт завершён",
+    submitLabel: "Готово",
+    body: `
+      <p class="confirmation-text">Резервная копия объединена с текущей
+      библиотекой. Совпадающие фильмы не дублировались.</p>
+    `,
+    onSubmit: async () => {},
+  });
+}
+
+async function migrateLegacyLibrary() {
+  const incoming = readLegacyLocalStorage(localStorage);
+  const merged = mergeLibraries(state.library, incoming);
+  await persistMergedLibrary(merged);
+  localStorage.setItem("cinevault_legacy_migrated", "1");
+  state.legacyDataFound = false;
+  await reloadLibrary();
+  openDialog({
+    title: "Миграция завершена",
+    submitLabel: "Готово",
+    body: `
+      <p class="confirmation-text">Старая библиотека Movie Manager
+      объединена с CineVault. Исходные ключи localStorage оставлены без
+      изменений как дополнительная страховка.</p>
+    `,
+    onSubmit: async () => {},
+  });
+}
+
+async function persistMergedLibrary(library) {
+  const storeEntries = [
+    [STORE_NAMES.categories, library.categories],
+    [STORE_NAMES.movies, library.movies],
+    [STORE_NAMES.franchises, library.franchises],
+    [STORE_NAMES.participants, library.participants],
+    [STORE_NAMES.rollSessions, library.rollSessions],
+  ];
+  await commitLibraryChanges(
+    storeEntries.flatMap(([storeName, values]) =>
+      values.map((value) => ({ type: "put", storeName, value }))
+    ),
+  );
 }
 
 function openWatchDateDialog(movieId) {
@@ -887,7 +990,10 @@ function dateInputToIso(value) {
 
 function detectLegacyData() {
   try {
-    return LEGACY_STORAGE_KEYS.some((key) => localStorage.getItem(key) !== null);
+    return (
+      localStorage.getItem("cinevault_legacy_migrated") !== "1" &&
+      LEGACY_STORAGE_KEYS.some((key) => localStorage.getItem(key) !== null)
+    );
   } catch {
     return false;
   }
