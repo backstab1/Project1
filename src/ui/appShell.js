@@ -6,6 +6,7 @@ import {
 } from "../domain/libraryRules.js";
 import { setupDialog } from "./dialog.js";
 import { drawWheel } from "./wheelCanvas.js";
+import { isBackupReminderDue } from "../domain/backupReminder.js";
 
 const NAV_ITEMS = [
   ["dashboard", "Главная", "⌂"],
@@ -146,7 +147,7 @@ function renderCurrentView(container, state) {
   }
 
   if (state.view === "dashboard") {
-    renderDashboard(container, state.statistics, state.legacyDataFound);
+    renderDashboard(container, state);
     return;
   }
 
@@ -545,6 +546,24 @@ function renderSettings(container, state) {
               data-control="backup-import">
           </label>
         </div>
+        <p class="form-hint">Последняя резервная копия:
+          ${state.library.settings.lastBackupAt
+            ? formatDateTime(state.library.settings.lastBackupAt)
+            : "не создавалась"}.
+        </p>
+      </section>
+
+      <section class="panel">
+        <p class="eyebrow">Google Таблицы и Excel</p>
+        <h2>Импорт CSV, TSV или XLSX</h2>
+        <p>Поддерживаются столбцы «Название», «Категория», «Франшиза»,
+        «Год», «Длительность», «Страна», «Просмотрено», «Дата просмотра»
+        и оценки вида «Оценка Антон».</p>
+        <label class="button button--primary file-button">
+          Выбрать таблицу
+          <input type="file" accept=".csv,.tsv,.xlsx,text/csv"
+            data-control="table-import">
+        </label>
       </section>
 
       <section class="panel ${state.legacyDataFound ? "panel--accent" : ""}">
@@ -680,8 +699,36 @@ function renderFranchises(container, library) {
   `;
 }
 
-function renderDashboard(container, statistics, legacyDataFound) {
+function renderDashboard(container, state) {
+  const { statistics, legacyDataFound } = state;
+  const backupDue = isBackupReminderDue({
+    movieCount: state.library.movies.length,
+    lastBackupAt: state.library.settings.lastBackupAt,
+    dismissedUntil: state.library.settings.backupReminderDismissedUntil,
+    reminderDays: state.library.settings.backupReminderDays,
+  });
   container.innerHTML = `
+    ${backupDue ? `
+      <section class="notice backup-notice">
+        <div>
+          <p class="eyebrow">Резервная копия</p>
+          <h2>${state.library.settings.lastBackupAt
+            ? "Пора обновить резервную копию"
+            : "Резервная копия ещё не создавалась"}</h2>
+          <p>Библиотека хранится локально в браузере. Экспортируйте JSON
+          сейчас или отложите напоминание на ${
+            state.library.settings.backupReminderDays ?? 30
+          } дней.</p>
+        </div>
+        <div class="notice-actions">
+          <button class="button button--primary" type="button"
+            data-action="backup-export">Скачать JSON</button>
+          <button class="button button--ghost" type="button"
+            data-action="backup-remind-later">Напомнить позже</button>
+        </div>
+      </section>
+    ` : ""}
+
     ${legacyDataFound ? `
       <section class="notice">
         <p class="eyebrow">Найдена старая версия</p>

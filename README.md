@@ -28,6 +28,7 @@ IndexedDB и модульной бизнес-логикой.
 - `docs/customer-answers.docx` — ответы на продуктовые вопросы;
 - `docs/ROADMAP.md` — план разработки;
 - `docs/DECISIONS.md` — принятые решения и оставшиеся уточнения;
+- `docs/IMPORT_FORMAT.md` — формат импорта CSV/TSV/XLSX;
 - `legacy/` — исходный прототип Movie Manager.
 
 ## Локальный запуск
@@ -48,6 +49,7 @@ python launch.py
 
 ```powershell
 npm test
+python -m unittest discover -s tests -p "test_*.py"
 ```
 
 ## Принцип разработки

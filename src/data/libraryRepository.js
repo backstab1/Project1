@@ -7,13 +7,14 @@ import {
 } from "./database.js";
 
 export async function loadLibrary() {
-  const [movies, categories, franchises, participants, rollSessions] =
+  const [movies, categories, franchises, participants, rollSessions, settings] =
     await Promise.all([
       getAllRecords(STORE_NAMES.movies),
       getAllRecords(STORE_NAMES.categories),
       getAllRecords(STORE_NAMES.franchises),
       getAllRecords(STORE_NAMES.participants),
       getAllRecords(STORE_NAMES.rollSessions),
+      getAllRecords(STORE_NAMES.settings),
     ]);
 
   return {
@@ -22,6 +23,7 @@ export async function loadLibrary() {
     franchises,
     participants,
     rollSessions,
+    settings: Object.fromEntries(settings.map((item) => [item.key, item.value])),
   };
 }
 
@@ -45,6 +47,10 @@ export function saveRollSession(session) {
   return putRecord(STORE_NAMES.rollSessions, session);
 }
 
+export function saveSetting(key, value) {
+  return putRecord(STORE_NAMES.settings, { key, value });
+}
+
 export function deleteMovieRecord(movieId) {
   return deleteRecord(STORE_NAMES.movies, movieId);
 }
@@ -60,4 +66,3 @@ export function deleteFranchiseRecord(franchiseId) {
 export function commitLibraryChanges(commands) {
   return applyBatch(commands);
 }
-

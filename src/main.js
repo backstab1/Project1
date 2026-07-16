@@ -9,6 +9,7 @@ import {
   saveMovie,
   saveParticipant,
   saveRollSession,
+  saveSetting,
 } from "./data/libraryRepository.js";
 import {
   createCategory,
@@ -46,6 +47,11 @@ import {
   parseBackup,
   readLegacyLocalStorage,
 } from "./domain/backup.js";
+import {
+  parseDelimitedText,
+  tableRowsToLibrary,
+} from "./domain/spreadsheetImport.js";
+import { createReminderDismissalDate } from "./domain/backupReminder.js";
 import { renderAppShell } from "./ui/appShell.js";
 import { openDialog } from "./ui/dialog.js";
 import { animateWheel } from "./ui/wheelCanvas.js";
@@ -159,6 +165,7 @@ async function handleAction(action, payload) {
     "rating-delete": () => confirmRatingDeletion(payload.id, payload.ratingId),
     "backup-export": () => exportBackup(),
     "legacy-migrate": () => migrateLegacyLibrary(),
+    "backup-remind-later": () => dismissBackupReminder(),
   };
 
   await handlers[action]?.();
@@ -180,10 +187,14 @@ async function handleControl(control, payload) {
 
   if (control === "backup-import" && payload.files?.[0]) {
     await importBackupFile(payload.files[0]);
+    return;
+  }
+  if (control === "table-import" && payload.files?.[0]) {
+    await importTableFile(payload.files[0]);
   }
 }
 
-function exportBackup() {
+async function exportBackup() {
   const backup = createBackup(state.library);
   const json = JSON.stringify(backup, null, 2);
   const blob = new Blob([json], { type: "application/json;charset=utf-8" });
@@ -196,6 +207,9 @@ function exportBackup() {
   link.click();
   link.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+  await saveSetting("lastBackupAt", new Date().toISOString());
+  await saveSetting("backupReminderDismissedUntil", null);
+  await reloadLibrary();
 }
 
 async function importBackupFile(file) {
@@ -233,6 +247,49 @@ async function migrateLegacyLibrary() {
   });
 }
 
+async function importTableFile(file) {
+  const extension = file.name.split(".").pop()?.toLocaleLowerCase("ru-RU");
+  let rows;
+  if (extension === "xlsx") {
+    const response = await fetch("/api/import-xlsx", {
+      method: "POST",
+      headers: {
+        "Content-Type":
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      },
+      body: file,
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(payload.error ?? "Не удалось прочитать XLSX-файл.");
+    }
+    rows = payload.rows;
+  } else {
+    rows = parseDelimitedText(await readTextFile(file));
+  }
+
+  const incoming = tableRowsToLibrary(rows);
+  const merged = mergeLibraries(state.library, incoming);
+  await persistMergedLibrary(merged);
+  await reloadLibrary();
+  openDialog({
+    title: "Таблица импортирована",
+    submitLabel: "Готово",
+    body: `
+      <p class="confirmation-text">Добавлено и объединено строк: ${rows.length}.
+      Категории, франшизы, просмотренные фильмы и колонки оценок перенесены.</p>
+    `,
+    onSubmit: async () => {},
+  });
+}
+
+async function dismissBackupReminder() {
+  const days = state.library.settings.backupReminderDays ?? 30;
+  const dismissedUntil = createReminderDismissalDate(days);
+  await saveSetting("backupReminderDismissedUntil", dismissedUntil);
+  await reloadLibrary();
+}
+
 async function persistMergedLibrary(library) {
   const storeEntries = [
     [STORE_NAMES.categories, library.categories],
@@ -242,9 +299,16 @@ async function persistMergedLibrary(library) {
     [STORE_NAMES.rollSessions, library.rollSessions],
   ];
   await commitLibraryChanges(
-    storeEntries.flatMap(([storeName, values]) =>
-      values.map((value) => ({ type: "put", storeName, value }))
-    ),
+    [
+      ...storeEntries.flatMap(([storeName, values]) =>
+        values.map((value) => ({ type: "put", storeName, value }))
+      ),
+      ...Object.entries(library.settings ?? {}).map(([key, value]) => ({
+        type: "put",
+        storeName: STORE_NAMES.settings,
+        value: { key, value },
+      })),
+    ],
   );
 }
 
@@ -986,6 +1050,15 @@ function dateInputToIso(value) {
     0,
     0,
   ).toISOString();
+}
+
+async function readTextFile(file) {
+  const bytes = await file.arrayBuffer();
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    return new TextDecoder("windows-1251").decode(bytes);
+  }
 }
 
 function detectLegacyData() {

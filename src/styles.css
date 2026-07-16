@@ -870,6 +870,23 @@ button {
   border-color: rgba(255, 107, 107, 0.4);
 }
 
+.backup-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.backup-notice p:last-child {
+  margin-bottom: 0;
+}
+
+.notice-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
 .empty-state {
   display: grid;
   min-height: 430px;

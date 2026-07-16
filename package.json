@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "start": "python launch.py",
-    "test": "node --test"
+    "test": "node --test",
+    "test:python": "python -m unittest discover -s tests -p \"test_*.py\"",
+    "test:all": "npm run test && npm run test:python"
   }
 }
-

@@ -19,6 +19,7 @@ export function createBackup(library) {
       franchises: library.franchises,
       participants: library.participants,
       rollSessions: library.rollSessions,
+      settings: library.settings ?? {},
     },
   };
 }
@@ -45,6 +46,9 @@ export function parseBackup(value) {
     rollSessions: Array.isArray(backup.data.rollSessions)
       ? backup.data.rollSessions.filter((session) => session?.id)
       : [],
+    settings: backup.data.settings && typeof backup.data.settings === "object"
+      ? backup.data.settings
+      : {},
   };
 }
 
@@ -89,6 +93,10 @@ export function mergeLibraries(current, incoming) {
       incoming.rollSessions,
       (session) => session.id,
     ),
+    settings: {
+      ...(incoming.settings ?? {}),
+      ...(current.settings ?? {}),
+    },
   };
 }
 
@@ -152,6 +160,7 @@ export function readLegacyLocalStorage(storage) {
     franchises,
     participants,
     rollSessions: [],
+    settings: {},
   };
 }
 
