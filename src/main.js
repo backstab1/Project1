@@ -59,9 +59,24 @@ import { animateWheel } from "./ui/wheelCanvas.js";
 import { showToast } from "./ui/toast.js";
 
 const root = document.querySelector("#app");
+const VIEW_IDS = new Set([
+  "dashboard",
+  "catalog",
+  "categories",
+  "franchises",
+  "watched",
+  "wheel",
+  "sessions",
+  "settings",
+]);
+
+function readViewFromHash() {
+  const view = location.hash.slice(1);
+  return VIEW_IDS.has(view) ? view : "dashboard";
+}
 
 const state = {
-  view: "dashboard",
+  view: readViewFromHash(),
   library: {
     movies: [],
     categories: [],
@@ -88,8 +103,12 @@ const state = {
   focusControl: null,
   error: null,
   onNavigate(view) {
+    if (!VIEW_IDS.has(view)) return;
     state.view = view;
     state.focusControl = null;
+    if (location.hash !== `#${view}`) {
+      history.pushState(null, "", `#${view}`);
+    }
     render();
   },
   onAction(action, payload) {
@@ -115,6 +134,11 @@ async function start() {
 
   render();
   window.addEventListener("keydown", handleGlobalKeydown);
+  window.addEventListener("popstate", () => {
+    state.view = readViewFromHash();
+    state.focusControl = null;
+    render();
+  });
 }
 
 function render() {
