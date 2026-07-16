@@ -4,9 +4,11 @@ import assert from "node:assert/strict";
 import {
   buildCategoryDeletionCommands,
   buildMovieDeletionCommands,
+  buildWinnerWatchCommands,
   findDuplicateMovie,
   moveCategoryQueueEntity,
   moveWithinGroup,
+  reorderFranchiseMovie,
 } from "../src/domain/libraryRules.js";
 
 test("дубликат фильма определяется по названию и году", () => {
@@ -128,4 +130,31 @@ test("фильм и франшиза перемещаются в общей оч
       .categoryPosition,
     1,
   );
+});
+
+test("фильмы внутри франшизы меняют ручной порядок", () => {
+  const updated = reorderFranchiseMovie(
+    { id: "f", movieIds: ["a", "b", "c"] },
+    "b",
+    -1,
+  );
+  assert.deepEqual(updated.movieIds, ["b", "a", "c"]);
+});
+
+test("победа франшизы назначает одну дату всем её фильмам", () => {
+  const watchedAt = "2026-07-16T12:00:00.000Z";
+  const commands = buildWinnerWatchCommands(
+    {
+      movies: [{ id: "a" }, { id: "b" }, { id: "outside" }],
+      franchises: [{ id: "f", movieIds: ["a", "b"] }],
+    },
+    { type: "franchise", id: "f" },
+    watchedAt,
+  );
+
+  assert.deepEqual(
+    commands.map((command) => command.value.id),
+    ["a", "b"],
+  );
+  assert.ok(commands.every((command) => command.value.watchedAt === watchedAt));
 });

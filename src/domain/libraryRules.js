@@ -240,3 +240,44 @@ export function moveCategoryQueueEntity(
     },
   ];
 }
+
+export function reorderFranchiseMovie(franchise, movieId, direction) {
+  if (!franchise || ![-1, 1].includes(direction)) {
+    return null;
+  }
+  const movieIds = [...franchise.movieIds];
+  const currentIndex = movieIds.indexOf(movieId);
+  const targetIndex = currentIndex + direction;
+  if (currentIndex < 0 || targetIndex < 0 || targetIndex >= movieIds.length) {
+    return null;
+  }
+
+  [movieIds[currentIndex], movieIds[targetIndex]] = [
+    movieIds[targetIndex],
+    movieIds[currentIndex],
+  ];
+  return {
+    ...franchise,
+    movieIds,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+export function buildWinnerWatchCommands(library, winner, watchedAt) {
+  const timestamp = new Date(watchedAt).toISOString();
+  const winnerMovieIds = winner.type === "franchise"
+    ? library.franchises.find((item) => item.id === winner.id)?.movieIds ?? []
+    : [winner.id];
+
+  return library.movies
+    .filter((movie) => winnerMovieIds.includes(movie.id))
+    .map((movie) => ({
+      type: "put",
+      storeName: STORE_NAMES.movies,
+      value: {
+        ...movie,
+        watchedAt: timestamp,
+        updatedAt: timestamp,
+      },
+    }));
+}

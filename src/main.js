@@ -7,25 +7,41 @@ import {
   saveCategory,
   saveFranchise,
   saveMovie,
+  saveParticipant,
+  saveRollSession,
 } from "./data/libraryRepository.js";
 import {
   createCategory,
   createFranchise,
   createMovie,
+  createParticipant,
   normalizeText,
 } from "./domain/entities.js";
 import {
   buildCategoryDeletionCommands,
   buildMovieDeletionCommands,
+  buildWinnerWatchCommands,
   findDuplicateCategory,
   findDuplicateMovie,
   getMovieFranchiseMap,
   moveCategoryQueueEntity,
   moveWithinGroup,
+  reorderFranchiseMovie,
 } from "./domain/libraryRules.js";
+import {
+  buildRollPool,
+  confirmElimination,
+  createRollSession,
+  rerollSession,
+  restoreEliminated,
+  shufflePool,
+  spinSession,
+  useSave,
+} from "./domain/rollEngine.js";
 import { buildLibraryStatistics } from "./domain/statistics.js";
 import { renderAppShell } from "./ui/appShell.js";
 import { openDialog } from "./ui/dialog.js";
+import { animateWheel } from "./ui/wheelCanvas.js";
 
 const root = document.querySelector("#app");
 
@@ -45,6 +61,9 @@ const state = {
     categoryCount: 0,
   },
   legacyDataFound: detectLegacyData(),
+  rollDraftPool: [],
+  activeSession: null,
+  isSpinning: false,
   error: null,
   onNavigate(view) {
     state.view = view;
@@ -62,12 +81,14 @@ async function start() {
     await initializeDatabase();
     state.library = await loadLibrary();
     state.statistics = buildLibraryStatistics(state.library);
+    state.rollDraftPool = buildRollPool(state.library);
   } catch (error) {
     console.error(error);
     state.error = error instanceof Error ? error : new Error(String(error));
   }
 
   render();
+  window.addEventListener("keydown", handleGlobalKeydown);
 }
 
 function render() {
@@ -77,6 +98,9 @@ function render() {
 async function reloadLibrary() {
   state.library = await loadLibrary();
   state.statistics = buildLibraryStatistics(state.library);
+  if (!state.activeSession) {
+    state.rollDraftPool = buildRollPool(state.library);
+  }
   render();
 }
 
@@ -98,9 +122,208 @@ async function handleAction(action, payload) {
     "franchise-add": () => openFranchiseDialog(),
     "franchise-edit": () => openFranchiseDialog(payload.id),
     "franchise-delete": () => confirmFranchiseDeletion(payload.id),
+    "franchise-member-up": () =>
+      moveFranchiseMember(payload.id, payload.movieId, -1),
+    "franchise-member-down": () =>
+      moveFranchiseMember(payload.id, payload.movieId, 1),
+    "roll-shuffle": () => shuffleRollDraft(),
+    "roll-configure": () => openRollConfiguration(),
+    "roll-spin": () => spinActiveSession(),
+    "roll-reroll": () => rerollActiveSession(),
+    "roll-save": () => savePendingParticipant(payload.id),
+    "roll-confirm-elimination": () => eliminatePendingParticipant(),
+    "roll-restore": () =>
+      restoreRollParticipant(payload.entityType, payload.id),
   };
 
   await handlers[action]?.();
+}
+
+function shuffleRollDraft() {
+  state.rollDraftPool = shufflePool(state.rollDraftPool);
+  render();
+}
+
+function openRollConfiguration() {
+  if (state.rollDraftPool.length < 2) {
+    throw new Error("Настройте квоты так, чтобы в пул попало минимум два участника.");
+  }
+  const knownNames = state.library.participants
+    .sort((a, b) => String(b.lastUsedAt).localeCompare(String(a.lastUsedAt)))
+    .map((participant) => participant.name);
+
+  openDialog({
+    title: "Настройка сессии",
+    submitLabel: "Начать",
+    body: `
+      <p class="form-hint">Укажите игроков и количество сейвов. Пустые строки
+      будут пропущены.</p>
+      ${[0, 1, 2, 3].map((index) => `
+        <div class="field-row player-row">
+          <label class="field">
+            <span>Игрок ${index + 1}</span>
+            <input name="playerName${index}" maxlength="80"
+              value="${escapeAttribute(knownNames[index] ?? (index < 2 ? `Игрок ${index + 1}` : ""))}">
+          </label>
+          <label class="field">
+            <span>Сейвы</span>
+            <input name="playerSaves${index}" type="number" min="0" max="99"
+              value="${index < 2 ? 3 : 0}">
+          </label>
+        </div>
+      `).join("")}
+      <label class="field">
+        <span>Сейвы работают, пока участников больше</span>
+        <input name="saveThreshold" type="number" min="1"
+          max="${state.rollDraftPool.length - 1}"
+          value="${Math.min(3, state.rollDraftPool.length - 1)}">
+      </label>
+    `,
+    onSubmit: async (formData) => {
+      const participants = [0, 1, 2, 3]
+        .map((index) => ({
+          name: formData.get(`playerName${index}`),
+          saves: formData.get(`playerSaves${index}`),
+        }))
+        .filter((participant) => String(participant.name).trim());
+
+      state.activeSession = createRollSession({
+        pool: state.rollDraftPool,
+        participants,
+        savesEnabledAboveRemaining: formData.get("saveThreshold"),
+      });
+      await rememberParticipants(participants);
+      render();
+    },
+  });
+}
+
+async function spinActiveSession() {
+  if (
+    !state.activeSession ||
+    state.activeSession.pendingIndex !== null ||
+    state.isSpinning
+  ) {
+    return;
+  }
+  state.isSpinning = true;
+  render();
+  try {
+    const nextSession = spinSession(state.activeSession);
+    const canvas = document.querySelector("#wheel-canvas");
+    await animateWheel(
+      canvas,
+      state.activeSession.pool,
+      nextSession.pendingIndex,
+    );
+    state.activeSession = nextSession;
+  } finally {
+    state.isSpinning = false;
+    render();
+  }
+}
+
+async function rerollActiveSession() {
+  if (!state.activeSession) return;
+  state.activeSession = rerollSession(state.activeSession);
+  render();
+  await spinActiveSession();
+}
+
+function savePendingParticipant(participantId) {
+  state.activeSession = useSave(state.activeSession, participantId);
+  render();
+}
+
+async function eliminatePendingParticipant() {
+  const nextSession = confirmElimination(state.activeSession);
+  if (nextSession.status === "completed") {
+    await finishRollSession(nextSession);
+    return;
+  }
+  state.activeSession = nextSession;
+  render();
+}
+
+function restoreRollParticipant(entityType, entityId) {
+  state.activeSession = restoreEliminated(
+    state.activeSession,
+    entityType,
+    entityId,
+  );
+  render();
+}
+
+async function finishRollSession(session) {
+  const watchedAt = session.completedAt ?? new Date().toISOString();
+  const commands = buildWinnerWatchCommands(
+    state.library,
+    session.winner,
+    watchedAt,
+  );
+
+  if (commands.length) {
+    await commitLibraryChanges(commands);
+  }
+  await saveRollSession(session);
+  const winner = session.winner;
+  state.activeSession = null;
+  state.view = "watched";
+  await reloadLibrary();
+
+  openDialog({
+    title: "Победитель определён",
+    submitLabel: "Продолжить",
+    body: `
+      <div class="winner-dialog">
+        <div class="winner-dialog__trophy">★</div>
+        <p class="eyebrow">${winner.type === "franchise" ? "Франшиза" : "Фильм"}</p>
+        <h3>${escapeHtml(winner.title)}</h3>
+        <p>Участник перенесён в просмотренные. Оценку можно добавить позже.</p>
+      </div>
+    `,
+    onSubmit: async () => {},
+  });
+}
+
+async function rememberParticipants(participants) {
+  const existingByName = new Map(
+    state.library.participants.map((participant) => [
+      participant.normalizedName,
+      participant,
+    ]),
+  );
+  await Promise.all(
+    participants.map((participant) => {
+      const normalizedName = normalizeText(participant.name);
+      return saveParticipant(createParticipant({
+        ...(existingByName.get(normalizedName) ?? {}),
+        name: participant.name,
+        lastUsedAt: new Date().toISOString(),
+      }));
+    }),
+  );
+  state.library.participants = await loadLibrary()
+    .then((library) => library.participants);
+}
+
+function handleGlobalKeydown(event) {
+  if (
+    event.code !== "Space" ||
+    event.repeat ||
+    state.view !== "wheel" ||
+    !state.activeSession ||
+    state.activeSession.pendingIndex !== null ||
+    state.isSpinning ||
+    document.querySelector("dialog[open]") ||
+    ["INPUT", "SELECT", "TEXTAREA", "BUTTON"].includes(
+      document.activeElement?.tagName,
+    )
+  ) {
+    return;
+  }
+  event.preventDefault();
+  spinActiveSession().catch(showUnexpectedError);
 }
 
 function openMovieDialog(movieId = null) {
@@ -371,6 +594,16 @@ async function moveFranchise(franchiseId, direction) {
       direction,
     ),
   );
+}
+
+async function moveFranchiseMember(franchiseId, movieId, direction) {
+  const franchise = state.library.franchises.find(
+    (item) => item.id === franchiseId,
+  );
+  const updated = reorderFranchiseMovie(franchise, movieId, direction);
+  if (!updated) return;
+  await saveFranchise(updated);
+  await reloadLibrary();
 }
 
 async function moveCategory(categoryId, direction) {

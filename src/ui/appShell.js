@@ -5,6 +5,7 @@ import {
   getMovieFranchiseMap,
 } from "../domain/libraryRules.js";
 import { setupDialog } from "./dialog.js";
+import { drawWheel } from "./wheelCanvas.js";
 
 const NAV_ITEMS = [
   ["dashboard", "Главная", "⌂"],
@@ -101,6 +102,13 @@ export function renderAppShell(root, state) {
   });
 
   setupDialog();
+  const wheelCanvas = root.querySelector("#wheel-canvas");
+  if (wheelCanvas) {
+    drawWheel(
+      wheelCanvas,
+      state.activeSession?.pool ?? state.rollDraftPool,
+    );
+  }
 }
 
 function renderCurrentView(container, state) {
@@ -137,6 +145,11 @@ function renderCurrentView(container, state) {
     return;
   }
 
+  if (state.view === "wheel") {
+    renderWheel(container, state);
+    return;
+  }
+
   const descriptions = {
     catalog: "Здесь появятся фильмы, поиск, фильтры и создание карточек.",
     categories: "Здесь будет дерево категорий и ручное управление очередями.",
@@ -154,6 +167,149 @@ function renderCurrentView(container, state) {
       <h2>${escapeHtml(getViewTitle(state.view))}</h2>
       <p>${escapeHtml(descriptions[state.view] ?? "Раздел находится в разработке.")}</p>
     </section>
+  `;
+}
+
+function renderWheel(container, state) {
+  if (!state.activeSession) {
+    const quotaCategories = state.library.categories
+      .filter((category) => category.rollQuota > 0)
+      .sort(sortByPosition);
+    container.innerHTML = `
+      <div class="view-toolbar">
+        <div>
+          <p class="eyebrow">Подготовка сессии</p>
+          <h2>${state.rollDraftPool.length}
+            ${pluralize(state.rollDraftPool.length, ["участник", "участника", "участников"])}
+          </h2>
+        </div>
+        <div class="toolbar-actions">
+          <button class="button button--ghost" type="button"
+            data-action="roll-shuffle">Перемешать</button>
+          <button class="button button--primary" type="button"
+            data-action="roll-configure">Настроить и начать</button>
+        </div>
+      </div>
+
+      <div class="wheel-setup-grid">
+        <section class="panel">
+          <p class="eyebrow">Предварительный состав</p>
+          ${state.rollDraftPool.length ? `
+            <ol class="pool-preview">
+              ${state.rollDraftPool.map((item, index) => `
+                <li>
+                  <span>${index + 1}</span>
+                  <strong>${escapeHtml(item.title)}</strong>
+                  <small>${item.type === "franchise" ? "Франшиза" : "Фильм"}</small>
+                </li>
+              `).join("")}
+            </ol>
+          ` : `
+            <p class="muted">Пул пуст. Задайте квоту минимум одной категории
+            и добавьте в очередь непросмотренные фильмы.</p>
+          `}
+        </section>
+        <section class="panel panel--accent">
+          <p class="eyebrow">Квоты категорий</p>
+          ${quotaCategories.length ? `
+            <div class="quota-list">
+              ${quotaCategories.map((category) => `
+                <div>
+                  <span>${escapeHtml(category.name)}</span>
+                  <strong>${category.rollQuota}</strong>
+                </div>
+              `).join("")}
+            </div>
+          ` : `<p class="muted">Квоты ещё не настроены.</p>`}
+        </section>
+      </div>
+    `;
+    return;
+  }
+
+  const session = state.activeSession;
+  const pending = session.pendingIndex === null
+    ? null
+    : session.pool[session.pendingIndex];
+
+  container.innerHTML = `
+    <div class="wheel-layout">
+      <section class="wheel-stage">
+        <div class="wheel-frame">
+          <div class="wheel-pointer" aria-hidden="true"></div>
+          <canvas id="wheel-canvas" width="560" height="560"
+            aria-label="Колесо с участниками"></canvas>
+        </div>
+        <div class="wheel-status">
+          ${pending ? `
+            <p>Выбывает</p>
+            <h2>${escapeHtml(pending.title)}</h2>
+          ` : `
+            <p>В колесе осталось</p>
+            <h2>${session.pool.length}
+              ${pluralize(session.pool.length, ["участник", "участника", "участников"])}
+            </h2>
+          `}
+        </div>
+        <div class="wheel-actions">
+          ${pending ? `
+            <button class="button button--ghost" type="button"
+              data-action="roll-reroll">Перекрутить</button>
+            <button class="button button--danger" type="button"
+              data-action="roll-confirm-elimination">Подтвердить выбывание</button>
+          ` : `
+            <button class="button button--primary button--spin" type="button"
+              data-action="roll-spin" ${state.isSpinning ? "disabled" : ""}>
+              ${state.isSpinning ? "Колесо вращается…" : "Крутить · Пробел"}
+            </button>
+          `}
+        </div>
+      </section>
+
+      <aside class="wheel-sidebar">
+        <section class="wheel-panel">
+          <p class="eyebrow">Сейвы</p>
+          <div class="save-list">
+            ${session.participants.map((participant) => `
+              <div>
+                <span>
+                  <strong>${escapeHtml(participant.name)}</strong>
+                  <small>${participant.savesRemaining} из ${participant.savesInitial}</small>
+                </span>
+                ${pending ? `
+                  <button class="mini-button mini-button--wide" type="button"
+                    data-action="roll-save" data-id="${participant.id}"
+                    ${participant.savesRemaining <= 0 ||
+                      session.pool.length <= session.savesEnabledAboveRemaining
+                      ? "disabled" : ""}>
+                    Спасти
+                  </button>
+                ` : ""}
+              </div>
+            `).join("")}
+          </div>
+          <p class="form-hint">Сейвы работают, пока остаётся больше
+          ${session.savesEnabledAboveRemaining} участников.</p>
+        </section>
+
+        <section class="wheel-panel">
+          <div class="panel-heading">
+            <p class="eyebrow">Выбыли</p>
+            <strong>${session.eliminated.length}</strong>
+          </div>
+          <div class="eliminated-list">
+            ${session.eliminated.map((item) => `
+              <div>
+                <span>${escapeHtml(item.title)}</span>
+                <button class="mini-button" type="button"
+                  data-action="roll-restore" data-id="${item.id}"
+                  data-entity-type="${item.type}" aria-label="Вернуть">↺</button>
+              </div>
+            `).join("") || '<p class="muted">Пока никто не выбыл.</p>'}
+          </div>
+        </section>
+      </aside>
+    </div>
   `;
 }
 
@@ -267,7 +423,21 @@ function renderFranchises(container, library) {
             </p>
             <ol class="franchise-movies">
               ${franchise.movieIds.map((id) => movieById.get(id)).filter(Boolean)
-                .map((movie) => `<li>${escapeHtml(movie.title)}</li>`).join("")
+                .map((movie) => `
+                  <li>
+                    <span>${escapeHtml(movie.title)}</span>
+                    <span class="queue-list__actions">
+                      <button class="mini-button" type="button"
+                        data-action="franchise-member-up"
+                        data-id="${franchise.id}" data-movie-id="${movie.id}"
+                        aria-label="Выше">↑</button>
+                      <button class="mini-button" type="button"
+                        data-action="franchise-member-down"
+                        data-id="${franchise.id}" data-movie-id="${movie.id}"
+                        aria-label="Ниже">↓</button>
+                    </span>
+                  </li>
+                `).join("")
                 || "<li class=\"muted\">Фильмы ещё не добавлены</li>"}
             </ol>
           </article>

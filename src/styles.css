@@ -274,6 +274,17 @@ button {
   background: transparent;
 }
 
+.button--danger {
+  border-color: rgba(255, 107, 107, 0.55);
+  background: rgba(255, 107, 107, 0.12);
+  color: #ff9a9a;
+}
+
+.toolbar-actions {
+  display: flex;
+  gap: 9px;
+}
+
 .icon-button,
 .mini-button {
   display: inline-grid;
@@ -536,6 +547,10 @@ button {
 }
 
 .franchise-movies li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
   color: var(--muted);
   font-size: 0.85rem;
 }
@@ -544,6 +559,204 @@ button {
   counter-increment: franchise-movie;
   content: counter(franchise-movie) ". ";
   color: var(--gold);
+}
+
+.wheel-setup-grid {
+  display: grid;
+  grid-template-columns: 1.35fr 0.65fr;
+  gap: 16px;
+}
+
+.pool-preview {
+  display: grid;
+  max-height: 480px;
+  overflow-y: auto;
+  gap: 5px;
+  margin: 18px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pool-preview li {
+  display: grid;
+  grid-template-columns: 30px 1fr auto;
+  align-items: center;
+  gap: 9px;
+  border-radius: 9px;
+  background: rgba(9, 10, 13, 0.5);
+  padding: 9px 11px;
+}
+
+.pool-preview li > span,
+.pool-preview small {
+  color: var(--muted);
+}
+
+.pool-preview strong {
+  font-size: 0.87rem;
+}
+
+.quota-list,
+.save-list {
+  display: grid;
+  gap: 7px;
+  margin-top: 18px;
+}
+
+.quota-list > div,
+.save-list > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-radius: 9px;
+  background: rgba(9, 10, 13, 0.42);
+  padding: 10px 12px;
+}
+
+.quota-list strong {
+  color: var(--gold-light);
+  font-size: 1.2rem;
+}
+
+.wheel-layout {
+  display: grid;
+  grid-template-columns: minmax(600px, 1fr) 320px;
+  gap: 24px;
+}
+
+.wheel-stage {
+  display: grid;
+  justify-items: center;
+  min-height: 690px;
+  align-content: start;
+}
+
+.wheel-frame {
+  position: relative;
+  width: 580px;
+  height: 580px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 10px;
+  box-shadow:
+    0 0 0 1px var(--line),
+    0 30px 90px rgba(0, 0, 0, 0.35),
+    0 0 70px rgba(229, 183, 79, 0.08);
+}
+
+#wheel-canvas {
+  display: block;
+  width: 560px;
+  height: 560px;
+  border-radius: 50%;
+}
+
+.wheel-pointer {
+  position: absolute;
+  z-index: 2;
+  top: calc(50% - 22px);
+  right: -12px;
+  width: 0;
+  height: 0;
+  border-top: 22px solid transparent;
+  border-right: 38px solid var(--text);
+  border-bottom: 22px solid transparent;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.55));
+}
+
+.wheel-status {
+  min-height: 78px;
+  margin-top: 18px;
+  text-align: center;
+}
+
+.wheel-status p {
+  margin: 0 0 6px;
+  color: var(--muted);
+}
+
+.wheel-status h2 {
+  margin: 0;
+  color: var(--gold-light);
+}
+
+.wheel-actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.button--spin {
+  min-width: 220px;
+  padding-block: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.wheel-sidebar {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+}
+
+.wheel-panel {
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  background: var(--card);
+  padding: 18px;
+}
+
+.save-list span {
+  display: grid;
+  gap: 3px;
+}
+
+.save-list small {
+  color: var(--muted);
+}
+
+.mini-button--wide {
+  width: auto;
+  min-width: 68px;
+  padding-inline: 8px;
+}
+
+.mini-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+
+.panel-heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+}
+
+.panel-heading strong {
+  color: var(--gold-light);
+}
+
+.eliminated-list {
+  display: grid;
+  max-height: 360px;
+  overflow-y: auto;
+  gap: 5px;
+  margin-top: 10px;
+}
+
+.eliminated-list > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border-radius: 8px;
+  background: rgba(9, 10, 13, 0.42);
+  padding: 7px 9px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  text-decoration: line-through;
 }
 
 .metric-grid {
@@ -796,6 +1009,10 @@ code {
 
   .movie-grid {
     grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  }
+
+  .wheel-layout {
+    grid-template-columns: minmax(580px, 1fr) 280px;
   }
 }
 
