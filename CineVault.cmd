@@ -2,6 +2,11 @@
 setlocal
 cd /d "%~dp0"
 
+if exist "CineVault.exe" (
+    start "" "CineVault.exe"
+    goto :end
+)
+
 where py >nul 2>nul
 if %errorlevel%==0 (
     py -3 launch.py

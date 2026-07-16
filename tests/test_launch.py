@@ -1,8 +1,13 @@
 import io
+import json
+import threading
 import unittest
+import urllib.request
 import zipfile
+from functools import partial
+from http.server import ThreadingHTTPServer
 
-from launch import parse_xlsx_rows
+from launch import CineVaultHandler, find_available_port, parse_arguments, parse_xlsx_rows
 
 
 class XlsxImportTests(unittest.TestCase):
@@ -39,6 +44,32 @@ class XlsxImportTests(unittest.TestCase):
 
         rows = parse_xlsx_rows(buffer.getvalue())
         self.assertEqual(rows, [{"Название": "Начало", "Год": "2010"}])
+
+
+class LauncherTests(unittest.TestCase):
+    def test_parses_launch_options(self):
+        options = parse_arguments(["--port", "8765", "--no-browser"])
+        self.assertEqual(options.port, 8765)
+        self.assertTrue(options.no_browser)
+
+    def test_health_endpoint(self):
+        server = ThreadingHTTPServer(
+            ("127.0.0.1", find_available_port(19000)),
+            partial(CineVaultHandler),
+        )
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            with urllib.request.urlopen(
+                f"http://127.0.0.1:{server.server_port}/api/health",
+                timeout=3,
+            ) as response:
+                self.assertEqual(response.status, 200)
+                self.assertEqual(json.load(response), {"status": "ok"})
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=3)
 
 
 if __name__ == "__main__":
