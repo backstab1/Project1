@@ -2003,6 +2003,92 @@ textarea {
   grid-template-columns: minmax(0, 1.55fr) minmax(320px, 0.9fr);
 }
 
+.dashboard-overview {
+  margin-top: 38px;
+  border: 1px solid var(--line);
+  border-radius: 26px;
+  background: var(--surface-raised);
+  padding: 28px;
+  box-shadow: var(--shadow-soft);
+}
+
+.dashboard-overview__heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 20px;
+}
+
+.dashboard-overview__heading h2,
+.dashboard-summary-card h3 {
+  margin: 0;
+  letter-spacing: -0.025em;
+}
+
+.dashboard-overview__heading .eyebrow,
+.dashboard-summary-card .eyebrow {
+  margin: 0 0 6px;
+}
+
+.dashboard-overview__heading button {
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.dashboard-overview__metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.dashboard-overview__metrics .dashboard-metric {
+  background: var(--page);
+  box-shadow: none;
+}
+
+.dashboard-overview__panels {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.dashboard-summary-card {
+  min-height: 210px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--surface-raised);
+  padding: 24px;
+  box-shadow: var(--shadow-card);
+}
+
+.dashboard-summary-card--accent {
+  background: linear-gradient(135deg, var(--accent-soft), var(--surface-raised) 72%);
+}
+
+.dashboard-summary-card p:not(.eyebrow) {
+  max-width: 58ch;
+  margin: 14px 0;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.dashboard-summary-card small {
+  display: block;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.dashboard-summary-card .button {
+  margin-top: 4px;
+  border-color: color-mix(in srgb, var(--accent) 22%, var(--line));
+  background: var(--surface-raised);
+  color: var(--accent);
+}
+
 .section-heading {
   display: flex;
   align-items: center;
@@ -2204,14 +2290,40 @@ textarea {
 .movie-card,
 .panel,
 .notice,
+.empty-state,
 .category-node,
 .franchise-card,
 .session-card,
 .watched-row,
-.metric-card {
+.metric-card,
+.session-detail-summary {
   border-color: var(--line);
   background: var(--surface-raised);
   box-shadow: var(--shadow-card);
+  color: var(--text-primary);
+}
+
+.empty-state {
+  background: var(--surface-raised);
+}
+
+.empty-state__icon {
+  display: grid;
+  width: 56px;
+  height: 56px;
+  place-content: center;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 1.65rem;
+}
+
+.empty-state p:last-child,
+.session-detail-summary p {
+  color: var(--text-secondary);
+}
+
+.session-detail-summary strong {
   color: var(--text-primary);
 }
 
@@ -2330,6 +2442,10 @@ textarea {
   .dashboard-sections.has-collections {
     grid-template-columns: 1fr;
   }
+
+  .dashboard-overview__metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 800px) {
@@ -2410,6 +2526,30 @@ textarea {
 
   .dashboard-sections.has-collections {
     grid-template-columns: 1fr;
+  }
+
+  .dashboard-overview {
+    margin-top: 28px;
+    border-radius: 20px;
+    padding: 18px;
+  }
+
+  .dashboard-overview__heading {
+    align-items: flex-start;
+  }
+
+  .dashboard-overview__heading button {
+    display: none;
+  }
+
+  .dashboard-overview__metrics,
+  .dashboard-overview__panels {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-summary-card {
+    min-height: 0;
+    padding: 20px;
   }
 
   .recent-movies {

@@ -27,6 +27,8 @@ const ICONS = Object.freeze({
   eye: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>',
   wheel: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m12 3 2 7 7 2-7 2-2 7-2-7-7-2 7-2z"/></svg>',
   history: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5m4-1v5l3 2"/></svg>',
+  star: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-2.9-5.6 2.9 1.1-6.2L3 9.6l6.2-.9z"/></svg>',
+  clock: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>',
   settings: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3A1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1z"/></svg>',
   sun: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
   moon: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 15.5A8.5 8.5 0 0 1 8.5 4 8.5 8.5 0 1 0 20 15.5z"/></svg>',
@@ -833,14 +835,14 @@ function renderDashboard(container, state) {
       </div>
     </section>
 
-    ${statistics.movieCount ? `
-      <div class="dashboard-metrics">
-        ${dashboardMetric("Фильмов", statistics.movieCount, "film")}
-        ${dashboardMetric("Просмотрено", statistics.watchedMovieCount, "eye")}
-        ${dashboardMetric("В очереди", statistics.unwatchedMovieCount, "history")}
-        ${dashboardMetric("Коллекций", statistics.franchiseCount, "collection")}
-      </div>
+    <div class="dashboard-metrics">
+      ${dashboardMetric("Фильмов", statistics.movieCount, "film")}
+      ${dashboardMetric("Просмотрено", statistics.watchedMovieCount, "eye")}
+      ${dashboardMetric("В очереди", statistics.unwatchedMovieCount, "history")}
+      ${dashboardMetric("Коллекций", statistics.franchiseCount, "collection")}
+    </div>
 
+    ${statistics.movieCount ? `
       <div class="dashboard-sections ${recentCollections.length ? "has-collections" : ""}">
         <section class="dashboard-section">
           <header class="section-heading">
@@ -866,6 +868,60 @@ function renderDashboard(container, state) {
         ` : ""}
       </div>
     ` : ""}
+
+    <section class="dashboard-overview">
+      <header class="dashboard-overview__heading">
+        <div>
+          <p class="eyebrow">Сводка библиотеки</p>
+          <h2>Ваша коллекция в цифрах</h2>
+        </div>
+        <button type="button" data-view="catalog">Открыть каталог <span aria-hidden="true">→</span></button>
+      </header>
+
+      <div class="dashboard-overview__metrics">
+        ${dashboardMetric("Категорий", statistics.categoryCount, "categories")}
+        ${dashboardMetric(
+          "Средняя оценка",
+          statistics.libraryAverageRating == null
+            ? "—"
+            : statistics.libraryAverageRating.toLocaleString("ru-RU", { maximumFractionDigits: 1 }),
+          "star",
+        )}
+        ${dashboardMetric("Всего оценок", statistics.totalRatingCount, "wheel")}
+        ${dashboardMetric("Просмотрено часов", formatWatchedHours(statistics.watchedDurationMinutes), "clock")}
+      </div>
+
+      <div class="dashboard-overview__panels">
+        <article class="dashboard-summary-card">
+          <p class="eyebrow">Библиотека</p>
+          ${statistics.highestRatedMovie ? `
+            <h3>Лидер — ${escapeHtml(statistics.highestRatedMovie.movie.title)}</h3>
+            <p>Самая высокая средняя оценка в вашей коллекции: <strong>${statistics.highestRatedMovie.rating.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}</strong>.</p>
+            ${statistics.lowestRatedMovie && statistics.lowestRatedMovie.movie.id !== statistics.highestRatedMovie.movie.id
+              ? `<small>Самая низкая оценка сейчас у фильма «${escapeHtml(statistics.lowestRatedMovie.movie.title)}» — ${statistics.lowestRatedMovie.rating.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}.</small>`
+              : ""}
+          ` : `
+            <h3>${statistics.movieCount ? "Оценок пока нет" : "Библиотека ждёт первые фильмы"}</h3>
+            <p>${statistics.movieCount
+              ? "Оцените просмотренные фильмы — здесь появятся лидер коллекции и полезная сводка."
+              : "Начните с фильма, который точно хочется сохранить. Остальная статистика заполнится автоматически."}</p>
+          `}
+        </article>
+
+        <article class="dashboard-summary-card dashboard-summary-card--accent">
+          <p class="eyebrow">Быстрый старт</p>
+          <h3>${statistics.movieCount ? "Не знаете, что посмотреть?" : "Добавьте первый фильм"}</h3>
+          <p>${statistics.movieCount
+            ? "Колесо соберёт доступные фильмы и поможет выбрать следующий без долгого просмотра каталога."
+            : "Найдите фильм через TMDB или заполните карточку вручную — данные останутся на этом устройстве."}</p>
+          <button class="button button--ghost" type="button"
+            ${statistics.movieCount ? 'data-view="wheel"' : 'data-action="movie-add"'}>
+            ${statistics.movieCount ? "Запустить колесо" : "Открыть форму добавления"}
+            <span aria-hidden="true">→</span>
+          </button>
+        </article>
+      </div>
+    </section>
 
     ${backupDue ? `
       <section class="notice backup-notice">
@@ -901,12 +957,20 @@ function renderDashboard(container, state) {
 }
 
 function dashboardMetric(label, value, iconName) {
+  const displayValue = typeof value === "number"
+    ? value.toLocaleString("ru-RU")
+    : escapeHtml(String(value ?? 0));
   return `
     <article class="dashboard-metric">
       <span class="dashboard-metric__icon">${ICONS[iconName]}</span>
-      <span><strong>${Number(value ?? 0).toLocaleString("ru-RU")}</strong>
+      <span><strong>${displayValue}</strong>
         <small>${escapeHtml(label)}</small></span>
     </article>`;
+}
+
+function formatWatchedHours(minutes) {
+  return (Math.round(((Number(minutes) || 0) / 60) * 10) / 10)
+    .toLocaleString("ru-RU", { maximumFractionDigits: 1 });
 }
 
 function dashboardMovieCard(movie) {
