@@ -1,4 +1,4 @@
-import { APP_NAME, APP_VERSION } from "../config.js";
+import { APP_VERSION } from "../config.js";
 import { calculateAverageRating } from "../domain/entities.js";
 import {
   buildCategoryQueue,
@@ -9,15 +9,29 @@ import { drawWheel } from "./wheelCanvas.js";
 import { isBackupReminderDue } from "../domain/backupReminder.js";
 
 const NAV_ITEMS = [
-  ["dashboard", "Главная", "⌂"],
-  ["catalog", "Каталог", "▦"],
-  ["categories", "Категории", "☷"],
-  ["franchises", "Франшизы", "◫"],
-  ["watched", "Просмотренные", "✓"],
-  ["wheel", "Колесо", "◉"],
-  ["sessions", "История роллов", "↺"],
-  ["settings", "Настройки", "⚙"],
+  ["dashboard", "Главная", "home"],
+  ["catalog", "Каталог", "film"],
+  ["franchises", "Коллекции", "collection"],
+  ["categories", "Категории", "categories"],
+  ["watched", "Просмотренные", "eye"],
+  ["wheel", "Колесо", "wheel"],
+  ["sessions", "История роллов", "history"],
+  ["settings", "Настройки", "settings"],
 ];
+
+const ICONS = Object.freeze({
+  home: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 11 9-8 9 8v9a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"/></svg>',
+  film: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M7 4v16M17 4v16M3 9h4m10 0h4M3 15h4m10 0h4"/></svg>',
+  collection: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="3"/><path d="M8 2h8M8 22h8m-6-13 6 3-6 3z"/></svg>',
+  categories: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></svg>',
+  eye: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>',
+  wheel: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m12 3 2 7 7 2-7 2-2 7-2-7-7-2 7-2z"/></svg>',
+  history: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5m4-1v5l3 2"/></svg>',
+  settings: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3A1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1z"/></svg>',
+  sun: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
+  moon: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 15.5A8.5 8.5 0 0 1 8.5 4 8.5 8.5 0 1 0 20 15.5z"/></svg>',
+  more: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>',
+});
 
 export function renderAppShell(root, state) {
   root.innerHTML = `
@@ -25,32 +39,39 @@ export function renderAppShell(root, state) {
       <aside class="sidebar">
         <button class="brand" type="button" data-view="dashboard">
           <span class="brand__mark">CV</span>
-          <span class="brand__name">CINE<span>VAULT</span></span>
+          <span class="brand__name">CineVault</span>
         </button>
 
         <nav class="navigation" aria-label="Основная навигация">
-          ${NAV_ITEMS.map(([id, label, icon]) => `
+          ${NAV_ITEMS.map(([id, label, iconName]) => `
             <button
               class="navigation__item ${state.view === id ? "is-active" : ""}"
               type="button"
               data-view="${id}"
+              ${state.view === id ? 'aria-current="page"' : ""}
             >
-              <span aria-hidden="true">${icon}</span>
+              <span class="navigation__icon">${ICONS[iconName]}</span>
               <span>${label}</span>
             </button>
           `).join("")}
         </nav>
 
         <div class="sidebar__footer">
-          <span>Локальная база</span>
-          <strong>v${APP_VERSION}</strong>
+          <button class="theme-toggle" type="button" data-action="theme-toggle"
+            aria-label="${state.theme === "dark" ? "Включить светлую тему" : "Включить тёмную тему"}">
+            <span>${state.theme === "dark" ? ICONS.sun : ICONS.moon}</span>
+            <span>${state.theme === "dark" ? "Светлая тема" : "Тёмная тема"}</span>
+          </button>
+          <div class="storage-summary">
+            <span><i class="storage-summary__dot"></i> Локальная база</span>
+            <strong>v${APP_VERSION}</strong>
+          </div>
         </div>
       </aside>
 
       <main class="main-area">
         <header class="topbar">
           <div>
-            <p class="eyebrow">${APP_NAME}</p>
             <h1>${escapeHtml(getViewTitle(state.view))}</h1>
           </div>
           <div class="storage-status ${state.error ? "is-error" : ""}">
@@ -61,6 +82,29 @@ export function renderAppShell(root, state) {
 
         <section class="content" id="view-content"></section>
       </main>
+
+      <nav class="mobile-navigation" aria-label="Мобильная навигация">
+        ${NAV_ITEMS.filter(([id]) => ["dashboard", "catalog", "wheel"].includes(id))
+          .map(([id, label, iconName]) => `
+            <button class="${state.view === id ? "is-active" : ""}" type="button"
+              data-view="${id}" ${state.view === id ? 'aria-current="page"' : ""}>
+              ${ICONS[iconName]}<span>${label}</span>
+            </button>
+          `).join("")}
+        <details class="mobile-more">
+          <summary>${ICONS.more}<span>Ещё</span></summary>
+          <div class="mobile-more__menu">
+            ${NAV_ITEMS.filter(([id]) => !["dashboard", "catalog", "wheel"].includes(id))
+              .map(([id, label, iconName]) => `
+                <button type="button" data-view="${id}">${ICONS[iconName]}<span>${label}</span></button>
+              `).join("")}
+            <button type="button" data-action="theme-toggle">
+              ${state.theme === "dark" ? ICONS.sun : ICONS.moon}
+              <span>${state.theme === "dark" ? "Светлая тема" : "Тёмная тема"}</span>
+            </button>
+          </div>
+        </details>
+      </nav>
 
       <dialog class="dialog" id="entity-dialog">
         <form method="dialog" class="dialog__surface">
@@ -751,6 +795,12 @@ function renderFranchises(container, library) {
 
 function renderDashboard(container, state) {
   const { statistics, legacyDataFound } = state;
+  const recentMovies = [...state.library.movies]
+    .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
+    .slice(0, 5);
+  const movieById = new Map(state.library.movies.map((movie) => [movie.id, movie]));
+  const recentCollections = state.library.franchises.slice(0, 3);
+  const heroMovie = recentMovies.find((movie) => movie.coverUrl) ?? recentMovies[0];
   const backupDue = isBackupReminderDue({
     movieCount: state.library.movies.length,
     lastBackupAt: state.library.settings.lastBackupAt,
@@ -758,6 +808,65 @@ function renderDashboard(container, state) {
     reminderDays: state.library.settings.backupReminderDays,
   });
   container.innerHTML = `
+    <section class="dashboard-hero ${heroMovie?.coverUrl ? "has-poster" : ""}">
+      <div class="dashboard-hero__visual">
+        ${heroMovie?.coverUrl
+          ? `<img src="${escapeAttribute(heroMovie.coverUrl)}"
+              alt="Постер фильма ${escapeAttribute(heroMovie.title)}">`
+          : '<span aria-hidden="true">CV</span>'}
+      </div>
+      <div class="dashboard-hero__content">
+        <p class="eyebrow">Личная киноколлекция</p>
+        <h2>${statistics.movieCount ? "Что посмотрим сегодня?" : "Начните свою библиотеку"}</h2>
+        <p>${statistics.movieCount
+          ? "Откройте каталог или запустите колесо, чтобы выбрать фильм для следующего вечера."
+          : "Добавьте первый фильм вручную или найдите его через TMDB — постер и основные данные заполнятся автоматически."}</p>
+        <button class="button button--primary" type="button"
+          ${statistics.movieCount ? 'data-view="catalog"' : 'data-action="movie-add"'}>
+          ${statistics.movieCount ? "Открыть каталог" : "Добавить первый фильм"}
+          <span aria-hidden="true">→</span>
+        </button>
+      </div>
+      <div class="dashboard-hero__counter">
+        <span>Всего фильмов</span>
+        <strong>${statistics.movieCount.toLocaleString("ru-RU")}</strong>
+      </div>
+    </section>
+
+    ${statistics.movieCount ? `
+      <div class="dashboard-metrics">
+        ${dashboardMetric("Фильмов", statistics.movieCount, "film")}
+        ${dashboardMetric("Просмотрено", statistics.watchedMovieCount, "eye")}
+        ${dashboardMetric("В очереди", statistics.unwatchedMovieCount, "history")}
+        ${dashboardMetric("Коллекций", statistics.franchiseCount, "collection")}
+      </div>
+
+      <div class="dashboard-sections ${recentCollections.length ? "has-collections" : ""}">
+        <section class="dashboard-section">
+          <header class="section-heading">
+            <h2>Недавно добавлено</h2>
+            <button type="button" data-view="catalog">Все <span aria-hidden="true">→</span></button>
+          </header>
+          <div class="recent-movies">
+            ${recentMovies.map(dashboardMovieCard).join("")}
+          </div>
+        </section>
+
+        ${recentCollections.length ? `
+          <section class="dashboard-section">
+            <header class="section-heading">
+              <h2>Коллекции</h2>
+              <button type="button" data-view="franchises">Все <span aria-hidden="true">→</span></button>
+            </header>
+            <div class="dashboard-collections">
+              ${recentCollections.map((franchise) =>
+                dashboardCollectionCard(franchise, movieById)).join("")}
+            </div>
+          </section>
+        ` : ""}
+      </div>
+    ` : ""}
+
     ${backupDue ? `
       <section class="notice backup-notice">
         <div>
@@ -788,39 +897,52 @@ function renderDashboard(container, state) {
       </section>
     ` : ""}
 
-    <div class="metric-grid">
-      ${metricCard("Фильмов", statistics.movieCount, "Вся библиотека")}
-      ${metricCard("Просмотрено", statistics.watchedMovieCount, "Без повторных просмотров")}
-      ${metricCard("В очереди", statistics.unwatchedMovieCount, "Ожидают выбора")}
-      ${metricCard("Категорий", statistics.categoryCount, "Включая подкатегории")}
-      ${metricCard("Средняя оценка", statistics.libraryAverageRating ?? "—", "По всем оценкам")}
-      ${metricCard("Оценок", statistics.totalRatingCount, "От всех зрителей")}
-      ${metricCard("Франшиз", statistics.franchiseCount, "Коллекции фильмов")}
-      ${metricCard("Просмотрено часов", formatHours(statistics.watchedDurationMinutes), "По указанной длительности")}
-    </div>
-
-    <div class="dashboard-grid">
-      <section class="panel">
-        <p class="eyebrow">Библиотека</p>
-        <h2>${statistics.highestRatedMovie
-          ? `Лидер: ${escapeHtml(statistics.highestRatedMovie.movie.title)}`
-          : "База готова к наполнению"}</h2>
-        <p>${statistics.highestRatedMovie
-          ? `Средняя оценка ${statistics.highestRatedMovie.rating}. Худший оценённый фильм: ${
-              escapeHtml(statistics.lowestRatedMovie.movie.title)
-            } (${statistics.lowestRatedMovie.rating}).`
-          : "Автоматические демонстрационные фильмы отключены. Пустая библиотека является нормальным состоянием."}</p>
-      </section>
-
-      <section class="panel panel--accent">
-        <p class="eyebrow">Быстрый старт</p>
-        <h2>${statistics.movieCount ? "Пора запускать колесо" : "Добавьте первый фильм"}</h2>
-        <p>${statistics.movieCount
-          ? "Проверьте очереди категорий, настройте квоты и сформируйте пул участников в разделе «Колесо»."
-          : "Создайте категории, добавьте фильмы в каталог и настройте их порядок — он определит состав колеса."}</p>
-      </section>
-    </div>
   `;
+}
+
+function dashboardMetric(label, value, iconName) {
+  return `
+    <article class="dashboard-metric">
+      <span class="dashboard-metric__icon">${ICONS[iconName]}</span>
+      <span><strong>${Number(value ?? 0).toLocaleString("ru-RU")}</strong>
+        <small>${escapeHtml(label)}</small></span>
+    </article>`;
+}
+
+function dashboardMovieCard(movie) {
+  return `
+    <article class="recent-movie">
+      <button type="button" data-action="movie-edit" data-id="${movie.id}"
+        aria-label="Открыть ${escapeAttribute(movie.title)}">
+        <span class="recent-movie__poster">
+          ${movie.coverUrl
+            ? `<img src="${escapeAttribute(movie.coverUrl)}" alt="" loading="lazy">`
+            : `<span aria-hidden="true">${escapeHtml(movie.title.slice(0, 2).toUpperCase())}</span>`}
+        </span>
+        <strong>${escapeHtml(movie.title)}</strong>
+        <small>${movie.releaseYear ?? "Год не указан"}</small>
+      </button>
+    </article>`;
+}
+
+function dashboardCollectionCard(franchise, movieById) {
+  const movies = franchise.movieIds.map((id) => movieById.get(id)).filter(Boolean);
+  const cover = movies.find((movie) => movie.coverUrl)?.coverUrl;
+  return `
+    <article class="dashboard-collection">
+      <div class="dashboard-collection__image">
+        ${cover
+          ? `<img src="${escapeAttribute(cover)}" alt="" loading="lazy">`
+          : '<span aria-hidden="true">CV</span>'}
+      </div>
+      <div>
+        <h3>${escapeHtml(franchise.name)}</h3>
+        <p>${movies.length} ${pluralize(movies.length, ["фильм", "фильма", "фильмов"])}</p>
+        <button type="button" data-action="franchise-edit" data-id="${franchise.id}">
+          Открыть коллекцию
+        </button>
+      </div>
+    </article>`;
 }
 
 function watchedRow(movie, category) {
@@ -858,19 +980,6 @@ function watchedRow(movie, category) {
         <button class="button button--danger" type="button"
           data-action="watch-remove" data-id="${movie.id}">Вернуть в каталог</button>
       </div>
-    </article>
-  `;
-}
-
-function metricCard(label, value, description) {
-  const displayValue = typeof value === "number"
-    ? value.toLocaleString("ru-RU")
-    : escapeHtml(value);
-  return `
-    <article class="metric-card">
-      <span>${escapeHtml(label)}</span>
-      <strong>${displayValue}</strong>
-      <small>${escapeHtml(description)}</small>
     </article>
   `;
 }
@@ -1068,12 +1177,8 @@ function formatDateTime(value) {
   }).format(new Date(value));
 }
 
-function formatHours(minutes) {
-  if (!minutes) return "0";
-  return Math.round((minutes / 60) * 10) / 10;
-}
-
 function getViewTitle(view) {
+  if (view === "dashboard") return "Моя библиотека";
   return NAV_ITEMS.find(([id]) => id === view)?.[1] ?? "CineVault";
 }
 
@@ -1091,7 +1196,7 @@ function escapeAttribute(value) {
 }
 
 function setupImageFallbacks(root) {
-  root.querySelectorAll(".movie-card__cover img, .watched-row__cover img")
+  root.querySelectorAll(".movie-card__cover img, .watched-row__cover img, .dashboard-hero img, .recent-movie img, .dashboard-collection img")
     .forEach((image) => {
       image.addEventListener("error", () => {
         image.hidden = true;

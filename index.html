@@ -9,6 +9,20 @@
       content="CineVault — локальная библиотека фильмов и колесо случайного выбора."
     >
     <title>CineVault</title>
+    <script>
+      (() => {
+        try {
+          const saved = localStorage.getItem("cinevault-theme");
+          const theme = saved === "light" || saved === "dark"
+            ? saved
+            : matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+          document.documentElement.dataset.theme = theme;
+          document.documentElement.style.colorScheme = theme;
+        } catch {
+          document.documentElement.dataset.theme = "light";
+        }
+      })();
+    </script>
     <link rel="stylesheet" href="./src/styles.css">
   </head>
   <body>

@@ -66,6 +66,12 @@ import { renderAppShell } from "./ui/appShell.js";
 import { openDialog } from "./ui/dialog.js";
 import { animateWheel } from "./ui/wheelCanvas.js";
 import { showToast } from "./ui/toast.js";
+import {
+  applyTheme,
+  getInitialTheme,
+  saveTheme,
+  toggleTheme,
+} from "./ui/theme.js";
 
 const root = document.querySelector("#app");
 const VIEW_IDS = new Set([
@@ -85,6 +91,7 @@ function readViewFromHash() {
 }
 
 const state = {
+  theme: applyTheme(getInitialTheme()),
   view: readViewFromHash(),
   library: {
     movies: [],
@@ -208,6 +215,7 @@ async function handleAction(action, payload) {
     "session-open": () => openSessionDetails(payload.id),
     "tmdb-configure": () => openTmdbTokenDialog(),
     "tmdb-clear": () => removeTmdbToken(),
+    "theme-toggle": () => changeTheme(),
   };
 
   await handlers[action]?.();
@@ -854,6 +862,12 @@ function openMovieDialog(movieId = null) {
     },
   });
   if (state.tmdbStatus.configured) setupTmdbMovieSearch();
+}
+
+function changeTheme() {
+  state.theme = applyTheme(toggleTheme(state.theme));
+  saveTheme(state.theme);
+  render();
 }
 
 function setupTmdbMovieSearch() {
