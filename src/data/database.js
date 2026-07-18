@@ -130,6 +130,7 @@ function applySchema(database, transaction) {
   createIndex(movies, "categoryId", "categoryId");
   createIndex(movies, "categoryPosition", "categoryPosition");
   createIndex(movies, "normalizedTitle", "normalizedTitle");
+  createIndex(movies, "tmdbId", "tmdbId");
   createIndex(movies, "watchedAt", "watchedAt");
 
   const franchises = createStore(database, transaction, STORE_NAMES.franchises, {

@@ -37,6 +37,25 @@ test("дубликат фильма определяется по названи
   );
 });
 
+test("дубликат фильма определяется по TMDB ID даже при другом названии", () => {
+  const movies = [{
+    id: "movie",
+    title: "The Thing",
+    normalizedTitle: "the thing",
+    releaseYear: 1982,
+    tmdbId: 1091,
+  }];
+
+  assert.equal(
+    findDuplicateMovie(movies, {
+      title: "Нечто",
+      releaseYear: 1982,
+      tmdbId: "1091",
+    })?.id,
+    "movie",
+  );
+});
+
 test("перемещение меняет позиции только двух соседних элементов", () => {
   const items = [
     { id: "a", categoryId: "cat", categoryPosition: 0 },

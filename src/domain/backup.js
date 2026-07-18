@@ -170,11 +170,14 @@ function mergeMovies(current, incoming) {
   for (const candidate of incoming) {
     const index = result.findIndex(
       (movie) =>
-        movie.normalizedTitle === candidate.normalizedTitle &&
+        (movie.tmdbId && candidate.tmdbId && movie.tmdbId === candidate.tmdbId) ||
         (
-          movie.releaseYear === candidate.releaseYear ||
-          movie.releaseYear === null ||
-          candidate.releaseYear === null
+          movie.normalizedTitle === candidate.normalizedTitle &&
+          (
+            movie.releaseYear === candidate.releaseYear ||
+            movie.releaseYear === null ||
+            candidate.releaseYear === null
+          )
         ),
     );
     if (index < 0) {
@@ -189,6 +192,10 @@ function mergeMovies(current, incoming) {
       ...candidate,
       ...existing,
       originalTitle: existing.originalTitle || candidate.originalTitle,
+      tmdbId: existing.tmdbId ?? candidate.tmdbId,
+      overview: existing.overview || candidate.overview,
+      genres: existing.genres?.length ? existing.genres : candidate.genres,
+      tmdbUpdatedAt: existing.tmdbUpdatedAt ?? candidate.tmdbUpdatedAt,
       coverUrl: existing.coverUrl || candidate.coverUrl,
       releaseYear: existing.releaseYear ?? candidate.releaseYear,
       durationMinutes: existing.durationMinutes ?? candidate.durationMinutes,

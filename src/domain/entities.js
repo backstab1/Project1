@@ -59,6 +59,15 @@ export function createMovie(input = {}) {
     title,
     normalizedTitle: normalizeText(title),
     originalTitle: String(input.originalTitle ?? "").trim(),
+    tmdbId: normalizeOptionalInteger(input.tmdbId, 1, Number.MAX_SAFE_INTEGER),
+    overview: String(input.overview ?? "").trim(),
+    genres: uniqueStrings(
+      Array.isArray(input.genres)
+        ? input.genres.filter((genre) => typeof genre === "string")
+          .map((genre) => genre.trim())
+        : [],
+    ),
+    tmdbUpdatedAt: normalizeOptionalDate(input.tmdbUpdatedAt),
     categoryId: input.categoryId ?? null,
     categoryPosition: Number.isInteger(input.categoryPosition)
       ? input.categoryPosition

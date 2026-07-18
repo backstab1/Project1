@@ -43,6 +43,15 @@ import {
 } from "./domain/rollEngine.js";
 import { buildLibraryStatistics } from "./domain/statistics.js";
 import {
+  cacheTmdbPoster,
+  clearTmdbToken,
+  configureTmdbToken,
+  getTmdbMovie,
+  getTmdbStatus,
+  searchTmdbMovies,
+  tmdbPosterPreviewUrl,
+} from "./services/tmdbClient.js";
+import {
   createBackup,
   mergeLibraries,
   parseBackup,
@@ -101,6 +110,7 @@ const state = {
     sort: "title",
   },
   focusControl: null,
+  tmdbStatus: { configured: false, loading: true, error: null },
   error: null,
   onNavigate(view) {
     if (!VIEW_IDS.has(view)) return;
@@ -127,6 +137,7 @@ async function start() {
     state.library = await loadLibrary();
     state.statistics = buildLibraryStatistics(state.library);
     state.rollDraftPool = buildRollPool(state.library);
+    await refreshTmdbStatus();
   } catch (error) {
     console.error(error);
     state.error = error instanceof Error ? error : new Error(String(error));
@@ -195,6 +206,8 @@ async function handleAction(action, payload) {
     "participant-edit": () => openParticipantDialog(payload.id),
     "participant-delete": () => confirmParticipantDeletion(payload.id),
     "session-open": () => openSessionDetails(payload.id),
+    "tmdb-configure": () => openTmdbTokenDialog(),
+    "tmdb-clear": () => removeTmdbToken(),
   };
 
   await handlers[action]?.();
@@ -740,6 +753,8 @@ function openMovieDialog(movieId = null) {
         <input name="title" required maxlength="180"
           value="${escapeAttribute(movie?.title ?? "")}">
       </label>
+      <input type="hidden" name="tmdbId" value="${movie?.tmdbId ?? ""}">
+      <input type="hidden" name="tmdbPosterPath" value="">
       <label class="field">
         <span>Оригинальное название</span>
         <input name="originalTitle" maxlength="180"
@@ -764,10 +779,33 @@ function openMovieDialog(movieId = null) {
             value="${movie?.durationMinutes ?? ""}">
         </label>
       </div>
+      ${state.tmdbStatus.configured ? `
+        <section class="tmdb-picker" data-tmdb-picker>
+          <div class="tmdb-picker__heading">
+            <div>
+              <strong>Найти в TMDB</strong>
+              <small>Поиск использует название и указанный год</small>
+            </div>
+            <button class="button button--ghost" type="button" data-tmdb-search>
+              Найти фильм
+            </button>
+          </div>
+          <div class="tmdb-results" data-tmdb-results aria-live="polite"></div>
+        </section>
+      ` : ""}
       <label class="field">
         <span>Страна</span>
         <input name="country" maxlength="100"
           value="${escapeAttribute(movie?.country ?? "")}">
+      </label>
+      <label class="field">
+        <span>Жанры</span>
+        <input name="genres" maxlength="300" placeholder="Фантастика, драма"
+          value="${escapeAttribute((movie?.genres ?? []).join(", "))}">
+      </label>
+      <label class="field">
+        <span>Описание</span>
+        <textarea name="overview" maxlength="3000" rows="4">${escapeHtml(movie?.overview ?? "")}</textarea>
       </label>
       <label class="field">
         <span>URL постера</span>
@@ -786,6 +824,10 @@ function openMovieDialog(movieId = null) {
         releaseYear: formData.get("releaseYear"),
         durationMinutes: formData.get("durationMinutes"),
         country: formData.get("country"),
+        tmdbId: formData.get("tmdbId"),
+        overview: formData.get("overview"),
+        genres: String(formData.get("genres") ?? "")
+          .split(",").map((genre) => genre.trim()).filter(Boolean),
       };
       const duplicate = findDuplicateMovie(
         state.library.movies,
@@ -800,10 +842,131 @@ function openMovieDialog(movieId = null) {
         candidate.categoryPosition = getNextMoviePosition(categoryId);
       }
 
+      const posterPath = formData.get("tmdbPosterPath");
+      if (candidate.tmdbId && posterPath) {
+        const cached = await cacheTmdbPoster(candidate.tmdbId, posterPath);
+        candidate.coverUrl = cached.url;
+        candidate.tmdbUpdatedAt = new Date().toISOString();
+      }
+
       await saveMovie(createMovie(candidate));
       await reloadLibrary();
     },
   });
+  if (state.tmdbStatus.configured) setupTmdbMovieSearch();
+}
+
+function setupTmdbMovieSearch() {
+  const dialog = document.querySelector("#entity-dialog");
+  const form = dialog?.querySelector("form");
+  const button = form?.querySelector("[data-tmdb-search]");
+  const resultsNode = form?.querySelector("[data-tmdb-results]");
+  if (!form || !button || !resultsNode) return;
+
+  button.addEventListener("click", async () => {
+    const title = form.elements.title.value.trim();
+    if (!title) {
+      resultsNode.innerHTML = '<p class="form-hint">Сначала введите название.</p>';
+      return;
+    }
+    button.disabled = true;
+    resultsNode.innerHTML = '<p class="form-hint">Ищем в TMDB…</p>';
+    try {
+      const payload = await searchTmdbMovies(title, form.elements.releaseYear.value);
+      const results = Array.isArray(payload.results) ? payload.results : [];
+      renderTmdbResults(resultsNode, results);
+      resultsNode.querySelectorAll("[data-tmdb-id]").forEach((resultButton) => {
+        resultButton.addEventListener("click", () =>
+          selectTmdbMovie(form, resultsNode, resultButton.dataset.tmdbId));
+      });
+    } catch (error) {
+      resultsNode.innerHTML = `<p class="dialog-error">${escapeHtml(error.message)}</p>`;
+    } finally {
+      button.disabled = false;
+    }
+  });
+}
+
+function renderTmdbResults(container, results) {
+  if (results.length === 0) {
+    container.innerHTML = '<p class="form-hint">Совпадений не найдено.</p>';
+    return;
+  }
+  container.innerHTML = results.map((movie) => {
+    const year = String(movie.release_date ?? "").slice(0, 4) || "год неизвестен";
+    const poster = tmdbPosterPreviewUrl(movie.poster_path);
+    return `
+      <button class="tmdb-result" type="button" data-tmdb-id="${movie.id}">
+        ${poster
+          ? `<img src="${escapeAttribute(poster)}" alt="" loading="lazy">`
+          : '<span class="tmdb-result__poster">Нет постера</span>'}
+        <span><strong>${escapeHtml(movie.title || movie.original_title || "Без названия")}</strong>
+          <small>${escapeHtml(year)} · TMDB ${movie.id}</small></span>
+      </button>`;
+  }).join("");
+}
+
+async function selectTmdbMovie(form, resultsNode, tmdbId) {
+  resultsNode.classList.add("is-loading");
+  try {
+    const movie = await getTmdbMovie(tmdbId);
+    form.elements.title.value = movie.title || movie.original_title || "";
+    form.elements.originalTitle.value = movie.original_title || "";
+    form.elements.releaseYear.value = String(movie.release_date ?? "").slice(0, 4);
+    form.elements.durationMinutes.value = movie.runtime || "";
+    form.elements.country.value = (movie.production_countries ?? [])
+      .map((country) => country.name).filter(Boolean).join(", ");
+    form.elements.tmdbId.value = movie.id;
+    form.elements.overview.value = movie.overview || "";
+    form.elements.genres.value = (movie.genres ?? [])
+      .map((genre) => genre.name).filter(Boolean).join(", ");
+    form.elements.tmdbPosterPath.value = movie.poster_path || "";
+    resultsNode.innerHTML = `<p class="tmdb-selected">✓ Выбран «${escapeHtml(movie.title)}». Метаданные и постер сохранятся локально.</p>`;
+  } catch (error) {
+    resultsNode.innerHTML = `<p class="dialog-error">${escapeHtml(error.message)}</p>`;
+  } finally {
+    resultsNode.classList.remove("is-loading");
+  }
+}
+
+async function refreshTmdbStatus() {
+  state.tmdbStatus = { ...state.tmdbStatus, loading: true, error: null };
+  try {
+    const status = await getTmdbStatus();
+    state.tmdbStatus = { configured: Boolean(status.configured), loading: false, error: null };
+  } catch (error) {
+    state.tmdbStatus = { configured: false, loading: false, error: error.message };
+  }
+}
+
+function openTmdbTokenDialog() {
+  openDialog({
+    title: state.tmdbStatus.configured ? "Заменить токен TMDB" : "Подключить TMDB",
+    submitLabel: "Проверить и сохранить",
+    body: `
+      <label class="field">
+        <span>API Read Access Token *</span>
+        <input name="token" type="password" required autocomplete="off"
+          minlength="20" maxlength="2048" placeholder="eyJhbGciOiJIUzI1NiJ9…">
+      </label>
+      <p class="form-hint">Токен проверяется запросом к TMDB и хранится только
+      на этом компьютере. В резервную копию он не попадает.</p>
+    `,
+    onSubmit: async (formData) => {
+      await configureTmdbToken(formData.get("token"));
+      await refreshTmdbStatus();
+      render();
+      showToast("TMDB подключён.");
+    },
+  });
+}
+
+async function removeTmdbToken() {
+  if (!confirm("Удалить сохранённый токен TMDB с этого компьютера?")) return;
+  await clearTmdbToken();
+  await refreshTmdbStatus();
+  render();
+  showToast("Токен TMDB удалён.");
 }
 
 function openCategoryDialog(categoryId = null, requestedParentId = null) {

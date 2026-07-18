@@ -78,3 +78,18 @@ test("статистика считает оценки и длительност
   assert.equal(statistics.totalDurationMinutes, 220);
   assert.equal(statistics.watchedDurationMinutes, 100);
 });
+
+test("фильм сохраняет нормализованные метаданные TMDB", () => {
+  const movie = createMovie({
+    title: "Дюна",
+    tmdbId: "438631",
+    overview: "  Описание фильма.  ",
+    genres: ["Фантастика", "Драма", "Фантастика", ""],
+    tmdbUpdatedAt: "2026-07-18T10:00:00.000Z",
+  });
+
+  assert.equal(movie.tmdbId, 438631);
+  assert.equal(movie.overview, "Описание фильма.");
+  assert.deepEqual(movie.genres, ["Фантастика", "Драма"]);
+  assert.equal(movie.tmdbUpdatedAt, "2026-07-18T10:00:00.000Z");
+});

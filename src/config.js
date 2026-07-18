@@ -1,7 +1,7 @@
 export const APP_NAME = "CineVault";
-export const APP_VERSION = "0.9.2";
+export const APP_VERSION = "0.10.0-beta.1";
 export const DATABASE_NAME = "cinevault";
-export const DATABASE_VERSION = 2;
+export const DATABASE_VERSION = 3;
 
 export const STORE_NAMES = Object.freeze({
   meta: "meta",

@@ -451,6 +451,8 @@ function renderCatalog(container, state) {
           movie.title,
           movie.originalTitle,
           movie.country,
+          movie.overview,
+          ...(movie.genres ?? []),
           categories.get(movie.categoryId)?.name,
           franchiseByMovieId.get(movie.id)?.name,
           movie.releaseYear,
@@ -537,6 +539,43 @@ function renderSettings(container, state) {
     </div>
 
     <div class="settings-grid">
+      <section class="panel tmdb-settings ${state.tmdbStatus.configured ? "panel--accent" : ""}">
+        <div class="tmdb-settings__header">
+          <div>
+            <p class="eyebrow">Каталог фильмов</p>
+            <h2>TMDB</h2>
+          </div>
+          <span class="status-pill ${state.tmdbStatus.configured ? "status-pill--success" : ""}">
+            ${state.tmdbStatus.loading
+              ? "Проверка…"
+              : state.tmdbStatus.configured ? "Подключён" : "Не подключён"}
+          </span>
+        </div>
+        <p>${state.tmdbStatus.configured
+          ? "Поиск доступен в форме добавления фильма. Название, год, длительность, страна, жанры, описание и постер заполняются автоматически."
+          : "Подключите API Read Access Token, чтобы искать фильмы и сохранять постеры локально."}</p>
+        ${state.tmdbStatus.error
+          ? `<p class="dialog-error">${escapeHtml(state.tmdbStatus.error)}</p>`
+          : ""}
+        <div class="settings-actions">
+          <button class="button button--primary" type="button"
+            data-action="tmdb-configure">
+            ${state.tmdbStatus.configured ? "Заменить токен" : "Подключить TMDB"}
+          </button>
+          ${state.tmdbStatus.configured ? `
+            <button class="button button--ghost" type="button"
+              data-action="tmdb-clear">Удалить токен</button>
+          ` : ""}
+        </div>
+        <div class="tmdb-attribution">
+          <a href="https://www.themoviedb.org" target="_blank" rel="noreferrer"
+            aria-label="The Movie Database">
+            <img src="./assets/tmdb.svg" alt="The Movie Database (TMDB)">
+          </a>
+          <small>This product uses the TMDB API but is not endorsed or certified by TMDB.</small>
+        </div>
+      </section>
+
       <section class="panel">
         <p class="eyebrow">Резервная копия</p>
         <h2>Экспорт и импорт</h2>
@@ -603,7 +642,7 @@ function renderSettings(container, state) {
 
       <section class="panel">
         <p class="eyebrow">Формат данных</p>
-        <h2>IndexedDB · схема v2</h2>
+        <h2>IndexedDB · схема v3</h2>
         <p>Данные сохраняются автоматически в профиле текущего браузера.
         Для переноса на другой компьютер используйте резервный JSON.</p>
       </section>
@@ -862,6 +901,9 @@ function movieCard(movie, category, franchise) {
           ${movie.releaseYear ?? "Год не указан"}
           ${movie.durationMinutes ? ` · ${movie.durationMinutes} мин` : ""}
         </p>
+        ${(movie.genres ?? []).length
+          ? `<p class="movie-card__genres">${escapeHtml(movie.genres.slice(0, 3).join(" · "))}</p>`
+          : ""}
         ${franchise ? `<span class="tag">${escapeHtml(franchise.name)}</span>` : ""}
         <div class="movie-card__footer">
           <span>${movie.watchedAt ? "Просмотрен" : "Не просмотрен"}</span>

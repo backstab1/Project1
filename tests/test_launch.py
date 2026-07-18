@@ -1,13 +1,27 @@
 import io
 import json
+import tempfile
 import threading
 import unittest
 import urllib.request
 import zipfile
 from functools import partial
 from http.server import ThreadingHTTPServer
+from pathlib import Path
+from unittest import mock
 
-from launch import CineVaultHandler, find_available_port, parse_arguments, parse_xlsx_rows
+import launch
+from launch import (
+    CineVaultHandler,
+    cache_tmdb_poster,
+    delete_tmdb_token,
+    find_available_port,
+    parse_arguments,
+    parse_xlsx_rows,
+    read_tmdb_token,
+    save_tmdb_token,
+    tmdb_request,
+)
 
 
 class XlsxImportTests(unittest.TestCase):
@@ -70,6 +84,66 @@ class LauncherTests(unittest.TestCase):
             server.shutdown()
             server.server_close()
             thread.join(timeout=3)
+
+
+class TmdbTests(unittest.TestCase):
+    TOKEN = "test-token-that-is-long-enough-for-validation"
+
+    def setUp(self):
+        self.temporary_directory = tempfile.TemporaryDirectory()
+        self.data_root_patch = mock.patch.object(
+            launch,
+            "DATA_ROOT",
+            Path(self.temporary_directory.name),
+        )
+        self.data_root_patch.start()
+
+    def tearDown(self):
+        self.data_root_patch.stop()
+        self.temporary_directory.cleanup()
+
+    def test_token_is_stored_outside_browser_database(self):
+        save_tmdb_token(self.TOKEN)
+        self.assertEqual(read_tmdb_token(), self.TOKEN)
+        delete_tmdb_token()
+        self.assertIsNone(read_tmdb_token())
+
+    def test_tmdb_request_uses_bearer_token_and_russian_query(self):
+        captured = {}
+
+        def opener(request, timeout):
+            captured["request"] = request
+            captured["timeout"] = timeout
+            return io.BytesIO(b'{"results": []}')
+
+        result = tmdb_request(
+            "/search/movie",
+            params={"query": "Начало", "language": "ru-RU"},
+            token=self.TOKEN,
+            opener=opener,
+        )
+
+        self.assertEqual(result, {"results": []})
+        self.assertIn("language=ru-RU", captured["request"].full_url)
+        self.assertEqual(
+            captured["request"].get_header("Authorization"),
+            f"Bearer {self.TOKEN}",
+        )
+        self.assertEqual(captured["timeout"], 12)
+
+    def test_poster_is_cached_under_local_data_root(self):
+        def opener(request, timeout):
+            self.assertIn("image.tmdb.org", request.full_url)
+            self.assertEqual(timeout, 20)
+            return io.BytesIO(b"poster-bytes")
+
+        url = cache_tmdb_poster(27205, "/poster.jpg", opener=opener)
+
+        self.assertEqual(url, "/media/posters/tmdb-27205.jpg")
+        self.assertEqual(
+            (launch.DATA_ROOT / "posters" / "tmdb-27205.jpg").read_bytes(),
+            b"poster-bytes",
+        )
 
 
 if __name__ == "__main__":
