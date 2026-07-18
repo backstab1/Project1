@@ -842,8 +842,8 @@ function openMovieDialog(movieId = null) {
             <textarea name="overview" maxlength="3000" rows="4">${escapeHtml(movie?.overview ?? "")}</textarea>
           </label>
           <label class="field">
-            <span>URL постера</span>
-            <input name="coverUrl" type="url" maxlength="2000"
+            <span>Постер (URL или локальный путь)</span>
+            <input name="coverUrl" type="text" inputmode="url" maxlength="2000"
               value="${escapeAttribute(movie?.coverUrl ?? "")}">
           </label>
         </div>
