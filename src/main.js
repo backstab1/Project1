@@ -755,19 +755,45 @@ function openMovieDialog(movieId = null) {
 
   openDialog({
     title: movie ? "Редактировать фильм" : "Добавить фильм",
+    submitLabel: movie ? "Сохранить изменения" : "Добавить в библиотеку",
+    variant: "movie",
     body: `
-      <label class="field">
-        <span>Название *</span>
-        <input name="title" required maxlength="180"
-          value="${escapeAttribute(movie?.title ?? "")}">
-      </label>
       <input type="hidden" name="tmdbId" value="${movie?.tmdbId ?? ""}">
       <input type="hidden" name="tmdbPosterPath" value="">
-      <label class="field">
-        <span>Оригинальное название</span>
-        <input name="originalTitle" maxlength="180"
-          value="${escapeAttribute(movie?.originalTitle ?? "")}">
-      </label>
+
+      <section class="movie-search-flow">
+        ${state.tmdbStatus.configured ? `
+          <div class="movie-search-flow__intro">
+            <span class="movie-search-flow__icon" aria-hidden="true">⌕</span>
+            <div>
+              <h3>${movie ? "Найти другую карточку в TMDB" : "Найдите фильм в TMDB"}</h3>
+              <p>Название, год, жанры, описание и постер заполнятся автоматически.</p>
+            </div>
+          </div>
+          <div class="tmdb-search-box">
+            <input name="tmdbQuery" type="search" maxlength="180"
+              autocomplete="off" placeholder="Например, Интерстеллар"
+              aria-label="Название фильма для поиска в TMDB"
+              value="${escapeAttribute(movie?.title ?? "")}">
+            <button class="button button--primary" type="button" data-tmdb-search>
+              Найти
+            </button>
+          </div>
+          <div class="tmdb-results" data-tmdb-results aria-live="polite"></div>
+        ` : `
+          <div class="tmdb-connect-card">
+            <span class="movie-search-flow__icon" aria-hidden="true">⌕</span>
+            <div>
+              <h3>Подключите TMDB для быстрого добавления</h3>
+              <p>После подключения достаточно найти фильм и выбрать карточку — остальные поля заполнятся сами.</p>
+            </div>
+            <button class="button button--primary" type="button" data-tmdb-connect>
+              Подключить TMDB
+            </button>
+          </div>
+        `}
+      </section>
+
       <label class="field">
         <span>Категория</span>
         <select name="categoryId">
@@ -775,51 +801,53 @@ function openMovieDialog(movieId = null) {
           ${categoryOptions}
         </select>
       </label>
-      <div class="field-row">
-        <label class="field">
-          <span>Год</span>
-          <input name="releaseYear" type="number" min="1888" max="2200"
-            value="${movie?.releaseYear ?? ""}">
-        </label>
-        <label class="field">
-          <span>Продолжительность, мин</span>
-          <input name="durationMinutes" type="number" min="1" max="2000"
-            value="${movie?.durationMinutes ?? ""}">
-        </label>
-      </div>
-      ${state.tmdbStatus.configured ? `
-        <section class="tmdb-picker" data-tmdb-picker>
-          <div class="tmdb-picker__heading">
-            <div>
-              <strong>Найти в TMDB</strong>
-              <small>Поиск использует название и указанный год</small>
-            </div>
-            <button class="button button--ghost" type="button" data-tmdb-search>
-              Найти фильм
-            </button>
+
+      <details class="movie-manual-fields" ${movie ? "open" : ""} data-movie-manual>
+        <summary>${movie ? "Данные фильма" : "Добавить вручную или изменить данные"}</summary>
+        <div class="movie-manual-fields__body">
+          <label class="field">
+            <span>Название *</span>
+            <input name="title" required maxlength="180"
+              value="${escapeAttribute(movie?.title ?? "")}">
+          </label>
+          <label class="field">
+            <span>Оригинальное название</span>
+            <input name="originalTitle" maxlength="180"
+              value="${escapeAttribute(movie?.originalTitle ?? "")}">
+          </label>
+          <div class="field-row">
+            <label class="field">
+              <span>Год</span>
+              <input name="releaseYear" type="number" min="1888" max="2200"
+                value="${movie?.releaseYear ?? ""}">
+            </label>
+            <label class="field">
+              <span>Продолжительность, мин</span>
+              <input name="durationMinutes" type="number" min="1" max="2000"
+                value="${movie?.durationMinutes ?? ""}">
+            </label>
           </div>
-          <div class="tmdb-results" data-tmdb-results aria-live="polite"></div>
-        </section>
-      ` : ""}
-      <label class="field">
-        <span>Страна</span>
-        <input name="country" maxlength="100"
-          value="${escapeAttribute(movie?.country ?? "")}">
-      </label>
-      <label class="field">
-        <span>Жанры</span>
-        <input name="genres" maxlength="300" placeholder="Фантастика, драма"
-          value="${escapeAttribute((movie?.genres ?? []).join(", "))}">
-      </label>
-      <label class="field">
-        <span>Описание</span>
-        <textarea name="overview" maxlength="3000" rows="4">${escapeHtml(movie?.overview ?? "")}</textarea>
-      </label>
-      <label class="field">
-        <span>URL постера</span>
-        <input name="coverUrl" type="url" maxlength="2000"
-          value="${escapeAttribute(movie?.coverUrl ?? "")}">
-      </label>
+          <label class="field">
+            <span>Страна</span>
+            <input name="country" maxlength="100"
+              value="${escapeAttribute(movie?.country ?? "")}">
+          </label>
+          <label class="field">
+            <span>Жанры</span>
+            <input name="genres" maxlength="300" placeholder="Фантастика, драма"
+              value="${escapeAttribute((movie?.genres ?? []).join(", "))}">
+          </label>
+          <label class="field">
+            <span>Описание</span>
+            <textarea name="overview" maxlength="3000" rows="4">${escapeHtml(movie?.overview ?? "")}</textarea>
+          </label>
+          <label class="field">
+            <span>URL постера</span>
+            <input name="coverUrl" type="url" maxlength="2000"
+              value="${escapeAttribute(movie?.coverUrl ?? "")}">
+          </label>
+        </div>
+      </details>
     `,
     onSubmit: async (formData) => {
       const categoryId = formData.get("categoryId") || null;
@@ -861,7 +889,7 @@ function openMovieDialog(movieId = null) {
       await reloadLibrary();
     },
   });
-  if (state.tmdbStatus.configured) setupTmdbMovieSearch();
+  setupMovieDialog(movie);
 }
 
 function changeTheme() {
@@ -877,16 +905,17 @@ function setupTmdbMovieSearch() {
   const resultsNode = form?.querySelector("[data-tmdb-results]");
   if (!form || !button || !resultsNode) return;
 
-  button.addEventListener("click", async () => {
-    const title = form.elements.title.value.trim();
+  const search = async () => {
+    const title = form.elements.tmdbQuery.value.trim();
     if (!title) {
-      resultsNode.innerHTML = '<p class="form-hint">Сначала введите название.</p>';
+      resultsNode.innerHTML = '<p class="form-hint">Введите название фильма.</p>';
+      form.elements.tmdbQuery.focus();
       return;
     }
     button.disabled = true;
-    resultsNode.innerHTML = '<p class="form-hint">Ищем в TMDB…</p>';
+    resultsNode.innerHTML = '<div class="tmdb-search-status"><span></span>Ищем в TMDB…</div>';
     try {
-      const payload = await searchTmdbMovies(title, form.elements.releaseYear.value);
+      const payload = await searchTmdbMovies(title);
       const results = Array.isArray(payload.results) ? payload.results : [];
       renderTmdbResults(resultsNode, results);
       resultsNode.querySelectorAll("[data-tmdb-id]").forEach((resultButton) => {
@@ -898,7 +927,36 @@ function setupTmdbMovieSearch() {
     } finally {
       button.disabled = false;
     }
+  };
+
+  button.addEventListener("click", search);
+  form.elements.tmdbQuery.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    search();
   });
+}
+
+function setupMovieDialog(movie) {
+  const dialog = document.querySelector("#entity-dialog");
+  const form = dialog?.querySelector("form");
+  const submitButton = form?.querySelector("[data-dialog-submit]");
+  const titleInput = form?.elements.title;
+  const manualFields = form?.querySelector("[data-movie-manual]");
+  if (!form || !submitButton || !titleInput) return;
+
+  const updateSubmitAvailability = () => {
+    submitButton.disabled = !titleInput.value.trim();
+  };
+  titleInput.addEventListener("input", updateSubmitAvailability);
+  manualFields?.addEventListener("toggle", () => {
+    if (manualFields.open && !titleInput.value.trim()) titleInput.focus();
+  });
+  form.querySelector("[data-tmdb-connect]")?.addEventListener("click", () => {
+    openTmdbTokenDialog({ returnToMovie: true });
+  });
+  updateSubmitAvailability();
+  if (state.tmdbStatus.configured) setupTmdbMovieSearch();
 }
 
 function renderTmdbResults(container, results) {
@@ -935,7 +993,21 @@ async function selectTmdbMovie(form, resultsNode, tmdbId) {
     form.elements.genres.value = (movie.genres ?? [])
       .map((genre) => genre.name).filter(Boolean).join(", ");
     form.elements.tmdbPosterPath.value = movie.poster_path || "";
-    resultsNode.innerHTML = `<p class="tmdb-selected">✓ Выбран «${escapeHtml(movie.title)}». Метаданные и постер сохранятся локально.</p>`;
+    form.elements.title.dispatchEvent(new Event("input", { bubbles: true }));
+    const poster = tmdbPosterPreviewUrl(movie.poster_path);
+    const year = String(movie.release_date ?? "").slice(0, 4) || "год неизвестен";
+    resultsNode.innerHTML = `
+      <div class="tmdb-selected-card">
+        ${poster
+          ? `<img src="${escapeAttribute(poster)}" alt="" loading="lazy">`
+          : '<span class="tmdb-result__poster">Нет постера</span>'}
+        <div>
+          <small>Готово к добавлению</small>
+          <strong>${escapeHtml(movie.title || movie.original_title || "Без названия")}</strong>
+          <span>${escapeHtml(year)}${movie.runtime ? ` · ${movie.runtime} мин` : ""}</span>
+        </div>
+        <span class="tmdb-selected-card__check" aria-hidden="true">✓</span>
+      </div>`;
   } catch (error) {
     resultsNode.innerHTML = `<p class="dialog-error">${escapeHtml(error.message)}</p>`;
   } finally {
@@ -953,7 +1025,7 @@ async function refreshTmdbStatus() {
   }
 }
 
-function openTmdbTokenDialog() {
+function openTmdbTokenDialog({ returnToMovie = false } = {}) {
   openDialog({
     title: state.tmdbStatus.configured ? "Заменить токен TMDB" : "Подключить TMDB",
     submitLabel: "Проверить и сохранить",
@@ -972,6 +1044,7 @@ function openTmdbTokenDialog() {
       render();
       showToast("TMDB подключён.");
     },
+    onSuccess: returnToMovie ? () => openMovieDialog() : null,
   });
 }
 

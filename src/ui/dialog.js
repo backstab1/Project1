@@ -1,18 +1,23 @@
 let activeSubmitHandler = null;
+let activeSuccessHandler = null;
 
 export function openDialog({
   title,
   body,
   submitLabel = "Сохранить",
+  variant = "",
   onSubmit,
+  onSuccess = null,
 }) {
   const dialog = document.querySelector("#entity-dialog");
   const form = dialog.querySelector("form");
+  dialog.dataset.variant = variant;
   dialog.querySelector("#dialog-title").textContent = title;
   dialog.querySelector("#dialog-body").innerHTML = body;
   dialog.querySelector("[data-dialog-submit]").textContent = submitLabel;
   dialog.querySelector("[data-dialog-error]").textContent = "";
   activeSubmitHandler = onSubmit;
+  activeSuccessHandler = onSuccess;
 
   form.onsubmit = handleSubmit;
   dialog.showModal();
@@ -22,6 +27,7 @@ export function openDialog({
 export function closeDialog() {
   const dialog = document.querySelector("#entity-dialog");
   activeSubmitHandler = null;
+  activeSuccessHandler = null;
   dialog?.close();
 }
 
@@ -51,7 +57,9 @@ async function handleSubmit(event) {
 
   try {
     await activeSubmitHandler?.(new FormData(form));
+    const onSuccess = activeSuccessHandler;
     closeDialog();
+    onSuccess?.();
   } catch (error) {
     errorNode.textContent = error instanceof Error
       ? error.message

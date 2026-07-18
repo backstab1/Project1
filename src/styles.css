@@ -1553,6 +1553,182 @@ code {
   color: #90cea1;
 }
 
+.dialog[data-variant="movie"] {
+  width: min(720px, calc(100vw - 48px));
+}
+
+.movie-search-flow {
+  display: grid;
+  gap: 16px;
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--line));
+  border-radius: 18px;
+  background: linear-gradient(135deg, var(--accent-soft), var(--surface-raised) 75%);
+  padding: 20px;
+}
+
+.movie-search-flow__intro,
+.tmdb-connect-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.movie-search-flow__intro h3,
+.movie-search-flow__intro p,
+.tmdb-connect-card h3,
+.tmdb-connect-card p {
+  margin: 0;
+}
+
+.movie-search-flow__intro p,
+.tmdb-connect-card p {
+  margin-top: 4px;
+  color: var(--text-secondary);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.movie-search-flow__icon {
+  display: grid;
+  width: 46px;
+  height: 46px;
+  flex: 0 0 auto;
+  place-content: center;
+  border-radius: 50%;
+  background: var(--surface-raised);
+  color: var(--accent);
+  font-size: 1.65rem;
+  box-shadow: var(--shadow-card);
+}
+
+.tmdb-search-box {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.tmdb-search-box input {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  outline: 0;
+  background: var(--surface-raised);
+  padding: 13px 15px;
+  color: var(--text-primary);
+  font: inherit;
+}
+
+.tmdb-search-box input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 17%, transparent);
+}
+
+.tmdb-connect-card > div {
+  min-width: 0;
+  flex: 1;
+}
+
+.tmdb-connect-card .button {
+  flex: 0 0 auto;
+}
+
+.movie-manual-fields {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface-raised);
+}
+
+.movie-manual-fields summary {
+  padding: 14px 16px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.movie-manual-fields[open] summary {
+  border-bottom: 1px solid var(--line);
+  color: var(--text-primary);
+}
+
+.movie-manual-fields__body {
+  display: grid;
+  gap: 15px;
+  padding: 16px;
+}
+
+.dialog[data-variant="movie"] .field input,
+.dialog[data-variant="movie"] .field select,
+.dialog[data-variant="movie"] .field textarea {
+  border-color: var(--line);
+  background: var(--page-soft);
+}
+
+.tmdb-search-status {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+.tmdb-search-status span {
+  width: 15px;
+  height: 15px;
+  border: 2px solid var(--accent-soft);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: tmdb-search-spin 700ms linear infinite;
+}
+
+@keyframes tmdb-search-spin {
+  to { transform: rotate(360deg); }
+}
+
+.tmdb-selected-card {
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid color-mix(in srgb, var(--success) 36%, var(--line));
+  border-radius: 12px;
+  background: var(--surface-raised);
+  padding: 9px;
+}
+
+.tmdb-selected-card img,
+.tmdb-selected-card .tmdb-result__poster {
+  width: 54px;
+  height: 78px;
+  border-radius: 7px;
+  object-fit: cover;
+}
+
+.tmdb-selected-card > div {
+  display: grid;
+  gap: 3px;
+}
+
+.tmdb-selected-card small {
+  color: var(--success);
+}
+
+.tmdb-selected-card span {
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+}
+
+.tmdb-selected-card__check {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-content: center;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--success) 14%, transparent);
+  color: var(--success) !important;
+  font-size: 1rem !important;
+}
+
 @media (max-height: 820px) and (min-width: 1100px) {
   .wheel-stage {
     min-height: 0;
@@ -2550,6 +2726,19 @@ textarea {
   .dashboard-summary-card {
     min-height: 0;
     padding: 20px;
+  }
+
+  .tmdb-search-box {
+    grid-template-columns: 1fr;
+  }
+
+  .tmdb-connect-card {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .tmdb-connect-card .button {
+    width: 100%;
   }
 
   .recent-movies {
