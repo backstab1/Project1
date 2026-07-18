@@ -33,6 +33,7 @@ foreach ($target in @($workRoot, $distRoot, $packageRoot)) {
     --specpath $workRoot `
     --add-data "$(Join-Path $projectRoot 'index.html');." `
     --add-data "$(Join-Path $projectRoot 'src');src" `
+    --add-data "$(Join-Path $projectRoot 'assets');assets" `
     (Join-Path $projectRoot "launch.py")
 
 if ($LASTEXITCODE -ne 0) {

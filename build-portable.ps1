@@ -29,6 +29,7 @@ Copy-Item -LiteralPath (Join-Path $projectRoot "launch.py") -Destination $output
 Copy-Item -LiteralPath (Join-Path $projectRoot "CineVault.cmd") -Destination $outputFull
 Copy-Item -LiteralPath (Join-Path $projectRoot "README.md") -Destination $outputFull
 Copy-Item -LiteralPath (Join-Path $projectRoot "src") -Destination $outputFull -Recurse
+Copy-Item -LiteralPath (Join-Path $projectRoot "assets") -Destination $outputFull -Recurse
 Copy-Item -LiteralPath (Join-Path $projectRoot "docs\IMPORT_FORMAT.md") `
     -Destination (Join-Path $outputFull "docs\IMPORT_FORMAT.md")
 
