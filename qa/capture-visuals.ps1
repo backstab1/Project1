@@ -75,6 +75,61 @@ function Wait-ForExpression {
     throw "Page condition timed out: $Expression"
 }
 
+function Invoke-CdpExpression {
+    param(
+        [System.Net.WebSockets.ClientWebSocket]$Socket,
+        [ref]$CommandId,
+        [string]$Expression
+    )
+
+    $CommandId.Value++
+    $result = Send-CdpCommand $Socket $CommandId.Value "Runtime.evaluate" @{
+        expression = $Expression
+        returnByValue = $true
+        awaitPromise = $true
+    }
+    if ($result.exceptionDetails) {
+        throw "Browser expression failed: $($result.exceptionDetails.text)"
+    }
+    return $result.result.value
+}
+
+function Save-CdpScreenshot {
+    param(
+        [System.Net.WebSockets.ClientWebSocket]$Socket,
+        [ref]$CommandId,
+        [string]$OutputPath
+    )
+
+    $CommandId.Value++
+    $capture = Send-CdpCommand $Socket $CommandId.Value "Page.captureScreenshot" @{
+        format = "png"
+        fromSurface = $true
+        captureBeyondViewport = $false
+    }
+    [IO.File]::WriteAllBytes($OutputPath, [Convert]::FromBase64String($capture.data))
+}
+
+function Assert-DialogFitsViewport {
+    param(
+        [System.Net.WebSockets.ClientWebSocket]$Socket,
+        [ref]$CommandId
+    )
+
+    $fits = Invoke-CdpExpression $Socket $CommandId @"
+(() => {
+  const surface = document.querySelector('dialog[open] .dialog__surface');
+  if (!surface) return false;
+  const box = surface.getBoundingClientRect();
+  return box.left >= 0 && box.top >= 0 && box.right <= innerWidth &&
+    box.bottom <= innerHeight && surface.scrollWidth <= surface.clientWidth;
+})()
+"@
+    if ($fits -ne $true) {
+        throw "Open dialog does not fit the 1366x768 viewport."
+    }
+}
+
 if (-not (Test-Path -LiteralPath $edgePath)) {
     throw "Microsoft Edge not found: $edgePath"
 }
@@ -196,6 +251,106 @@ try {
         [IO.File]::WriteAllBytes($outputPath, [Convert]::FromBase64String($capture.data))
         Write-Host "Captured $view without horizontal overflow: $outputPath"
     }
+
+    $commandId++
+    Send-CdpCommand $socket $commandId "Page.navigate" @{
+        url = "$appBaseUrl/#catalog"
+    } | Out-Null
+    Wait-ForExpression $socket ([ref]$commandId) `
+        "document.querySelectorAll('.movie-card').length === 10"
+
+    Invoke-CdpExpression $socket ([ref]$commandId) `
+        "document.querySelector('[data-action=movie-add]').click()" | Out-Null
+    Wait-ForExpression $socket ([ref]$commandId) `
+        "document.querySelector('dialog[open]')"
+    Assert-DialogFitsViewport $socket ([ref]$commandId)
+
+    $requiredWorks = Invoke-CdpExpression $socket ([ref]$commandId) `
+        "(() => { const form = document.querySelector('dialog[open] form'); form.elements.title.value = ''; return form.checkValidity() === false; })()"
+    if ($requiredWorks -ne $true) {
+        throw "Required movie title validation is not active."
+    }
+    Save-CdpScreenshot $socket ([ref]$commandId) `
+        (Join-Path $releaseRoot "qa-dialog-movie-add.png")
+
+    Invoke-CdpExpression $socket ([ref]$commandId) @"
+(() => {
+  const form = document.querySelector('dialog[open] form');
+  form.elements.title.value = 'QA Interactive Movie';
+  form.elements.categoryId.value = 'qa-world';
+  form.elements.releaseYear.value = '2026';
+  form.elements.durationMinutes.value = '123';
+  form.requestSubmit();
+  return true;
+})()
+"@ | Out-Null
+    Wait-ForExpression $socket ([ref]$commandId) `
+        "!document.querySelector('dialog[open]') && document.querySelectorAll('.movie-card').length === 11"
+
+    Invoke-CdpExpression $socket ([ref]$commandId) @"
+(() => {
+  const card = [...document.querySelectorAll('.movie-card')]
+    .find(node => node.textContent.includes('QA Interactive Movie'));
+  card.querySelector('[data-action=movie-edit]').click();
+  return true;
+})()
+"@ | Out-Null
+    Wait-ForExpression $socket ([ref]$commandId) `
+        "document.querySelector('dialog[open] form')?.elements.title.value === 'QA Interactive Movie'"
+    Assert-DialogFitsViewport $socket ([ref]$commandId)
+    Save-CdpScreenshot $socket ([ref]$commandId) `
+        (Join-Path $releaseRoot "qa-dialog-movie-edit.png")
+    Invoke-CdpExpression $socket ([ref]$commandId) `
+        "document.querySelector('dialog[open] [data-dialog-close]').click()" | Out-Null
+    Wait-ForExpression $socket ([ref]$commandId) `
+        "!document.querySelector('dialog[open]')"
+
+    Invoke-CdpExpression $socket ([ref]$commandId) `
+        "document.querySelector('[data-action=movie-add]').click()" | Out-Null
+    Wait-ForExpression $socket ([ref]$commandId) `
+        "document.querySelector('dialog[open]')"
+    Invoke-CdpExpression $socket ([ref]$commandId) @"
+(() => {
+  const form = document.querySelector('dialog[open] form');
+  form.elements.title.value = 'QA Interactive Movie';
+  form.elements.categoryId.value = 'qa-world';
+  form.elements.releaseYear.value = '2026';
+  form.requestSubmit();
+  return true;
+})()
+"@ | Out-Null
+    Wait-ForExpression $socket ([ref]$commandId) `
+        "document.querySelector('dialog[open] .form-error')?.textContent.trim().length > 0"
+    Save-CdpScreenshot $socket ([ref]$commandId) `
+        (Join-Path $releaseRoot "qa-dialog-duplicate-error.png")
+    Invoke-CdpExpression $socket ([ref]$commandId) `
+        "document.querySelector('dialog[open] [data-dialog-close]').click()" | Out-Null
+
+    $commandId++
+    Send-CdpCommand $socket $commandId "Page.navigate" @{
+        url = "$appBaseUrl/#wheel"
+    } | Out-Null
+    Wait-ForExpression $socket ([ref]$commandId) `
+        "document.querySelector('[data-action=roll-configure]')"
+    Invoke-CdpExpression $socket ([ref]$commandId) `
+        "document.querySelector('[data-action=roll-configure]').click()" | Out-Null
+    Wait-ForExpression $socket ([ref]$commandId) `
+        "document.querySelectorAll('dialog[open] .player-row').length === 4"
+    Assert-DialogFitsViewport $socket ([ref]$commandId)
+    Save-CdpScreenshot $socket ([ref]$commandId) `
+        (Join-Path $releaseRoot "qa-dialog-wheel-config.png")
+    Invoke-CdpExpression $socket ([ref]$commandId) `
+        "document.querySelector('dialog[open] form').requestSubmit()" | Out-Null
+    Wait-ForExpression $socket ([ref]$commandId) `
+        "!document.querySelector('dialog[open]') && document.querySelector('#wheel-canvas')"
+    $wheelFits = Invoke-CdpExpression $socket ([ref]$commandId) `
+        "document.querySelector('.wheel-actions').getBoundingClientRect().bottom <= innerHeight"
+    if ($wheelFits -ne $true) {
+        throw "Wheel actions are below the 768px viewport."
+    }
+    Save-CdpScreenshot $socket ([ref]$commandId) `
+        (Join-Path $releaseRoot "qa-wheel-session-started.png")
+    Write-Host "Interactive dialogs and session start passed."
 
     $commandId++
     Send-CdpCommand $socket $commandId "Browser.close" | Out-Null

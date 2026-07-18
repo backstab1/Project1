@@ -24,7 +24,7 @@ test("дубликат фильма определяется по названи
   assert.equal(
     findDuplicateMovie(movies, {
       title: "  ИНТЕРСТЕЛЛАР ",
-      releaseYear: 2014,
+      releaseYear: "2014",
     })?.id,
     "1",
   );

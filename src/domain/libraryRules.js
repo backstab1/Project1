@@ -11,7 +11,13 @@ export function getNextPosition(items, parentId, parentField = "categoryId") {
 
 export function findDuplicateMovie(movies, candidate, ignoredId = null) {
   const title = normalizeText(candidate.title);
-  const year = candidate.releaseYear ?? null;
+  const parsedYear = Number.parseInt(candidate.releaseYear, 10);
+  const year = candidate.releaseYear === null ||
+    candidate.releaseYear === undefined ||
+    candidate.releaseYear === "" ||
+    !Number.isInteger(parsedYear)
+    ? null
+    : parsedYear;
 
   return movies.find((movie) => {
     if (movie.id === ignoredId || movie.normalizedTitle !== title) {
