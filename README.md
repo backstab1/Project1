@@ -84,7 +84,13 @@ powershell -ExecutionPolicy Bypass -File .\build-portable.ps1
 
 ## Автономная Windows-сборка
 
-Если в среде сборки установлен PyInstaller:
+Перед первой сборкой установите зафиксированную сборочную зависимость:
+
+```powershell
+python -m pip install -r .\requirements-build.txt
+```
+
+Затем запустите упаковку:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\build-windows.ps1

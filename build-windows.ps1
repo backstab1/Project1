@@ -9,6 +9,12 @@ $workRoot = Join-Path $releaseRoot "pyinstaller-work"
 $distRoot = Join-Path $releaseRoot "windows-dist"
 $packageRoot = Join-Path $releaseRoot "CineVault-Windows"
 $zipPath = Join-Path $releaseRoot "CineVault-Windows.zip"
+$requirementsPath = Join-Path $projectRoot "requirements-build.txt"
+
+& $Python -c "import PyInstaller" *> $null
+if ($LASTEXITCODE -ne 0) {
+    throw "PyInstaller is not installed. Run: $Python -m pip install -r `"$requirementsPath`""
+}
 
 New-Item -ItemType Directory -Force -Path $releaseRoot | Out-Null
 
