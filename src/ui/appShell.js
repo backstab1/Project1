@@ -492,6 +492,14 @@ function renderCatalog(container, state) {
     library.movies.flatMap((movie) => movie.genres ?? []).filter(Boolean),
   )].sort((a, b) => a.localeCompare(b, "ru-RU"));
   const query = catalogFilters.query.trim().toLocaleLowerCase("ru-RU");
+  const hasActiveFilters = Boolean(
+    query ||
+    catalogFilters.categoryId ||
+    catalogFilters.genre ||
+    catalogFilters.status !== "all"
+  );
+  const hasCustomizedCatalog =
+    hasActiveFilters || catalogFilters.sort !== "title";
   const movies = library.movies
     .filter((movie) => {
       if (
@@ -533,11 +541,22 @@ function renderCatalog(container, state) {
     <div class="view-toolbar">
       <div>
         <p class="eyebrow">Библиотека</p>
-        <h2>${movies.length} ${pluralize(movies.length, ["фильм", "фильма", "фильмов"])}</h2>
+        <h2>
+          ${movies.length} ${pluralize(movies.length, ["фильм", "фильма", "фильмов"])}
+          ${hasActiveFilters
+            ? `<span class="view-toolbar__total">из ${library.movies.length}</span>`
+            : ""}
+        </h2>
       </div>
-      <button class="button button--primary" type="button" data-action="movie-add">
-        + Добавить фильм
-      </button>
+      <div class="view-toolbar__actions">
+        ${hasCustomizedCatalog ? `
+          <button class="button button--ghost" type="button"
+            data-action="catalog-filters-reset">Сбросить фильтры</button>
+        ` : ""}
+        <button class="button button--primary" type="button" data-action="movie-add">
+          + Добавить фильм
+        </button>
+      </div>
     </div>
 
     <div class="filter-bar">

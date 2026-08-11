@@ -243,6 +243,19 @@ button {
   font-size: 1.7rem;
 }
 
+.view-toolbar__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 9px;
+}
+
+.view-toolbar__total {
+  color: var(--muted);
+  font-size: 0.76em;
+  font-weight: 500;
+}
+
 .filter-bar {
   display: grid;
   grid-template-columns: minmax(240px, 1.4fr) repeat(4, minmax(125px, 0.8fr));
@@ -2663,6 +2676,16 @@ textarea {
 
   .content {
     padding: 20px 18px 48px;
+  }
+
+  .view-toolbar {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .view-toolbar__actions {
+    width: 100%;
+    justify-content: flex-start;
   }
 
   .dashboard-hero {

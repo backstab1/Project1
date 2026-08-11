@@ -84,6 +84,13 @@ const VIEW_IDS = new Set([
   "sessions",
   "settings",
 ]);
+const DEFAULT_CATALOG_FILTERS = Object.freeze({
+  query: "",
+  categoryId: "",
+  genre: "",
+  status: "all",
+  sort: "title",
+});
 
 function readViewFromHash() {
   const view = location.hash.slice(1);
@@ -110,13 +117,7 @@ const state = {
   rollDraftPool: [],
   activeSession: null,
   isSpinning: false,
-  catalogFilters: {
-    query: "",
-    categoryId: "",
-    genre: "",
-    status: "all",
-    sort: "title",
-  },
+  catalogFilters: { ...DEFAULT_CATALOG_FILTERS },
   focusControl: null,
   tmdbStatus: { configured: false, loading: true, error: null },
   error: null,
@@ -216,10 +217,17 @@ async function handleAction(action, payload) {
     "session-open": () => openSessionDetails(payload.id),
     "tmdb-configure": () => openTmdbTokenDialog(),
     "tmdb-clear": () => removeTmdbToken(),
+    "catalog-filters-reset": () => resetCatalogFilters(),
     "theme-toggle": () => changeTheme(),
   };
 
   await handlers[action]?.();
+}
+
+function resetCatalogFilters() {
+  state.catalogFilters = { ...DEFAULT_CATALOG_FILTERS };
+  state.focusControl = null;
+  render();
 }
 
 async function handleControl(control, payload) {
