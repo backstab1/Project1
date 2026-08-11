@@ -113,6 +113,7 @@ const state = {
   catalogFilters: {
     query: "",
     categoryId: "",
+    genre: "",
     status: "all",
     sort: "title",
   },
@@ -225,6 +226,7 @@ async function handleControl(control, payload) {
   const catalogControls = {
     "catalog-query": "query",
     "catalog-category": "categoryId",
+    "catalog-genre": "genre",
     "catalog-status": "status",
     "catalog-sort": "sort",
   };
@@ -331,7 +333,7 @@ async function importTableFile(file) {
     submitLabel: "Готово",
     body: `
       <p class="confirmation-text">Добавлено и объединено строк: ${rows.length}.
-      Категории, франшизы, просмотренные фильмы и колонки оценок перенесены.</p>
+      Списки, франшизы, просмотренные фильмы и колонки оценок перенесены.</p>
     `,
     onSubmit: async () => {},
   });
@@ -795,9 +797,9 @@ function openMovieDialog(movieId = null) {
       </section>
 
       <label class="field">
-        <span>Категория</span>
+        <span>Список</span>
         <select name="categoryId">
-          <option value="">Без категории</option>
+          <option value="">Без списка</option>
           ${categoryOptions}
         </select>
       </label>
@@ -1065,7 +1067,7 @@ function openCategoryDialog(categoryId = null, requestedParentId = null) {
   const selectedParentId = category?.parentId ?? requestedParentId ?? null;
 
   openDialog({
-    title: category ? "Редактировать категорию" : "Новая категория",
+    title: category ? "Редактировать список" : "Новый список",
     body: `
       <label class="field">
         <span>Название *</span>
@@ -1073,9 +1075,9 @@ function openCategoryDialog(categoryId = null, requestedParentId = null) {
           value="${escapeAttribute(category?.name ?? "")}">
       </label>
       <label class="field">
-        <span>Родительская категория</span>
+        <span>Родительский список</span>
         <select name="parentId">
-          <option value="">Корневая категория</option>
+          <option value="">Корневой список</option>
           ${buildCategoryOptions(selectedParentId, excludedIds)}
         </select>
       </label>
@@ -1102,7 +1104,7 @@ function openCategoryDialog(categoryId = null, requestedParentId = null) {
         category?.id,
       );
       if (duplicate) {
-        throw new Error("Категория с таким названием уже существует на этом уровне.");
+        throw new Error("Список с таким названием уже существует на этом уровне.");
       }
 
       if (!category || category.parentId !== parentId) {
@@ -1134,9 +1136,9 @@ function openFranchiseDialog(franchiseId = null) {
           value="${escapeAttribute(franchise?.name ?? "")}">
       </label>
       <label class="field">
-        <span>Категория</span>
+        <span>Список</span>
         <select name="categoryId">
-          <option value="">Без категории</option>
+          <option value="">Без списка</option>
           ${buildCategoryOptions(franchise?.categoryId)}
         </select>
       </label>
@@ -1204,8 +1206,8 @@ function confirmCategoryDeletion(categoryId) {
   if (!category) return;
 
   openConfirmation(
-    "Удалить категорию?",
-    `Фильмы из «${category.name}» перейдут в «Без категории», а дочерние категории поднимутся на уровень выше.`,
+    "Удалить список?",
+    `Фильмы из «${category.name}» перейдут в «Без списка», а вложенные списки поднимутся на уровень выше.`,
     async () => {
       await commitLibraryChanges(
         buildCategoryDeletionCommands(state.library, categoryId),

@@ -20,6 +20,17 @@ test("разделитель определяется между CSV и TSV", ()
   assert.equal(detectDelimiter("Название\tГод\nНачало\t2010"), "\t");
 });
 
+test("столбец «Список» создаёт пользовательский список", () => {
+  const library = tableRowsToLibrary([
+    { Название: "Интерстеллар", Список: "На выходные > Космос" },
+  ]);
+
+  assert.equal(library.categories.length, 2);
+  assert.equal(library.categories[0].name, "На выходные");
+  assert.equal(library.categories[1].name, "Космос");
+  assert.equal(library.movies[0].categoryId, library.categories[1].id);
+});
+
 test("строки таблицы создают категории, франшизы и оценки", () => {
   const library = tableRowsToLibrary([
     {

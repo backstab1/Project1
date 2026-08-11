@@ -34,7 +34,7 @@ export function normalizeScore(value) {
 
 export function createCategory(input = {}) {
   const now = new Date().toISOString();
-  const name = requireText(input.name, "Название категории");
+  const name = requireText(input.name, "Название списка");
 
   return {
     id: input.id ?? createId(),

@@ -10,7 +10,7 @@ import {
 const FIELD_ALIASES = {
   title: ["название", "фильм", "title", "movie"],
   originalTitle: ["оригинальное название", "original title", "originaltitle"],
-  category: ["категория", "category", "подборка"],
+  category: ["список", "list", "категория", "category", "подборка"],
   franchise: ["франшиза", "franchise", "серия"],
   year: ["год", "year", "release year"],
   duration: ["длительность", "продолжительность", "duration", "минуты"],

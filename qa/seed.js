@@ -17,16 +17,16 @@ const categories = [
 ];
 
 const movies = [
-  createMovie({ id: "qa-lotr-1", title: "Властелин колец: Братство Кольца", originalTitle: "The Fellowship of the Ring", categoryId: "qa-fantasy", categoryPosition: 0, releaseYear: 2001, durationMinutes: 178, country: "Новая Зеландия" }),
-  createMovie({ id: "qa-lotr-2", title: "Властелин колец: Две крепости", categoryId: "qa-fantasy", categoryPosition: 1, releaseYear: 2002, durationMinutes: 179, country: "Новая Зеландия" }),
-  createMovie({ id: "qa-lotr-3", title: "Властелин колец: Возвращение короля", categoryId: "qa-fantasy", categoryPosition: 2, releaseYear: 2003, durationMinutes: 201, country: "Новая Зеландия" }),
+  createMovie({ id: "qa-lotr-1", title: "Властелин колец: Братство Кольца", originalTitle: "The Fellowship of the Ring", categoryId: "qa-fantasy", categoryPosition: 0, releaseYear: 2001, durationMinutes: 178, country: "Новая Зеландия", genres: ["Фэнтези", "Приключения"] }),
+  createMovie({ id: "qa-lotr-2", title: "Властелин колец: Две крепости", categoryId: "qa-fantasy", categoryPosition: 1, releaseYear: 2002, durationMinutes: 179, country: "Новая Зеландия", genres: ["Фэнтези", "Приключения"] }),
+  createMovie({ id: "qa-lotr-3", title: "Властелин колец: Возвращение короля", categoryId: "qa-fantasy", categoryPosition: 2, releaseYear: 2003, durationMinutes: 201, country: "Новая Зеландия", genres: ["Фэнтези", "Приключения"] }),
   createMovie({ id: "qa-long", title: "Невероятная история о человеке, который отправился смотреть кино и случайно изменил весь мир", categoryId: "qa-world", categoryPosition: 0, releaseYear: 2024, durationMinutes: 147, country: "Россия", coverUrl: "https://invalid.example.test/poster.jpg" }),
-  createMovie({ id: "qa-hunt", title: "Охота", originalTitle: "Jagten", categoryId: "qa-scandinavia", categoryPosition: 0, releaseYear: 2012, durationMinutes: 115, country: "Дания", watchedAt, ratings: [{ participantName: "Антон", value: 9.5 }, { participantName: "Мария", value: 9 }] }),
+  createMovie({ id: "qa-hunt", title: "Охота", originalTitle: "Jagten", categoryId: "qa-scandinavia", categoryPosition: 0, releaseYear: 2012, durationMinutes: 115, country: "Дания", genres: ["Драма"], watchedAt, ratings: [{ participantName: "Антон", value: 9.5 }, { participantName: "Мария", value: 9 }] }),
   createMovie({ id: "qa-another-round", title: "Ещё по одной", categoryId: "qa-scandinavia", categoryPosition: 1, releaseYear: 2020, durationMinutes: 117, country: "Дания", watchedAt, ratings: [{ participantName: "Антон", value: 8.5 }, { participantName: "Мария", value: 8 }] }),
   createMovie({ id: "qa-seventh-seal", title: "Седьмая печать", categoryId: "qa-classics", categoryPosition: 0, releaseYear: 1957, durationMinutes: 96, country: "Швеция", watchedAt, ratings: [{ participantName: "Антон", value: 8 }, { participantName: "Мария", value: 7.5 }] }),
   createMovie({ id: "qa-stalker", title: "Сталкер", categoryId: "qa-classics", categoryPosition: 1, releaseYear: 1979, durationMinutes: 163, country: "СССР" }),
-  createMovie({ id: "qa-arrival", title: "Прибытие", categoryId: "qa-fantasy", categoryPosition: 3, releaseYear: 2016, durationMinutes: 116, country: "США" }),
-  createMovie({ id: "qa-spirited", title: "Унесённые призраками", categoryId: "qa-world", categoryPosition: 1, releaseYear: 2001, durationMinutes: 125, country: "Япония" }),
+  createMovie({ id: "qa-arrival", title: "Прибытие", categoryId: "qa-fantasy", categoryPosition: 3, releaseYear: 2016, durationMinutes: 116, country: "США", genres: ["Фантастика", "Драма"] }),
+  createMovie({ id: "qa-spirited", title: "Унесённые призраками", categoryId: "qa-world", categoryPosition: 1, releaseYear: 2001, durationMinutes: 125, country: "Япония", genres: ["Анимация", "Фэнтези"] }),
 ];
 
 const franchises = [

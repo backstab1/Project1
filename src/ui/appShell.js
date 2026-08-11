@@ -12,7 +12,7 @@ const NAV_ITEMS = [
   ["dashboard", "Главная", "home"],
   ["catalog", "Каталог", "film"],
   ["franchises", "Коллекции", "collection"],
-  ["categories", "Категории", "categories"],
+  ["categories", "Списки", "categories"],
   ["watched", "Просмотренные", "eye"],
   ["wheel", "Колесо", "wheel"],
   ["sessions", "История роллов", "history"],
@@ -235,7 +235,7 @@ function renderCurrentView(container, state) {
 
   const descriptions = {
     catalog: "Здесь появятся фильмы, поиск, фильтры и создание карточек.",
-    categories: "Здесь будет дерево категорий и ручное управление очередями.",
+    categories: "Здесь будут пользовательские списки и ручное управление очередями.",
     franchises: "Здесь будут франшизы и порядок фильмов внутри них.",
     watched: "Здесь появятся просмотренные фильмы и оценки зрителей.",
     wheel: "Здесь будет формирование пула и колесо батл-рояля.",
@@ -374,12 +374,12 @@ function renderWheel(container, state) {
               `).join("")}
             </ol>
           ` : `
-            <p class="muted">Пул пуст. Задайте квоту минимум одной категории
+            <p class="muted">Пул пуст. Задайте квоту минимум одного списка
             и добавьте в очередь непросмотренные фильмы.</p>
           `}
         </section>
         <section class="panel panel--accent">
-          <p class="eyebrow">Квоты категорий</p>
+          <p class="eyebrow">Квоты списков</p>
           ${quotaCategories.length ? `
             <div class="quota-list">
               ${quotaCategories.map((category) => `
@@ -488,6 +488,9 @@ function renderCatalog(container, state) {
     library.categories.map((category) => [category.id, category]),
   );
   const franchiseByMovieId = getMovieFranchiseMap(library.franchises);
+  const genres = [...new Set(
+    library.movies.flatMap((movie) => movie.genres ?? []).filter(Boolean),
+  )].sort((a, b) => a.localeCompare(b, "ru-RU"));
   const query = catalogFilters.query.trim().toLocaleLowerCase("ru-RU");
   const movies = library.movies
     .filter((movie) => {
@@ -514,6 +517,12 @@ function renderCatalog(container, state) {
       ) {
         return false;
       }
+      if (
+        catalogFilters.genre &&
+        !(movie.genres ?? []).some((genre) => genre === catalogFilters.genre)
+      ) {
+        return false;
+      }
       if (catalogFilters.status === "watched" && !movie.watchedAt) return false;
       if (catalogFilters.status === "unwatched" && movie.watchedAt) return false;
       return true;
@@ -535,15 +544,24 @@ function renderCatalog(container, state) {
       <label class="filter-search">
         <span class="sr-only">Поиск</span>
         <input type="search" data-control="catalog-query"
-          placeholder="Поиск по названию, стране, категории…"
+          placeholder="Поиск по названию, стране, жанру…"
           value="${escapeAttribute(catalogFilters.query)}">
       </label>
-      <select data-control="catalog-category" aria-label="Категория">
-        <option value="">Все категории</option>
+      <select data-control="catalog-category" aria-label="Список">
+        <option value="">Все списки</option>
         ${[...library.categories].sort(sortByPosition).map((category) => `
           <option value="${category.id}"
             ${catalogFilters.categoryId === category.id ? "selected" : ""}>
             ${escapeHtml(category.name)}
+          </option>
+        `).join("")}
+      </select>
+      <select data-control="catalog-genre" aria-label="Жанр">
+        <option value="">Все жанры</option>
+        ${genres.map((genre) => `
+          <option value="${escapeAttribute(genre)}"
+            ${catalogFilters.genre === genre ? "selected" : ""}>
+            ${escapeHtml(genre)}
           </option>
         `).join("")}
       </select>
@@ -561,8 +579,10 @@ function renderCatalog(container, state) {
     </div>
 
     ${movies.length === 0 ? emptyBlock(
-      "Каталог пока пуст",
-      "Добавьте первый фильм. Обязательны только название и категория.",
+      library.movies.length ? "Ничего не найдено" : "Каталог пока пуст",
+      library.movies.length
+        ? "Измените запрос или сбросьте фильтры списка, жанра и статуса."
+        : "Добавьте первый фильм. Достаточно выбрать карточку TMDB и при желании список.",
     ) : `
       <div class="movie-grid">
         ${movies.map((movie) => movieCard(
@@ -625,7 +645,7 @@ function renderSettings(container, state) {
       <section class="panel">
         <p class="eyebrow">Резервная копия</p>
         <h2>Экспорт и импорт</h2>
-        <p>Экспорт содержит фильмы, категории, франшизы, оценки, игроков и
+        <p>Экспорт содержит фильмы, списки, франшизы, оценки, игроков и
         историю завершённых роллов.</p>
         <div class="settings-actions">
           <button class="button button--primary" type="button"
@@ -646,7 +666,7 @@ function renderSettings(container, state) {
       <section class="panel">
         <p class="eyebrow">Google Таблицы и Excel</p>
         <h2>Импорт CSV, TSV или XLSX</h2>
-        <p>Поддерживаются столбцы «Название», «Категория», «Франшиза»,
+        <p>Поддерживаются столбцы «Название», «Список» или «Категория», «Франшиза»,
         «Год», «Длительность», «Страна», «Просмотрено», «Дата просмотра»
         и оценки вида «Оценка Антон».</p>
         <label class="button button--primary file-button">
@@ -705,23 +725,23 @@ function renderCategories(container, library) {
     <div class="view-toolbar">
       <div>
         <p class="eyebrow">Организация</p>
-        <h2>Категории и очереди</h2>
+        <h2>Списки и очереди</h2>
       </div>
       <button class="button button--primary" type="button" data-action="category-add">
-        + Новая категория
+        + Новый список
       </button>
     </div>
 
     <section class="uncategorized-row">
       <div>
-        <strong>Без категории</strong>
+        <strong>Без списка</strong>
         <small>${library.movies.filter((movie) => !movie.categoryId).length} фильмов</small>
       </div>
     </section>
 
     ${roots.length === 0 ? emptyBlock(
-      "Категорий пока нет",
-      "Создайте категории и настройте порядок фильмов, который будет использовать колесо.",
+      "Списков пока нет",
+      "Создайте пользовательские списки и настройте порядок фильмов для колеса. Жанры TMDB хранятся отдельно.",
     ) : `
       <div class="category-tree">
         ${roots.map((category) => categoryNode(category, library, 0)).join("")}
@@ -767,7 +787,7 @@ function renderFranchises(container, library) {
             <p class="eyebrow">Франшиза</p>
             <h3>${escapeHtml(franchise.name)}</h3>
             <p class="card-meta">
-              ${escapeHtml(categoryById.get(franchise.categoryId)?.name ?? "Без категории")}
+              ${escapeHtml(categoryById.get(franchise.categoryId)?.name ?? "Без списка")}
             </p>
             <ol class="franchise-movies">
               ${franchise.movieIds.map((id) => movieById.get(id)).filter(Boolean)
@@ -879,7 +899,7 @@ function renderDashboard(container, state) {
       </header>
 
       <div class="dashboard-overview__metrics">
-        ${dashboardMetric("Категорий", statistics.categoryCount, "categories")}
+        ${dashboardMetric("Списков", statistics.categoryCount, "categories")}
         ${dashboardMetric(
           "Средняя оценка",
           statistics.libraryAverageRating == null
@@ -1020,7 +1040,7 @@ function watchedRow(movie, category) {
           : '<span aria-hidden="true">CV</span>'}
       </div>
       <div class="watched-row__main">
-        <p class="eyebrow">${escapeHtml(category?.name ?? "Без категории")}</p>
+        <p class="eyebrow">${escapeHtml(category?.name ?? "Без списка")}</p>
         <h3>${escapeHtml(movie.title)}</h3>
         <p class="card-meta">Просмотрен: ${formatDate(movie.watchedAt)}
           ${movie.durationMinutes ? ` · ${movie.durationMinutes} мин` : ""}</p>
@@ -1068,7 +1088,7 @@ function movieCard(movie, category, franchise) {
         </div>
       </div>
       <div class="movie-card__content">
-        <p class="eyebrow">${escapeHtml(category?.name ?? "Без категории")}</p>
+        <p class="eyebrow">${escapeHtml(category?.name ?? "Без списка")}</p>
         <h3>${escapeHtml(movie.title)}</h3>
         <p class="card-meta">
           ${movie.releaseYear ?? "Год не указан"}
@@ -1126,7 +1146,7 @@ function categoryNode(category, library, depth) {
           <button class="icon-button" type="button" data-action="category-down"
             data-id="${category.id}" aria-label="Переместить ниже">↓</button>
           <button class="icon-button" type="button" data-action="category-child-add"
-            data-id="${category.id}" aria-label="Добавить подкатегорию">+</button>
+            data-id="${category.id}" aria-label="Добавить вложенный список">+</button>
           <button class="icon-button" type="button" data-action="category-edit"
             data-id="${category.id}" aria-label="Редактировать">✎</button>
           <button class="icon-button icon-button--danger" type="button"
