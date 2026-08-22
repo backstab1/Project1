@@ -4532,6 +4532,42 @@ img {
   font-size: 0.78rem;
 }
 
+.enrich-progress {
+  display: grid;
+  gap: 0.5rem;
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  padding: 0.85rem 1rem;
+}
+
+.enrich-progress p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.enrich-list {
+  display: grid;
+  gap: 0.4rem;
+  max-height: 15rem;
+  overflow-y: auto;
+}
+
+.enrich-list__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  padding: 0.5rem 0.7rem;
+}
+
+.enrich-list__row strong { display: block; font-size: 0.9rem; }
+
+.enrich-list__row small { color: var(--text-dim); }
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

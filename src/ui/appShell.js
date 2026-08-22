@@ -10,6 +10,7 @@ import {
 import { setupDialog } from "./dialog.js";
 import { drawWheel } from "./wheelCanvas.js";
 import { isBackupReminderDue } from "../domain/backupReminder.js";
+import { selectEnrichmentCandidates } from "../domain/tmdbEnrichment.js";
 import { icon } from "./icons.js";
 
 // «Главная» намеренно отсутствует в боковом меню: на неё ведёт логотип CV.
@@ -1666,6 +1667,7 @@ function renderFranchises(container, library) {
 function renderSettings(container, state) {
   const tmdb = state.tmdbStatus;
   const settings = state.library.settings ?? {};
+  const enrichmentCount = selectEnrichmentCandidates(state.library.movies).length;
 
   container.innerHTML = `
     <div class="settings-grid">
@@ -1686,8 +1688,23 @@ function renderSettings(container, state) {
           ? "Поиск доступен в форме добавления фильма: название, год, длительность, страна, жанры, описание и постер заполняются автоматически, а постеры кэшируются локально."
           : "Подключите API Read Access Token, чтобы искать фильмы по названию и сохранять постеры на этом компьютере."}</p>
         ${tmdb.error ? `<p class="form-error is-visible">${escapeHtml(tmdb.error)}</p>` : ""}
+        ${tmdb.configured && enrichmentCount ? `
+          <p class="notice">
+            ${icon("info")}
+            <span>${enrichmentCount} ${pluralize(enrichmentCount, ["фильм", "фильма", "фильмов"])}
+            без карточки TMDB или без части метаданных: постеры, жанры и описания
+            можно подтянуть одним проходом.</span>
+          </p>` : ""}
         <div class="panel__actions">
-          <button class="btn btn--primary" type="button" data-action="tmdb-configure">
+          ${tmdb.configured ? `
+            <button class="btn btn--primary" type="button" data-action="tmdb-enrich"
+              ${enrichmentCount ? "" : "disabled"}>
+              ${icon("sparkles")}<span>${enrichmentCount
+                ? `Обогатить ${enrichmentCount}`
+                : "Всё уже обогащено"}</span>
+            </button>` : ""}
+          <button class="btn ${tmdb.configured ? "btn--ghost" : "btn--primary"}" type="button"
+            data-action="tmdb-configure">
             ${icon("bolt")}<span>${tmdb.configured ? "Заменить токен" : "Подключить TMDB"}</span>
           </button>
           ${tmdb.configured ? `

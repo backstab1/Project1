@@ -312,6 +312,60 @@ addEventListener('error', (event) => {
 addEventListener('unhandledrejection', (event) => {
   window.__qaErrors.push('unhandled rejection: ' + String(event.reason));
 });
+
+// A stubbed TMDB proxy keeps the run offline, deterministic and free of the
+// machine owner's API quota.
+window.__qaTmdb = { search: 0, movie: 0, poster: 0 };
+const qaRealFetch = window.fetch.bind(window);
+window.fetch = async (input, init) => {
+  const raw = String(typeof input === 'string' ? input : input.url);
+  const url = new URL(raw, location.origin);
+  const json = (data) => new Response(JSON.stringify(data), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
+
+  if (url.pathname === '/api/tmdb/status') return json({ configured: true });
+
+  if (url.pathname === '/api/tmdb/search') {
+    window.__qaTmdb.search += 1;
+    const query = url.searchParams.get('query') || '';
+    const year = url.searchParams.get('year') || '2001';
+    const candidate = (id) => ({
+      id,
+      title: query,
+      original_title: 'QA Original',
+      release_date: year + '-01-01',
+      popularity: 42,
+    });
+    // 2024 is the seeded long-title movie: two identical hits must stay
+    // ambiguous and land in the manual review list.
+    return json({ results: year === '2024'
+      ? [candidate(900001), candidate(900002)]
+      : [candidate(900001)] });
+  }
+
+  if (url.pathname.startsWith('/api/tmdb/movie/')) {
+    window.__qaTmdb.movie += 1;
+    return json({
+      id: 900001,
+      original_title: 'QA Original',
+      overview: 'QA overview from the stubbed TMDB proxy.',
+      release_date: '2001-01-01',
+      runtime: 111,
+      production_countries: [{ name: 'QA Land' }],
+      genres: [{ name: 'QA Genre' }],
+      poster_path: '/qa.jpg',
+    });
+  }
+
+  if (url.pathname === '/api/tmdb/poster') {
+    window.__qaTmdb.poster += 1;
+    return json({ url: '/assets/tmdb.svg' });
+  }
+
+  return qaRealFetch(input, init);
+};
 "@
     } | Out-Null
     Set-Viewport "desktop" | Out-Null
@@ -608,6 +662,71 @@ addEventListener('unhandledrejection', (event) => {
     }
     Save-Screenshot "qa-settings-preferences" | Out-Null
     Write-Host "Behaviour settings persist and apply."
+
+    $enrichment = Invoke-Eval @"
+(async () => {
+  const button = document.querySelector('[data-action=tmdb-enrich]');
+  if (!button) return 'enrich button is missing';
+  if (button.disabled) return 'enrich button is disabled while movies need metadata';
+  button.click();
+  for (let attempt = 0; attempt < 20; attempt++) {
+    if (document.querySelector('dialog[open] [data-enrich-progress]')) break;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  const dialog = document.querySelector('dialog[open]');
+  if (!dialog?.querySelector('[data-enrich-progress]')) return 'enrichment dialog did not open';
+  dialog.querySelector('[data-dialog-submit]').click();
+  // The pass walks the library one movie at a time, so give it room.
+  for (let attempt = 0; attempt < 160; attempt++) {
+    // The summary dialog is the one that has counters and no progress bar.
+    const summary = document.querySelector('dialog[open] .kv-list');
+    if (summary && !document.querySelector('dialog[open] [data-enrich-progress]')) {
+      return 'ok';
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  return 'enrichment did not finish';
+})()
+"@
+    if ($enrichment -ne "ok") {
+        throw "Bulk TMDB enrichment is broken: $enrichment"
+    }
+    Assert-ModalFitsViewport
+    Save-Screenshot "qa-tmdb-enrichment" | Out-Null
+
+    $enrichmentResult = Invoke-Eval @"
+(() => {
+  const values = [...document.querySelectorAll('dialog[open] .kv-list div')]
+    .map((row) => row.querySelector('span').textContent.trim() + '=' + row.querySelector('b').textContent.trim());
+  const manual = document.querySelectorAll('[data-enrich-fix]').length;
+  return values.join(', ') + '; manual=' + manual + '; calls=' + JSON.stringify(window.__qaTmdb);
+})()
+"@
+    Write-Host "  $enrichmentResult"
+    if ($enrichmentResult -notmatch "manual=1") {
+        throw "Ambiguous TMDB match did not land in the manual list: $enrichmentResult"
+    }
+    Invoke-Eval "document.querySelector('dialog[open] [data-dialog-submit]').click()" | Out-Null
+    Wait-For "!document.querySelector('dialog[open]')"
+
+    $enriched = Invoke-Eval @"
+(async () => {
+  const repository = await import('/src/data/libraryRepository.js');
+  const library = await repository.loadLibrary();
+  const linked = library.movies.filter((movie) => movie.tmdbId).length;
+  const withGenres = library.movies.filter((movie) => (movie.genres ?? []).length).length;
+  const untouched = library.movies.find((movie) => movie.id === 'qa-long');
+  if (linked === 0) return 'no movie got a tmdbId';
+  if (withGenres === 0) return 'no movie got genres';
+  // The ambiguous movie must stay exactly as it was.
+  if (untouched.tmdbId) return 'ambiguous movie was linked automatically';
+  return 'ok';
+})()
+"@
+    if ($enriched -ne "ok") {
+        throw "Enrichment did not persist correctly: $enriched"
+    }
+    Write-Host "Bulk TMDB enrichment fills metadata and defers ambiguous matches."
 
     # 6. Wheel.
     Open-View "wheel"

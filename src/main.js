@@ -44,6 +44,13 @@ import {
 } from "./domain/rollEngine.js";
 import { buildLibraryStatistics } from "./domain/statistics.js";
 import {
+  MATCH_CONFIDENCE,
+  buildEnrichmentPatch,
+  pickBestMatch,
+  selectEnrichmentCandidates,
+  summarizeEnrichment,
+} from "./domain/tmdbEnrichment.js";
+import {
   cacheTmdbPoster,
   clearTmdbToken,
   configureTmdbToken,
@@ -288,6 +295,7 @@ async function handleAction(action, payload) {
     "session-open": () => openSessionDetails(payload.id),
     "tmdb-configure": () => openTmdbTokenDialog(),
     "tmdb-clear": () => removeTmdbToken(),
+    "tmdb-enrich": () => openEnrichmentDialog(),
     "catalog-filters-reset": () => resetCatalogFilters(),
     "catalog-status-set": () => setCatalogFilter("status", payload.value),
     "catalog-filter-clear": () => clearCatalogFilter(payload.filter),
@@ -1219,6 +1227,191 @@ function openMovieDialog(movieId = null) {
     },
   });
   setupMovieDialog(movie);
+}
+
+// Пакетное обогащение: TMDB отвечает по одному фильму, поэтому проход идёт
+// последовательно, показывает прогресс и в любой момент прерывается закрытием
+// диалога.
+const ENRICHMENT_DELAY_MS = 150;
+const ENRICHMENT_FAILURE_LIMIT = 3;
+
+function openEnrichmentDialog() {
+  if (!state.tmdbStatus.configured) {
+    openTmdbTokenDialog();
+    return;
+  }
+
+  const candidates = selectEnrichmentCandidates(state.library.movies);
+  if (candidates.length === 0) {
+    showToast("Все фильмы уже связаны с TMDB.");
+    return;
+  }
+
+  let results = [];
+  openDialog({
+    title: "Обогащение библиотеки",
+    submitLabel: `Обогатить ${candidates.length}`,
+    variant: "enrich",
+    body: `
+      <p>${candidates.length} ${pluralizeMovies(candidates.length)} без карточки
+      TMDB или без части метаданных. CineVault найдёт их по названию и году,
+      скачает постеры и заполнит пустые поля.</p>
+      <label class="switch-field">
+        <input type="checkbox" name="overwrite">
+        <span class="switch-field__box">✓</span>
+        <span class="switch-field__text">
+          <strong>Перезаписывать заполненные поля</strong>
+          <small>Иначе описание, страна и жанры, введённые вручную, останутся как есть.</small>
+        </span>
+      </label>
+      <p class="form-hint">Спорные совпадения не применяются автоматически —
+      их список появится в конце.</p>
+      <div class="enrich-progress" data-enrich-progress hidden>
+        <span class="progress"><span style="--value:0%"></span></span>
+        <p data-enrich-status>Готовим список…</p>
+      </div>
+    `,
+    onSubmit: async (formData) => {
+      results = await runEnrichment(candidates, {
+        overwrite: formData.get("overwrite") === "on",
+      });
+      await reloadLibrary();
+    },
+    onSuccess: () => openEnrichmentSummary(results),
+  });
+}
+
+async function runEnrichment(candidates, { overwrite }) {
+  const dialog = document.querySelector("#entity-dialog");
+  const progress = dialog?.querySelector("[data-enrich-progress]");
+  const bar = progress?.querySelector(".progress > span");
+  const status = progress?.querySelector("[data-enrich-status]");
+  progress?.removeAttribute("hidden");
+
+  const results = [];
+  let consecutiveFailures = 0;
+
+  for (const [index, movie] of candidates.entries()) {
+    // Закрытие диалога — это отмена: продолжать фоновые запросы незачем.
+    if (!dialog?.open) break;
+
+    if (bar) bar.style.setProperty("--value", `${Math.round((index / candidates.length) * 100)}%`);
+    if (status) {
+      status.textContent = `${index + 1} из ${candidates.length}: ${movie.title}`;
+    }
+
+    try {
+      const result = await enrichSingleMovie(movie, { overwrite });
+      results.push(result);
+      consecutiveFailures = 0;
+    } catch (error) {
+      consecutiveFailures += 1;
+      results.push({
+        outcome: "failed",
+        movie,
+        message: error instanceof Error ? error.message : String(error),
+      });
+      if (consecutiveFailures >= ENRICHMENT_FAILURE_LIMIT) {
+        throw new Error(
+          "TMDB не отвечает несколько раз подряд. Проверьте интернет и токен.",
+        );
+      }
+    }
+
+    await delay(ENRICHMENT_DELAY_MS);
+  }
+
+  if (bar) bar.style.setProperty("--value", "100%");
+  return results;
+}
+
+async function enrichSingleMovie(movie, { overwrite }) {
+  let found = await searchTmdbMovies(movie.title, movie.releaseYear ?? null);
+  // Год в библиотеке может быть годом релиза в России, а не мировой премьеры.
+  if (movie.releaseYear && (found.results ?? []).length === 0) {
+    found = await searchTmdbMovies(movie.title, null);
+  }
+
+  const { match, confidence, alternatives } = pickBestMatch(movie, found.results ?? []);
+  if (!match) {
+    return { outcome: "missing", movie };
+  }
+  if (confidence === MATCH_CONFIDENCE.unsure) {
+    return { outcome: "review", movie, alternatives };
+  }
+
+  const details = await getTmdbMovie(match.id);
+  let posterUrl = "";
+  if (details.poster_path && (overwrite || !movie.coverUrl)) {
+    const cached = await cacheTmdbPoster(details.id, details.poster_path);
+    posterUrl = cached.url;
+  }
+
+  const patch = buildEnrichmentPatch(movie, details, { posterUrl, overwrite });
+  await saveMovie(createMovie({ ...movie, ...patch }));
+  return { outcome: "updated", movie, confidence, title: match.title };
+}
+
+function openEnrichmentSummary(results) {
+  const summary = summarizeEnrichment(results);
+  const pending = results.filter(
+    (result) => result.outcome === "review" || result.outcome === "missing",
+  );
+  const failed = results.filter((result) => result.outcome === "failed");
+
+  openDialog({
+    title: "Обогащение завершено",
+    submitLabel: "Готово",
+    variant: "enrich",
+    body: `
+      <div class="kv-list">
+        <div><span>Обновлено</span><b>${summary.updated}</b></div>
+        <div><span>Нужен выбор</span><b>${summary.review}</b></div>
+        <div><span>Не найдено</span><b>${summary.missing}</b></div>
+        <div><span>Ошибок</span><b>${summary.failed}</b></div>
+      </div>
+      ${pending.length ? `
+        <p class="form-hint">Эти фильмы TMDB не смог определить однозначно.
+        Откройте карточку и выберите нужный вариант вручную.</p>
+        <div class="enrich-list">
+          ${pending.map((result) => `
+            <div class="enrich-list__row">
+              <span>
+                <strong>${escapeHtml(result.movie.title)}</strong>
+                <small>${result.outcome === "review"
+                  ? `${result.alternatives.length} похожих карточек`
+                  : "совпадений не найдено"}</small>
+              </span>
+              <button class="btn btn--ghost btn--sm" type="button"
+                data-enrich-fix="${escapeAttribute(result.movie.id)}">Подобрать</button>
+            </div>
+          `).join("")}
+        </div>` : ""}
+      ${failed.length ? `
+        <p class="form-error is-visible">${escapeHtml(failed[0].message)}</p>` : ""}
+    `,
+    onSubmit: async () => {},
+  });
+
+  document.querySelectorAll("[data-enrich-fix]").forEach((button) => {
+    button.addEventListener("click", () => {
+      openMovieDialog(button.dataset.enrichFix);
+    });
+  });
+}
+
+function pluralizeMovies(count) {
+  const forms = ["фильм", "фильма", "фильмов"];
+  const value = Math.abs(count) % 100;
+  const remainder = value % 10;
+  if (value > 10 && value < 20) return forms[2];
+  if (remainder > 1 && remainder < 5) return forms[1];
+  if (remainder === 1) return forms[0];
+  return forms[2];
+}
+
+function delay(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 function changeTheme() {
