@@ -1,7 +1,14 @@
-import { createId } from "./entities.js";
+import { MOVIE_STATUS, createId } from "./entities.js";
 import { buildCategoryQueue } from "./libraryRules.js";
 
-export function buildRollPool(library) {
+// Фильтр пула сужает то, из чего колесо вообще выбирает: «только избранное»
+// или «только с тегом». Квоты списков при этом продолжают работать.
+export const DEFAULT_POOL_FILTERS = Object.freeze({
+  favoritesOnly: false,
+  tag: "",
+});
+
+export function buildRollPool(library, filters = DEFAULT_POOL_FILTERS) {
   const selectedKeys = new Set();
   const pool = [];
   const categories = flattenCategories(library.categories);
@@ -17,7 +24,7 @@ export function buildRollPool(library) {
     ]);
     const candidates = [...categoryIds]
       .flatMap((categoryId) => buildCategoryQueue(library, categoryId))
-      .filter((item) => isQueueItemEligible(item, library))
+      .filter((item) => isQueueItemEligible(item, library, filters))
       .sort(
         (a, b) =>
           a.position - b.position ||
@@ -301,18 +308,35 @@ function getDescendantCategoryIds(categories, categoryId) {
   return result;
 }
 
-function isQueueItemEligible(item, library) {
+// Брошенный фильм остаётся в библиотеке, но в колесо не попадает: он выбыл
+// сознательно, а рулетка выбирает из того, что действительно ждёт просмотра.
+function isRollCandidate(movie) {
+  return !movie.watchedAt && movie.status !== MOVIE_STATUS.dropped;
+}
+
+function matchesPoolFilters(movie, filters) {
+  if (filters?.favoritesOnly && !movie.isFavorite) return false;
+  if (filters?.tag && !(movie.tags ?? []).some((tag) => tag === filters.tag)) return false;
+  return true;
+}
+
+function isQueueItemEligible(item, library, filters = DEFAULT_POOL_FILTERS) {
   if (item.type === "movie") {
     const belongsToFranchise = library.franchises.some((franchise) =>
       franchise.movieIds.includes(item.id),
     );
-    return !belongsToFranchise && !item.value.watchedAt;
+    return !belongsToFranchise &&
+      isRollCandidate(item.value) &&
+      matchesPoolFilters(item.value, filters);
   }
 
   const members = item.value.movieIds
     .map((movieId) => library.movies.find((movie) => movie.id === movieId))
     .filter(Boolean);
-  return members.length > 0 && members.some((movie) => !movie.watchedAt);
+  // Коллекция участвует, если ждёт просмотра хотя бы один её фильм,
+  // подходящий под фильтр.
+  return members.length > 0 &&
+    members.some((movie) => isRollCandidate(movie) && matchesPoolFilters(movie, filters));
 }
 
 function toParticipantSnapshot(item, sourceCategoryId) {

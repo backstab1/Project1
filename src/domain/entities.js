@@ -1,4 +1,22 @@
 const SCORE_STEP = 0.5;
+
+// Статус и дата просмотра — одна и та же величина с двух сторон, поэтому
+// согласуются в единственном месте: в createMovie. Остальной код по-прежнему
+// может просто выставить watchedAt, и статус подтянется сам.
+export const MOVIE_STATUS = Object.freeze({
+  queued: "queued",
+  watching: "watching",
+  watched: "watched",
+  dropped: "dropped",
+});
+
+export const MOVIE_STATUS_LABELS = Object.freeze({
+  queued: "В очереди",
+  watching: "Смотрю",
+  watched: "Просмотрен",
+  dropped: "Брошен",
+});
+
 const NOTES_MAX_LENGTH = 2000;
 const TAG_MAX_LENGTH = 40;
 const TAGS_MAX_COUNT = 12;
@@ -82,7 +100,7 @@ export function createMovie(input = {}) {
     tags: normalizeTags(input.tags),
     notes: String(input.notes ?? "").trim().slice(0, NOTES_MAX_LENGTH),
     isFavorite: Boolean(input.isFavorite),
-    watchedAt: normalizeOptionalDate(input.watchedAt),
+    ...resolveWatchState(input),
     ratings: normalizeRatings(input.ratings),
     createdAt: input.createdAt ?? now,
     updatedAt: now,
@@ -163,6 +181,23 @@ export function calculateFranchiseRating(franchise, movieById) {
 
   const total = movieRatings.reduce((sum, rating) => sum + rating, 0);
   return Math.round((total / movieRatings.length) * 10) / 10;
+}
+
+function resolveWatchState(input) {
+  const watchedAt = normalizeOptionalDate(input.watchedAt);
+  const requested = input.status;
+
+  // Дата просмотра — сильнее статуса: её выставляет колесо и ручная отметка.
+  if (watchedAt) {
+    return { status: MOVIE_STATUS.watched, watchedAt };
+  }
+  if (requested === MOVIE_STATUS.watched) {
+    return { status: MOVIE_STATUS.watched, watchedAt: new Date().toISOString() };
+  }
+  if (requested === MOVIE_STATUS.watching || requested === MOVIE_STATUS.dropped) {
+    return { status: requested, watchedAt: null };
+  }
+  return { status: MOVIE_STATUS.queued, watchedAt: null };
 }
 
 // Теги пишет человек, поэтому регистр и лишние пробелы не должны плодить

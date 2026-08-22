@@ -13,6 +13,8 @@ import {
   saveSetting,
 } from "./data/libraryRepository.js";
 import {
+  MOVIE_STATUS,
+  MOVIE_STATUS_LABELS,
   createCategory,
   createFranchise,
   createMovie,
@@ -33,6 +35,7 @@ import {
   reorderFranchiseMovie,
 } from "./domain/libraryRules.js";
 import {
+  DEFAULT_POOL_FILTERS,
   buildRollPool,
   confirmElimination,
   createRollSession,
@@ -43,6 +46,11 @@ import {
   useSave,
 } from "./domain/rollEngine.js";
 import { buildLibraryStatistics } from "./domain/statistics.js";
+import { buildLibraryCsv } from "./domain/csvExport.js";
+import {
+  DEFAULT_CATALOG_FILTERS,
+  filterCatalogMovies,
+} from "./domain/catalogQuery.js";
 import {
   MATCH_CONFIDENCE,
   buildEnrichmentPatch,
@@ -95,18 +103,9 @@ const VIEW_IDS = new Set([
   "watched",
   "wheel",
   "sessions",
+  "insights",
   "settings",
 ]);
-const DEFAULT_CATALOG_FILTERS = Object.freeze({
-  query: "",
-  categoryId: "",
-  genre: "",
-  tag: "",
-  status: "all",
-  favoritesOnly: false,
-  sort: "title",
-});
-
 const CATALOG_VIEW_KEY = "cinevault-catalog-view";
 const SIDEBAR_KEY = "cinevault-sidebar-collapsed";
 
@@ -149,12 +148,15 @@ const state = {
   },
   legacyDataFound: detectLegacyData(),
   rollDraftPool: [],
+  rollPoolFilters: { ...DEFAULT_POOL_FILTERS },
   activeSession: null,
   isSpinning: false,
   catalogFilters: { ...DEFAULT_CATALOG_FILTERS },
   catalogView: readStoredPreference(CATALOG_VIEW_KEY, "grid"),
   sidebarCollapsed: readStoredPreference(SIDEBAR_KEY, "0") === "1",
   detailMovieId: null,
+  selectionMode: false,
+  selectedMovieIds: new Set(),
   focusControl: null,
   tmdbStatus: { configured: false, loading: true, error: null },
   error: null,
@@ -183,7 +185,7 @@ async function start() {
     await initializeDatabase();
     state.library = await loadLibrary();
     state.statistics = buildLibraryStatistics(state.library);
-    state.rollDraftPool = buildRollPool(state.library);
+    state.rollDraftPool = buildRollPool(state.library, state.rollPoolFilters);
     await refreshTmdbStatus();
   } catch (error) {
     console.error(error);
@@ -247,7 +249,7 @@ async function reloadLibrary() {
   state.library = await loadLibrary();
   state.statistics = buildLibraryStatistics(state.library);
   if (!state.activeSession) {
-    state.rollDraftPool = buildRollPool(state.library);
+    state.rollDraftPool = buildRollPool(state.library, state.rollPoolFilters);
   }
   render();
 }
@@ -303,7 +305,20 @@ async function handleAction(action, payload) {
     "catalog-favorites-toggle": () =>
       setCatalogFilter("favoritesOnly", !state.catalogFilters.favoritesOnly),
     "catalog-tag-open": () => openCatalogTag(payload.tag),
+    "catalog-status-open": () => openCatalogWithFilters({ status: payload.status }),
+    "roll-filter-set": () => setRollPoolFilter(payload.filter),
+    "session-repeat": () => repeatSessionPool(payload.id),
+    "csv-export": () => exportLibraryCsv(),
     "movie-favorite-toggle": () => toggleMovieFavorite(payload.id),
+    "movie-status-set": () => setMovieStatus(payload.id, payload.status),
+    "selection-toggle": () => toggleSelectionMode(),
+    "selection-toggle-movie": () => toggleMovieSelection(payload.id),
+    "selection-all": () => selectAllVisibleMovies(),
+    "bulk-watch": () => bulkMarkWatched(),
+    "bulk-favorite": () => bulkToggleFavorite(),
+    "bulk-move": () => openBulkMoveDialog(),
+    "bulk-tag": () => openBulkTagDialog(),
+    "bulk-delete": () => confirmBulkDeletion(),
     "movie-open": () => openMovieDetail(payload.id),
     "detail-close": () => closeMovieDetail(),
     "sidebar-toggle": () => toggleSidebar(),
@@ -349,6 +364,264 @@ function openCatalogWithFilters(filters) {
   }
   state.focusControl = null;
   render();
+}
+
+// Отбор пула не меняет библиотеку: он лишь сужает то, из чего колесо берёт
+// участников, поэтому пересобирается прямо на месте.
+function setRollPoolFilter(filter) {
+  const filters = { ...DEFAULT_POOL_FILTERS };
+  if (filter === "favorites") filters.favoritesOnly = true;
+  state.rollPoolFilters = filters;
+  state.rollDraftPool = buildRollPool(state.library, filters);
+  render();
+}
+
+function setRollPoolTag(tag) {
+  state.rollPoolFilters = { ...state.rollPoolFilters, tag: String(tag ?? "") };
+  state.rollDraftPool = buildRollPool(state.library, state.rollPoolFilters);
+  render();
+}
+
+// Повтор пула берёт состав прошлой сессии и выбрасывает то, чего уже нет:
+// удалённые фильмы и всё, что успели посмотреть.
+function repeatSessionPool(sessionId) {
+  const session = state.library.rollSessions.find((item) => item.id === sessionId);
+  if (!session) return;
+
+  const movieById = new Map(state.library.movies.map((movie) => [movie.id, movie]));
+  const franchiseById = new Map(
+    state.library.franchises.map((franchise) => [franchise.id, franchise]),
+  );
+
+  const pool = session.originalPool.filter((item) => {
+    if (item.type === "movie") {
+      const movie = movieById.get(item.id);
+      return Boolean(movie) && !movie.watchedAt;
+    }
+    const franchise = franchiseById.get(item.id);
+    return Boolean(franchise) && franchise.movieIds.some(
+      (movieId) => movieById.get(movieId) && !movieById.get(movieId).watchedAt,
+    );
+  });
+
+  const dropped = session.originalPool.length - pool.length;
+  if (pool.length < 2) {
+    showToast("В этом пуле почти всё уже просмотрено — соберите новый.");
+    return;
+  }
+
+  state.rollPoolFilters = { ...DEFAULT_POOL_FILTERS };
+  state.rollDraftPool = pool.map((item) => ({ ...item }));
+  state.onNavigate("wheel");
+  showToast(dropped
+    ? `Пул повторён, ${dropped} уже просмотрено и исключено`
+    : "Пул повторён");
+}
+
+async function exportLibraryCsv() {
+  const csv = buildLibraryCsv(state.library);
+  // BOM нужен, чтобы Excel открыл кириллицу без танцев с кодировками.
+  const blob = new Blob([`\ufeff${csv}`], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `cinevault-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  showToast("CSV выгружен.");
+}
+
+// Массовые операции работают только в каталоге и только над тем, что человек
+// видит на экране: скрытые фильтром фильмы не должны меняться незаметно.
+function toggleSelectionMode() {
+  state.selectionMode = !state.selectionMode;
+  state.selectedMovieIds = new Set();
+  state.detailMovieId = null;
+  render();
+}
+
+function toggleMovieSelection(movieId) {
+  const selected = new Set(state.selectedMovieIds);
+  if (selected.has(movieId)) selected.delete(movieId);
+  else selected.add(movieId);
+  state.selectedMovieIds = selected;
+  render();
+}
+
+function selectAllVisibleMovies() {
+  const visible = getVisibleCatalogMovies();
+  const allSelected = visible.every((movie) => state.selectedMovieIds.has(movie.id));
+  state.selectedMovieIds = allSelected
+    ? new Set()
+    : new Set(visible.map((movie) => movie.id));
+  render();
+}
+
+function getVisibleCatalogMovies() {
+  return filterCatalogMovies(state.library, state.catalogFilters);
+}
+
+function getSelectedMovies() {
+  return state.library.movies.filter((movie) => state.selectedMovieIds.has(movie.id));
+}
+
+async function applyToSelection(update, message) {
+  const movies = getSelectedMovies();
+  if (movies.length === 0) return;
+
+  for (const movie of movies) {
+    await saveMovie(createMovie(update(movie)));
+  }
+  state.selectedMovieIds = new Set();
+  await reloadLibrary();
+  showToast(`${message}: ${movies.length}`);
+}
+
+function bulkMarkWatched() {
+  const watchedAt = new Date().toISOString();
+  return applyToSelection(
+    (movie) => ({ ...movie, watchedAt: movie.watchedAt ?? watchedAt }),
+    "Отмечено просмотренными",
+  );
+}
+
+function bulkToggleFavorite() {
+  // Если выделено хоть что-то не избранное — добавляем, иначе снимаем со всех.
+  const movies = getSelectedMovies();
+  const shouldFavorite = movies.some((movie) => !movie.isFavorite);
+  return applyToSelection(
+    (movie) => ({ ...movie, isFavorite: shouldFavorite }),
+    shouldFavorite ? "Добавлено в избранное" : "Убрано из избранного",
+  );
+}
+
+function openBulkMoveDialog() {
+  const movies = getSelectedMovies();
+  if (movies.length === 0) return;
+
+  openDialog({
+    title: `Перенести в список: ${movies.length}`,
+    submitLabel: "Перенести",
+    body: `
+      <label class="field">
+        <span>Список</span>
+        <select name="categoryId">
+          <option value="">Без списка</option>
+          ${buildCategoryOptions(null)}
+        </select>
+      </label>
+      <p class="form-hint">Фильмы встанут в конец очереди выбранного списка.</p>
+    `,
+    onSubmit: async (formData) => {
+      const categoryId = formData.get("categoryId") || null;
+      let position = getNextMoviePosition(categoryId);
+      for (const movie of movies) {
+        await saveMovie(createMovie({
+          ...movie,
+          categoryId,
+          categoryPosition: position,
+        }));
+        position += 1;
+      }
+      state.selectedMovieIds = new Set();
+      await reloadLibrary();
+      showToast(`Перенесено: ${movies.length}`);
+    },
+  });
+}
+
+function openBulkTagDialog() {
+  const movies = getSelectedMovies();
+  if (movies.length === 0) return;
+
+  openDialog({
+    title: `Теги для ${movies.length} ${pluralizeMovies(movies.length)}`,
+    submitLabel: "Применить",
+    body: `
+      <label class="field">
+        <span>Добавить теги</span>
+        <input name="tags" maxlength="300" placeholder="Вечер пятницы, пересмотр">
+      </label>
+      <label class="switch-field">
+        <input type="checkbox" name="replace">
+        <span class="switch-field__box">✓</span>
+        <span class="switch-field__text">
+          <strong>Заменить существующие теги</strong>
+          <small>Иначе новые метки добавятся к уже проставленным.</small>
+        </span>
+      </label>
+    `,
+    onSubmit: async (formData) => {
+      const tags = parseTagInput(formData.get("tags"));
+      const replace = formData.get("replace") === "on";
+      if (tags.length === 0 && !replace) {
+        throw new Error("Введите хотя бы один тег или включите замену.");
+      }
+
+      for (const movie of movies) {
+        await saveMovie(createMovie({
+          ...movie,
+          tags: replace ? tags : [...(movie.tags ?? []), ...tags],
+        }));
+      }
+      state.selectedMovieIds = new Set();
+      await reloadLibrary();
+      showToast(`Теги обновлены: ${movies.length}`);
+    },
+  });
+}
+
+function confirmBulkDeletion() {
+  const movies = getSelectedMovies();
+  if (movies.length === 0) return;
+
+  openDialog({
+    title: `Удалить ${movies.length} ${pluralizeMovies(movies.length)}?`,
+    submitLabel: "Удалить",
+    variant: "danger",
+    body: `
+      <p>Фильмы исчезнут из списков, коллекций и статистики. Действие
+      необратимо, поэтому сначала стоит скачать резервную копию.</p>
+      <div class="enrich-list">
+        ${movies.slice(0, 12).map((movie) => `
+          <div class="enrich-list__row"><span><strong>${escapeHtml(movie.title)}</strong></span></div>
+        `).join("")}
+        ${movies.length > 12
+          ? `<div class="enrich-list__row"><span>…и ещё ${movies.length - 12}</span></div>`
+          : ""}
+      </div>
+    `,
+    onSubmit: async () => {
+      for (const movie of movies) {
+        await commitLibraryChanges(buildMovieDeletionCommands(state.library, movie.id));
+      }
+      state.selectedMovieIds = new Set();
+      await reloadLibrary();
+      showToast(`Удалено: ${movies.length}`);
+    },
+  });
+}
+
+async function setMovieStatus(movieId, status) {
+  const movie = state.library.movies.find((item) => item.id === movieId);
+  if (!movie || movieStatusOf(movie) === status) return;
+
+  // Смена статуса на «просмотрен» проходит через обычный диалог даты, чтобы
+  // не выдумывать дату за пользователя.
+  if (status === MOVIE_STATUS.watched) {
+    openWatchDateDialog(movieId);
+    return;
+  }
+
+  await saveMovie(createMovie({ ...movie, watchedAt: null, status }));
+  await reloadLibrary();
+  showToast(`Статус: ${MOVIE_STATUS_LABELS[status]}`);
+}
+
+function movieStatusOf(movie) {
+  return movie.watchedAt ? MOVIE_STATUS.watched : movie.status ?? MOVIE_STATUS.queued;
 }
 
 async function toggleMovieFavorite(movieId) {
@@ -532,6 +805,11 @@ async function handleControl(control, payload) {
     await reloadLibrary();
     applyMotionPreference();
     showToast("Настройка сохранена.");
+    return;
+  }
+
+  if (control === "roll-tag") {
+    setRollPoolTag(payload.value);
     return;
   }
 

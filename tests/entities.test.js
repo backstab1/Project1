@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  MOVIE_STATUS,
   calculateAverageRating,
   calculateFranchiseRating,
   collectLibraryTags,
@@ -133,4 +134,36 @@ test("теги библиотеки собираются с частотой и 
     { tag: "Уют", count: 2 },
     { tag: "Ужасы", count: 1 },
   ]);
+});
+
+test("дата просмотра всегда сильнее переданного статуса", () => {
+  const movie = createMovie({
+    title: "Дюна",
+    status: MOVIE_STATUS.watching,
+    watchedAt: "2026-07-12T19:30:00.000Z",
+  });
+
+  assert.equal(movie.status, MOVIE_STATUS.watched);
+  assert.equal(movie.watchedAt, "2026-07-12T19:30:00.000Z");
+});
+
+test("статус «просмотрен» без даты проставляет дату сам", () => {
+  const movie = createMovie({ title: "Дюна", status: MOVIE_STATUS.watched });
+
+  assert.equal(movie.status, MOVIE_STATUS.watched);
+  assert.ok(movie.watchedAt);
+});
+
+test("возврат в очередь снимает дату просмотра", () => {
+  const watched = createMovie({ title: "Дюна", watchedAt: "2026-07-12T19:30:00.000Z" });
+  const queued = createMovie({ ...watched, watchedAt: null, status: MOVIE_STATUS.queued });
+
+  assert.equal(queued.status, MOVIE_STATUS.queued);
+  assert.equal(queued.watchedAt, null);
+});
+
+test("неизвестный статус превращается в очередь", () => {
+  assert.equal(createMovie({ title: "Дюна", status: "нечто" }).status, MOVIE_STATUS.queued);
+  assert.equal(createMovie({ title: "Дюна" }).status, MOVIE_STATUS.queued);
+  assert.equal(createMovie({ title: "Дюна", status: MOVIE_STATUS.dropped }).status, "dropped");
 });

@@ -24,6 +24,7 @@ $viewChecks = [ordered]@{
     watched    = $null
     wheel      = $null
     sessions   = $null
+    insights   = "document.querySelector('.status-split, .empty')"
     settings   = $null
 }
 
@@ -663,6 +664,165 @@ window.fetch = async (input, init) => {
     Save-Screenshot "qa-settings-preferences" | Out-Null
     Write-Host "Behaviour settings persist and apply."
 
+    # Wave 3: statuses and bulk operations.
+    Open-View "catalog"
+    $statuses = Invoke-Eval @"
+(async () => {
+  const segments = [...document.querySelectorAll('[data-action=catalog-status-set]')]
+    .map((node) => node.dataset.value);
+  const expected = ['all', 'queued', 'watching', 'watched', 'dropped'];
+  if (segments.join(',') !== expected.join(',')) return 'status filter is ' + segments.join(',');
+
+  document.querySelector('[data-action=movie-open][data-id=qa-stalker]').click();
+  for (let attempt = 0; attempt < 20; attempt++) {
+    if (document.querySelector('.status-switch')) break;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  const dropButton = document.querySelector('[data-action=movie-status-set][data-status=dropped]');
+  if (!dropButton) return 'status switch is missing in the drawer';
+  dropButton.click();
+  await new Promise((resolve) => setTimeout(resolve, 700));
+
+  const repository = await import('/src/data/libraryRepository.js');
+  const library = await repository.loadLibrary();
+  const movie = library.movies.find((item) => item.id === 'qa-stalker');
+  if (movie.status !== 'dropped') return 'status was not saved: ' + movie.status;
+
+  const engine = await import('/src/domain/rollEngine.js');
+  const pool = engine.buildRollPool(library);
+  if (pool.some((item) => item.id === 'qa-stalker')) return 'dropped movie stayed in the wheel';
+  return 'ok';
+})()
+"@
+    if ($statuses -ne "ok") {
+        throw "Movie statuses are broken: $statuses"
+    }
+    Invoke-Eval "document.querySelector('[data-action=detail-close]')?.click()" | Out-Null
+    Write-Host "Statuses persist and keep dropped movies out of the wheel."
+
+    Open-View "catalog"
+    $bulk = Invoke-Eval @"
+(async () => {
+  document.querySelector('[data-action=selection-toggle]').click();
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  if (!document.querySelector('.bulk-bar')) return 'bulk bar did not appear';
+
+  const cards = [...document.querySelectorAll('.movie-card [data-action=selection-toggle-movie]')];
+  if (cards.length < 2) return 'not enough cards to select';
+  cards[0].click();
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  cards[1].click();
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  if (document.querySelectorAll('.movie-card.is-selected').length !== 2) {
+    return 'selection did not stick';
+  }
+  return 'ok';
+})()
+"@
+    if ($bulk -ne "ok") {
+        throw "Bulk selection is broken: $bulk"
+    }
+    Save-Screenshot "qa-catalog-bulk" | Out-Null
+
+    $bulkFavorite = Invoke-Eval @"
+(async () => {
+  const before = document.querySelectorAll('.badge--favorite').length;
+  document.querySelector('[data-action=bulk-favorite]').click();
+  await new Promise((resolve) => setTimeout(resolve, 900));
+  const after = document.querySelectorAll('.badge--favorite').length;
+  if (after <= before) return 'favorite badges did not grow: ' + before + ' -> ' + after;
+  if (document.querySelectorAll('.movie-card.is-selected').length !== 0) {
+    return 'selection was not cleared after the bulk action';
+  }
+  document.querySelector('[data-action=selection-toggle]').click();
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  return document.querySelector('.bulk-bar') ? 'bulk bar stayed open' : 'ok';
+})()
+"@
+    if ($bulkFavorite -ne "ok") {
+        throw "Bulk favorite action is broken: $bulkFavorite"
+    }
+    Write-Host "Bulk selection applies an action and closes."
+
+    # Wave 4: the insights view.
+    Open-View "insights"
+    $insights = Invoke-Eval @"
+(() => {
+  const statuses = document.querySelectorAll('.status-split__item').length;
+  const charts = document.querySelectorAll('.bar-list').length;
+  const pace = document.querySelectorAll('.pace-chart__column').length;
+  if (statuses !== 4) return 'status split has ' + statuses + ' cells';
+  if (charts < 2) return 'not enough charts: ' + charts;
+  if (pace !== 12) return 'watch pace has ' + pace + ' months';
+  return 'ok';
+})()
+"@
+    if ($insights -ne "ok") {
+        throw "Insights view is broken: $insights"
+    }
+    Save-Screenshot "qa-insights" | Out-Null
+
+    $drillDown = Invoke-Eval @"
+(async () => {
+  const button = document.querySelector('[data-action=catalog-status-open][data-status=watched]');
+  if (!button) return 'status drill-down is missing';
+  button.click();
+  await new Promise((resolve) => setTimeout(resolve, 700));
+  if (!location.hash.includes('catalog')) return 'drill-down did not open the catalog';
+  const active = document.querySelector('[data-action=catalog-status-set].is-active');
+  return active?.dataset.value === 'watched' ? 'ok' : 'wrong filter: ' + active?.dataset.value;
+})()
+"@
+    if ($drillDown -ne "ok") {
+        throw "Insights drill-down is broken: $drillDown"
+    }
+    Invoke-Eval "document.querySelector('[data-action=catalog-filters-reset]')?.click()" | Out-Null
+    Write-Host "Insights render charts and drill down into the catalog."
+
+    # Wave 5: wheel pool filters and CSV export.
+    Open-View "wheel"
+    $poolFilter = Invoke-Eval @"
+(async () => {
+  const before = document.querySelectorAll('.pool-list li').length;
+  const favorites = document.querySelector('[data-action=roll-filter-set][data-filter=favorites]');
+  if (!favorites) return 'pool filter is missing';
+  favorites.click();
+  await new Promise((resolve) => setTimeout(resolve, 700));
+  const filtered = document.querySelectorAll('.pool-list li').length;
+  const empty = document.querySelector('.empty');
+  if (!empty && filtered >= before) {
+    return 'favorites filter changed nothing: ' + before + ' -> ' + filtered;
+  }
+  document.querySelector('[data-action=roll-filter-set][data-filter=all]').click();
+  await new Promise((resolve) => setTimeout(resolve, 700));
+  return document.querySelectorAll('.pool-list li').length === before
+    ? 'ok'
+    : 'pool did not return to its full size';
+})()
+"@
+    if ($poolFilter -ne "ok") {
+        throw "Wheel pool filter is broken: $poolFilter"
+    }
+    Write-Host "Wheel pool filter narrows and restores the pool."
+
+    $csv = Invoke-Eval @"
+(async () => {
+  const csvModule = await import('/src/domain/csvExport.js');
+  const repository = await import('/src/data/libraryRepository.js');
+  const csv = csvModule.buildLibraryCsv(await repository.loadLibrary());
+  const lines = csv.split('\r\n');
+  if (lines.length < 3) return 'csv has only ' + lines.length + ' lines';
+  if (!lines[0].includes('TMDB ID')) return 'csv header is wrong: ' + lines[0];
+  return 'ok';
+})()
+"@
+    if ($csv -ne "ok") {
+        throw "CSV export is broken: $csv"
+    }
+    Write-Host "CSV export produces a header and rows."
+
+    # Wave 2 check runs last, so make sure we are back on the settings view.
+    Open-View "settings"
     $enrichment = Invoke-Eval @"
 (async () => {
   const button = document.querySelector('[data-action=tmdb-enrich]');

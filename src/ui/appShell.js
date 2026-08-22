@@ -1,5 +1,7 @@
 import { APP_VERSION } from "../config.js";
 import {
+  MOVIE_STATUS,
+  MOVIE_STATUS_LABELS,
   calculateAverageRating,
   collectLibraryTags,
 } from "../domain/entities.js";
@@ -11,6 +13,11 @@ import { setupDialog } from "./dialog.js";
 import { drawWheel } from "./wheelCanvas.js";
 import { isBackupReminderDue } from "../domain/backupReminder.js";
 import { selectEnrichmentCandidates } from "../domain/tmdbEnrichment.js";
+import {
+  filterCatalogMovies,
+  getMovieStatus,
+} from "../domain/catalogQuery.js";
+import { buildInsights } from "../domain/insights.js";
 import { icon } from "./icons.js";
 
 // «Главная» намеренно отсутствует в боковом меню: на неё ведёт логотип CV.
@@ -28,6 +35,9 @@ const NAV_GROUPS = [
     ["wheel", "Колесо", "wheel"],
     ["sessions", "История роллов", "history"],
   ]],
+  ["Аналитика", [
+    ["insights", "Статистика", "target"],
+  ]],
   ["Система", [
     ["settings", "Настройки", "settings"],
   ]],
@@ -43,6 +53,7 @@ const VIEW_META = Object.freeze({
   watched: { title: "Просмотренные", eyebrow: "История и оценки" },
   wheel: { title: "Колесо", eyebrow: "Батл-рояль" },
   sessions: { title: "История роллов", eyebrow: "Завершённые сессии" },
+  insights: { title: "Статистика", eyebrow: "Библиотека в цифрах" },
   settings: { title: "Настройки", eyebrow: "Данные и интеграции" },
 });
 
@@ -317,6 +328,7 @@ function renderCurrentView(container, state) {
     wheel: renderWheel,
     watched: (node, appState) => renderWatched(node, appState.library),
     sessions: (node, appState) => renderSessions(node, appState.library.rollSessions),
+    insights: (node, appState) => renderInsights(node, appState.library),
     settings: renderSettings,
   };
 
@@ -728,8 +740,10 @@ function renderMovieDetail(state) {
             ${movie.country ? `<span class="chip">${icon("globe")}${escapeHtml(movie.country)}</span>` : ""}
             ${franchise ? `<span class="chip chip--accent">${icon("collection")}${escapeHtml(franchise.name)}</span>` : ""}
             <span class="chip ${movie.watchedAt ? "chip--success" : ""}">
-              ${icon(movie.watchedAt ? "check" : "bookmark")}
-              ${movie.watchedAt ? `Просмотрен ${formatDate(movie.watchedAt)}` : "В очереди"}
+              ${icon(STATUS_ICONS[getMovieStatus(movie)])}
+              ${movie.watchedAt
+                ? `Просмотрен ${formatDate(movie.watchedAt)}`
+                : escapeHtml(MOVIE_STATUS_LABELS[getMovieStatus(movie)])}
             </span>
           </div>
 
@@ -779,6 +793,17 @@ function renderMovieDetail(state) {
             </div>
           </section>
 
+          ${movie.watchedAt ? "" : `
+            <div class="status-switch" role="group" aria-label="Статус фильма">
+              ${[MOVIE_STATUS.queued, MOVIE_STATUS.watching, MOVIE_STATUS.dropped].map((status) => `
+                <button type="button" class="${getMovieStatus(movie) === status ? "is-active" : ""}"
+                  data-action="movie-status-set" data-id="${movie.id}" data-status="${status}"
+                  aria-pressed="${getMovieStatus(movie) === status}">
+                  ${icon(STATUS_ICONS[status])}<span>${escapeHtml(MOVIE_STATUS_LABELS[status])}</span>
+                </button>
+              `).join("")}
+            </div>`}
+
           <div class="drawer__actions">
             <button class="btn btn--primary" type="button"
               data-action="${movie.watchedAt ? "rating-add" : "watch-add"}" data-id="${movie.id}">
@@ -820,35 +845,11 @@ function renderCatalog(container, state) {
   )].sort((a, b) => a.localeCompare(b, "ru-RU"));
   const tags = collectLibraryTags(library.movies);
   const favoriteCount = library.movies.filter((movie) => movie.isFavorite).length;
-  const query = catalogFilters.query.trim().toLocaleLowerCase("ru-RU");
+  const selection = Boolean(state.selectionMode);
+  const selectedIds = state.selectedMovieIds ?? new Set();
   const activeChips = buildFilterChips(catalogFilters, categories);
   const hasCustomizedCatalog = activeChips.length > 0 || catalogFilters.sort !== "title";
-
-  const movies = library.movies
-    .filter((movie) => {
-      if (query && ![
-        movie.title,
-        movie.originalTitle,
-        movie.country,
-        movie.overview,
-        ...(movie.genres ?? []),
-        categories.get(movie.categoryId)?.name,
-        franchiseByMovieId.get(movie.id)?.name,
-        movie.releaseYear,
-      ].some((value) => String(value ?? "").toLocaleLowerCase("ru-RU").includes(query))) {
-        return false;
-      }
-      if (catalogFilters.categoryId && movie.categoryId !== catalogFilters.categoryId) return false;
-      if (catalogFilters.genre &&
-        !(movie.genres ?? []).some((genre) => genre === catalogFilters.genre)) return false;
-      if (catalogFilters.status === "watched" && !movie.watchedAt) return false;
-      if (catalogFilters.status === "unwatched" && movie.watchedAt) return false;
-      if (catalogFilters.favoritesOnly && !movie.isFavorite) return false;
-      if (catalogFilters.tag &&
-        !(movie.tags ?? []).some((tag) => tag === catalogFilters.tag)) return false;
-      return true;
-    })
-    .sort(getMovieSorter(catalogFilters.sort));
+  const movies = filterCatalogMovies(library, catalogFilters);
 
   container.innerHTML = `
     <div class="toolbar">
@@ -861,7 +862,13 @@ function renderCatalog(container, state) {
       </div>
       <div class="toolbar__actions">
         <div class="segmented" role="group" aria-label="Статус">
-          ${[["all", "Все"], ["unwatched", "В очереди"], ["watched", "Просмотрено"]]
+          ${[
+            ["all", "Все"],
+            [MOVIE_STATUS.queued, MOVIE_STATUS_LABELS.queued],
+            [MOVIE_STATUS.watching, MOVIE_STATUS_LABELS.watching],
+            [MOVIE_STATUS.watched, "Просмотрено"],
+            [MOVIE_STATUS.dropped, MOVIE_STATUS_LABELS.dropped],
+          ]
             .map(([value, label]) => `
               <button type="button" class="${catalogFilters.status === value ? "is-active" : ""}"
                 data-action="catalog-status-set" data-value="${value}"
@@ -875,6 +882,12 @@ function renderCatalog(container, state) {
           ${favoriteCount ? "" : "disabled"}
           title="${favoriteCount ? "Только избранное" : "В библиотеке нет избранного"}">
           ${icon(catalogFilters.favoritesOnly ? "starFilled" : "star")}<span>Избранное</span>
+        </button>
+        <button type="button"
+          class="btn btn--ghost btn--sm ${selection ? "is-active" : ""}"
+          data-action="selection-toggle"
+          aria-pressed="${Boolean(selection)}">
+          ${icon("check")}<span>${selection ? "Выйти из выделения" : "Выбрать"}</span>
         </button>
         <div class="segmented segmented--icons" role="group" aria-label="Вид">
           <button type="button" class="${viewMode === "grid" ? "is-active" : ""}"
@@ -958,6 +971,29 @@ function renderCatalog(container, state) {
         `).join("")}
       </div>` : ""}
 
+    ${selection ? `
+      <div class="bulk-bar ${selectedIds.size ? "is-active" : ""}">
+        <div class="bulk-bar__count">
+          <strong>${selectedIds.size}</strong>
+          <span>${pluralize(selectedIds.size, ["фильм выбран", "фильма выбрано", "фильмов выбрано"])}</span>
+        </div>
+        <div class="bulk-bar__actions">
+          <button class="btn btn--ghost btn--sm" type="button" data-action="selection-all">
+            ${icon("check")}<span>Все на экране</span>
+          </button>
+          <button class="btn btn--ghost btn--sm" type="button" data-action="bulk-watch"
+            ${selectedIds.size ? "" : "disabled"}>${icon("eye")}<span>Просмотрены</span></button>
+          <button class="btn btn--ghost btn--sm" type="button" data-action="bulk-favorite"
+            ${selectedIds.size ? "" : "disabled"}>${icon("star")}<span>В избранное</span></button>
+          <button class="btn btn--ghost btn--sm" type="button" data-action="bulk-move"
+            ${selectedIds.size ? "" : "disabled"}>${icon("layers")}<span>В список</span></button>
+          <button class="btn btn--ghost btn--sm" type="button" data-action="bulk-tag"
+            ${selectedIds.size ? "" : "disabled"}>${icon("tag")}<span>Теги</span></button>
+          <button class="btn btn--danger-ghost btn--sm" type="button" data-action="bulk-delete"
+            ${selectedIds.size ? "" : "disabled"}>${icon("trash")}<span>Удалить</span></button>
+        </div>
+      </div>` : ""}
+
     ${movies.length === 0 ? emptyBlock(
       library.movies.length ? "Ничего не нашлось" : "Каталог пока пуст",
       library.movies.length
@@ -967,20 +1003,22 @@ function renderCatalog(container, state) {
         ? { action: "catalog-filters-reset", label: "Сбросить фильтры", icon: "refresh" }
         : { action: "movie-add", label: "Добавить фильм", icon: "plus" },
     ) : viewMode === "grid" ? `
-      <div class="movie-grid">
+      <div class="movie-grid ${selection ? "is-selecting" : ""}">
         ${movies.map((movie, index) => movieCard(
           movie,
           categories.get(movie.categoryId),
           franchiseByMovieId.get(movie.id),
           index,
+          { selection, selected: selectedIds.has(movie.id) },
         )).join("")}
       </div>
     ` : `
-      <div class="movie-list">
+      <div class="movie-list ${selection ? "is-selecting" : ""}">
         ${movies.map((movie) => movieRow(
           movie,
           categories.get(movie.categoryId),
           franchiseByMovieId.get(movie.id),
+          { selection, selected: selectedIds.has(movie.id) },
         )).join("")}
       </div>
     `}
@@ -1006,7 +1044,7 @@ function buildFilterChips(filters, categories) {
     chips.push({
       key: "status",
       label: "Статус",
-      value: filters.status === "watched" ? "Просмотрено" : "В очереди",
+      value: MOVIE_STATUS_LABELS[filters.status] ?? filters.status,
     });
   }
   if (filters.tag) {
@@ -1018,12 +1056,36 @@ function buildFilterChips(filters, categories) {
   return chips;
 }
 
-function movieCard(movie, category, franchise, index = 0) {
+const STATUS_ICONS = Object.freeze({
+  queued: "bookmark",
+  watching: "play",
+  watched: "check",
+  dropped: "close",
+});
+
+function statusBadge(movie, { compact = false } = {}) {
+  const status = getMovieStatus(movie);
+  const label = MOVIE_STATUS_LABELS[status];
+  return `<span class="badge badge--status badge--${status}" title="${escapeAttribute(label)}">
+    ${icon(STATUS_ICONS[status])}${compact ? "" : escapeHtml(label)}
+  </span>`;
+}
+
+function movieCard(movie, category, franchise, index = 0, options = {}) {
   const rating = calculateAverageRating(movie.ratings);
+  const { selection = false, selected = false } = options;
   return `
-    <article class="movie-card ${movie.watchedAt ? "is-watched" : ""}" style="--i:${index % 24}">
-      <button class="movie-card__hit" type="button" data-action="movie-open" data-id="${movie.id}"
-        aria-label="Открыть карточку ${escapeAttribute(movie.title)}"></button>
+    <article class="movie-card ${movie.watchedAt ? "is-watched" : ""} ${selected ? "is-selected" : ""}"
+      style="--i:${index % 24}">
+      <button class="movie-card__hit" type="button"
+        data-action="${selection ? "selection-toggle-movie" : "movie-open"}" data-id="${movie.id}"
+        aria-label="${selection
+          ? `${selected ? "Снять выделение" : "Выделить"}: ${escapeAttribute(movie.title)}`
+          : `Открыть карточку ${escapeAttribute(movie.title)}`}"></button>
+      ${selection ? `
+        <span class="movie-card__check ${selected ? "is-on" : ""}" aria-hidden="true">
+          ${selected ? icon("check") : ""}
+        </span>` : ""}
       <div class="movie-card__cover">
         ${movie.coverUrl
           ? `<img src="${escapeAttribute(movie.coverUrl)}" alt="" loading="lazy"
@@ -1036,7 +1098,7 @@ function movieCard(movie, category, franchise, index = 0) {
             ? `<span class="badge badge--favorite" title="В избранном">${icon("starFilled")}</span>`
             : ""}
           ${rating === null ? "" : `<span class="badge badge--score">${icon("star")}${rating}</span>`}
-          ${movie.watchedAt ? `<span class="badge badge--seen">${icon("check")}Просмотрен</span>` : ""}
+          ${getMovieStatus(movie) === MOVIE_STATUS.queued ? "" : statusBadge(movie)}
         </div>
         <div class="movie-card__tools">
           <button class="icon-btn icon-btn--glass ${movie.isFavorite ? "is-favorite" : ""}"
@@ -1070,12 +1132,20 @@ function movieCard(movie, category, franchise, index = 0) {
     </article>`;
 }
 
-function movieRow(movie, category, franchise) {
+function movieRow(movie, category, franchise, options = {}) {
   const rating = calculateAverageRating(movie.ratings);
+  const { selection = false, selected = false } = options;
   return `
-    <article class="movie-row ${movie.watchedAt ? "is-watched" : ""}">
-      <button class="movie-row__hit" type="button" data-action="movie-open" data-id="${movie.id}"
-        aria-label="Открыть карточку ${escapeAttribute(movie.title)}"></button>
+    <article class="movie-row ${movie.watchedAt ? "is-watched" : ""} ${selected ? "is-selected" : ""}">
+      <button class="movie-row__hit" type="button"
+        data-action="${selection ? "selection-toggle-movie" : "movie-open"}" data-id="${movie.id}"
+        aria-label="${selection
+          ? `${selected ? "Снять выделение" : "Выделить"}: ${escapeAttribute(movie.title)}`
+          : `Открыть карточку ${escapeAttribute(movie.title)}`}"></button>
+      ${selection ? `
+        <span class="movie-row__check ${selected ? "is-on" : ""}" aria-hidden="true">
+          ${selected ? icon("check") : ""}
+        </span>` : ""}
       <span class="movie-row__cover">
         ${movie.coverUrl
           ? `<img src="${escapeAttribute(movie.coverUrl)}" alt="" loading="lazy"
@@ -1093,11 +1163,7 @@ function movieRow(movie, category, franchise) {
           franchise?.name,
         ].filter(Boolean).map((value) => escapeHtml(String(value))).join(" · ")}</small>
       </span>
-      <span class="movie-row__status">
-        ${movie.watchedAt
-          ? `<span class="badge badge--seen">${icon("check")}Просмотрен</span>`
-          : `<span class="badge">${icon("bookmark")}В очереди</span>`}
-      </span>
+      <span class="movie-row__status">${statusBadge(movie)}</span>
       <span class="movie-row__score">${rating === null ? "—" : `${icon("star")}${rating}`}</span>
       <span class="movie-row__tools">
         <button class="icon-btn icon-btn--sm ${movie.isFavorite ? "is-favorite" : ""}" type="button"
@@ -1251,10 +1317,17 @@ function renderSessions(container, sessions) {
                   `).join("")}
                 </div>
               </div>
-              <button class="btn btn--ghost btn--sm" type="button"
-                data-action="session-open" data-id="${session.id}">
-                Журнал ${icon("arrowRight")}
-              </button>
+              <div class="session-card__actions">
+                <button class="btn btn--ghost btn--sm" type="button"
+                  data-action="session-repeat" data-id="${session.id}"
+                  title="Собрать колесо из того же состава">
+                  ${icon("refresh")}<span>Повторить пул</span>
+                </button>
+                <button class="btn btn--ghost btn--sm" type="button"
+                  data-action="session-open" data-id="${session.id}">
+                  Журнал ${icon("arrowRight")}
+                </button>
+              </div>
             </article>`;
         }).join("")}
       </div>
@@ -1383,6 +1456,10 @@ function renderWheelSetup(container, state) {
     .filter((category) => category.rollQuota > 0)
     .sort(sortByPosition);
   const pool = state.rollDraftPool ?? [];
+  const poolFilters = state.rollPoolFilters ?? { favoritesOnly: false, tag: "" };
+  const poolTags = collectLibraryTags(
+    state.library.movies.filter((movie) => !movie.watchedAt),
+  );
 
   container.innerHTML = `
     <div class="toolbar">
@@ -1393,6 +1470,26 @@ function renderWheelSetup(container, state) {
         </h2>
       </div>
       <div class="toolbar__actions">
+        <div class="segmented" role="group" aria-label="Отбор в пул">
+          <button type="button" class="${!poolFilters.favoritesOnly && !poolFilters.tag ? "is-active" : ""}"
+            data-action="roll-filter-set" data-filter="all"
+            aria-pressed="${!poolFilters.favoritesOnly && !poolFilters.tag}">Все</button>
+          <button type="button" class="${poolFilters.favoritesOnly ? "is-active" : ""}"
+            data-action="roll-filter-set" data-filter="favorites"
+            aria-pressed="${Boolean(poolFilters.favoritesOnly)}">Избранное</button>
+        </div>
+        ${poolTags.length ? `
+          <div class="select-field select-field--sm">
+            ${icon("tag")}
+            <select data-control="roll-tag" aria-label="Тег для пула">
+              <option value="">Любой тег</option>
+              ${poolTags.map(({ tag, count }) => `
+                <option value="${escapeAttribute(tag)}"
+                  ${poolFilters.tag === tag ? "selected" : ""}>${escapeHtml(tag)} · ${count}</option>
+              `).join("")}
+            </select>
+            ${icon("chevronDown", "select-field__caret")}
+          </div>` : ""}
         <button class="btn btn--ghost" type="button" data-action="roll-shuffle"
           ${pool.length < 2 ? "disabled" : ""}>
           ${icon("shuffle")}<span>Перемешать</span>
@@ -1404,11 +1501,17 @@ function renderWheelSetup(container, state) {
       </div>
     </div>
 
-    ${pool.length < 2 ? emptyBlock(
-      "Пул пока не собран",
-      "Задайте квоту колеса хотя бы одному списку и добавьте в него непросмотренные фильмы — участники подтянутся автоматически.",
-      { action: "category-add", label: "Настроить списки", icon: "layers" },
-    ) : `
+    ${pool.length < 2 ? (poolFilters.favoritesOnly || poolFilters.tag
+      ? emptyBlock(
+        "Под этот отбор пула не хватает участников",
+        "Снимите отбор по избранному или тегу — либо отметьте нужные фильмы, чтобы они попали в колесо.",
+        { action: "roll-filter-set", label: "Показать все", icon: "refresh" },
+      )
+      : emptyBlock(
+        "Пул пока не собран",
+        "Задайте квоту колеса хотя бы одному списку и добавьте в него непросмотренные фильмы — участники подтянутся автоматически.",
+        { action: "category-add", label: "Настроить списки", icon: "layers" },
+      )) : `
       <div class="wheel-setup">
         <section class="wheel-preview">
           <div class="wheel-preview__glow" aria-hidden="true"></div>
@@ -1664,6 +1767,179 @@ function renderFranchises(container, library) {
 
 /* ------------------------------------------------------------ Настройки */
 
+/* ------------------------------------------------------------- Статистика */
+
+function renderInsights(container, library) {
+  const insights = buildInsights(library);
+  const totalMovies = library.movies.length;
+
+  if (totalMovies === 0) {
+    container.innerHTML = emptyBlock(
+      "Статистика появится с первым фильмом",
+      "Здесь будут десятилетия, жанры, страны, темп просмотра и подсказки, что посмотреть дальше.",
+      { action: "movie-add", label: "Добавить фильм", icon: "plus" },
+    );
+    return;
+  }
+
+  const maxPace = Math.max(1, ...insights.watchPace.map((bucket) => bucket.count));
+  const paceMovies = insights.watchPace.reduce((sum, bucket) => sum + bucket.count, 0);
+  const paceMinutes = insights.watchPace.reduce((sum, bucket) => sum + bucket.minutes, 0);
+  const statusOrder = [
+    [MOVIE_STATUS.queued, MOVIE_STATUS_LABELS.queued],
+    [MOVIE_STATUS.watching, MOVIE_STATUS_LABELS.watching],
+    [MOVIE_STATUS.watched, MOVIE_STATUS_LABELS.watched],
+    [MOVIE_STATUS.dropped, MOVIE_STATUS_LABELS.dropped],
+  ];
+
+  container.innerHTML = `
+    <section class="panel panel--wide">
+      <header class="panel__head">
+        <div>
+          <p class="eyebrow">Состояние библиотеки</p>
+          <h3>Где сейчас ${totalMovies} ${pluralize(totalMovies, ["фильм", "фильма", "фильмов"])}</h3>
+        </div>
+      </header>
+      <div class="status-split">
+        ${statusOrder.map(([status, label]) => {
+          const count = insights.statusBreakdown[status];
+          const share = totalMovies ? Math.round((count / totalMovies) * 100) : 0;
+          return `
+            <button class="status-split__item" type="button"
+              data-action="catalog-status-open" data-status="${status}"
+              ${count ? "" : "disabled"}>
+              <span class="status-split__bar status-split__bar--${status}"
+                style="--value:${share}%"></span>
+              <strong>${count}</strong>
+              <small>${escapeHtml(label)} · ${share}%</small>
+            </button>`;
+        }).join("")}
+      </div>
+    </section>
+
+    <section class="insight-grid">
+      <article class="panel panel--chart">
+        <p class="eyebrow">Темп просмотра</p>
+        <h3>Последние 12 месяцев</h3>
+        ${paceMovies ? `
+          <div class="pace-chart">
+            ${insights.watchPace.map((bucket) => `
+              <div class="pace-chart__column">
+                <span class="pace-chart__bar"
+                  style="--value:${Math.round((bucket.count / maxPace) * 100)}"
+                  title="${bucket.count} ${pluralize(bucket.count, ["фильм", "фильма", "фильмов"])}"></span>
+                <small>${MONTH_SHORT[bucket.month - 1]}</small>
+              </div>
+            `).join("")}
+          </div>
+          <p class="form-hint">За год: ${paceMovies}
+            ${pluralize(paceMovies, ["фильм", "фильма", "фильмов"])},
+            ${formatWatchedHours(paceMinutes)} ч экранного времени.</p>
+        ` : `<p class="muted">Отметьте фильмы просмотренными — и здесь появится ритм года.</p>`}
+      </article>
+
+      <article class="panel panel--chart">
+        <p class="eyebrow">Эпохи</p>
+        <h3>Десятилетия</h3>
+        ${insights.decades.length
+          ? barList(insights.decades.map((entry) => [`${entry.decade}-е`, entry.count]))
+          : `<p class="muted">Заполните год выпуска, чтобы увидеть эпохи.</p>`}
+      </article>
+
+      <article class="panel panel--chart">
+        <p class="eyebrow">Жанры</p>
+        <h3>Чего в библиотеке больше</h3>
+        ${insights.genres.length ? barList(
+          insights.genres.slice(0, 8).map((entry) => [
+            entry.averageRating === null
+              ? entry.genre
+              : `${entry.genre} · ${entry.averageRating}`,
+            entry.count,
+          ]),
+        ) : `<p class="muted">Жанры подтянутся из TMDB или заполняются вручную.</p>`}
+      </article>
+
+      <article class="panel panel--chart">
+        <p class="eyebrow">География</p>
+        <h3>Страны</h3>
+        ${insights.countries.length
+          ? barList(insights.countries.slice(0, 8).map((entry) => [entry.country, entry.count]))
+          : `<p class="muted">Заполните страну, чтобы увидеть географию коллекции.</p>`}
+      </article>
+    </section>
+
+    <section class="insight-grid">
+      <article class="panel">
+        <header class="panel__head">
+          <div>
+            <p class="eyebrow">Профиль вкуса</p>
+            <h3>Жанры, которые вы оцениваете выше</h3>
+          </div>
+        </header>
+        ${insights.tasteProfile.length ? `
+          <div class="taste-list">
+            ${insights.tasteProfile.map((entry) => `
+              <div class="taste-list__row">
+                <span class="taste-list__name">${escapeHtml(entry.genre)}</span>
+                <span class="meter"><span style="--value:${entry.averageRating * 10}%"></span></span>
+                <strong>${entry.averageRating}</strong>
+                <small>${entry.ratedCount} ${pluralize(entry.ratedCount, ["оценка", "оценки", "оценок"])}</small>
+              </div>
+            `).join("")}
+          </div>
+        ` : `<p class="muted">Нужно минимум по две оценки в жанре — тогда вкус
+          можно считать, а не угадывать.</p>`}
+      </article>
+
+      <article class="panel">
+        <header class="panel__head">
+          <div>
+            <p class="eyebrow">Что посмотреть</p>
+            <h3>Из очереди — под ваш вкус</h3>
+          </div>
+        </header>
+        ${insights.recommendations.length ? `
+          <div class="enrich-list">
+            ${insights.recommendations.map(({ movie, reason }) => `
+              <div class="enrich-list__row">
+                <span>
+                  <strong>${escapeHtml(movie.title)}</strong>
+                  <small>${escapeHtml(reason ?? "по вашим оценкам")}${
+                    movie.releaseYear ? ` · ${movie.releaseYear}` : ""}</small>
+                </span>
+                <button class="btn btn--ghost btn--sm" type="button"
+                  data-action="movie-open" data-id="${movie.id}">Открыть</button>
+              </div>
+            `).join("")}
+          </div>
+        ` : `<p class="muted">Подсказки появятся, когда в библиотеке будут оценки
+          и непросмотренные фильмы тех же жанров.</p>`}
+      </article>
+    </section>
+  `;
+}
+
+const MONTH_SHORT = Object.freeze([
+  "янв", "фев", "мар", "апр", "май", "июн",
+  "июл", "авг", "сен", "окт", "ноя", "дек",
+]);
+
+function barList(entries) {
+  const max = Math.max(1, ...entries.map(([, value]) => value));
+  return `
+    <ul class="bar-list">
+      ${entries.map(([label, value]) => `
+        <li>
+          <span class="bar-list__label">${escapeHtml(label)}</span>
+          <span class="bar-list__track">
+            <span class="bar-list__fill" style="--value:${Math.round((value / max) * 100)}%"></span>
+          </span>
+          <span class="bar-list__value">${value}</span>
+        </li>
+      `).join("")}
+    </ul>`;
+}
+
 function renderSettings(container, state) {
   const tmdb = state.tmdbStatus;
   const settings = state.library.settings ?? {};
@@ -1785,7 +2061,12 @@ function renderSettings(container, state) {
             ${icon("upload")}<span>Импортировать JSON</span>
             <input type="file" accept=".json,application/json" data-control="backup-import">
           </label>
+          <button class="btn btn--ghost" type="button" data-action="csv-export">
+            ${icon("table")}<span>Выгрузить CSV</span>
+          </button>
         </div>
+        <p class="form-hint">CSV удобно открыть в таблице, но восстановить
+        библиотеку целиком можно только из JSON.</p>
         <p class="form-hint">Последняя копия: ${state.library.settings.lastBackupAt
           ? escapeHtml(formatDateTime(state.library.settings.lastBackupAt))
           : "не создавалась"}.</p>
@@ -1939,26 +2220,6 @@ function initials(value) {
 
 function sortByPosition(a, b) {
   return a.position - b.position || a.name.localeCompare(b.name, "ru-RU");
-}
-
-function getMovieSorter(sort) {
-  if (sort === "year") {
-    return (a, b) =>
-      (b.releaseYear ?? -1) - (a.releaseYear ?? -1) ||
-      a.title.localeCompare(b.title, "ru-RU");
-  }
-  if (sort === "rating") {
-    return (a, b) =>
-      (calculateAverageRating(b.ratings) ?? -1) -
-        (calculateAverageRating(a.ratings) ?? -1) ||
-      a.title.localeCompare(b.title, "ru-RU");
-  }
-  if (sort === "queue") {
-    return (a, b) =>
-      String(a.categoryId ?? "").localeCompare(String(b.categoryId ?? "")) ||
-      a.categoryPosition - b.categoryPosition;
-  }
-  return (a, b) => a.title.localeCompare(b.title, "ru-RU");
 }
 
 function getDescendantIds(categories, categoryId) {

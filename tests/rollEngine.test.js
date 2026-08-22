@@ -148,3 +148,67 @@ test("выбывшего участника можно вернуть", () => {
   assert.equal(session.pool.length, 3);
   assert.equal(session.eliminated.length, 0);
 });
+
+function filterLibrary() {
+  return {
+    categories: [
+      { id: "cat", name: "Категория", parentId: null, position: 0, rollQuota: 5 },
+    ],
+    movies: [
+      {
+        id: "fav",
+        title: "Избранный",
+        categoryId: "cat",
+        categoryPosition: 0,
+        isFavorite: true,
+        tags: ["Пятница"],
+      },
+      {
+        id: "plain",
+        title: "Обычный",
+        categoryId: "cat",
+        categoryPosition: 1,
+      },
+      {
+        id: "dropped",
+        title: "Брошенный",
+        categoryId: "cat",
+        categoryPosition: 2,
+        status: "dropped",
+      },
+    ],
+    franchises: [],
+  };
+}
+
+test("брошенный фильм не попадает в пул колеса", () => {
+  const pool = buildRollPool(filterLibrary());
+  assert.deepEqual(pool.map((item) => item.id), ["fav", "plain"]);
+});
+
+test("отбор пула по избранному и тегу сужает состав", () => {
+  const library = filterLibrary();
+
+  assert.deepEqual(
+    buildRollPool(library, { favoritesOnly: true, tag: "" }).map((item) => item.id),
+    ["fav"],
+  );
+  assert.deepEqual(
+    buildRollPool(library, { favoritesOnly: false, tag: "Пятница" }).map((item) => item.id),
+    ["fav"],
+  );
+  assert.deepEqual(
+    buildRollPool(library, { favoritesOnly: false, tag: "Суббота" }).map((item) => item.id),
+    [],
+  );
+});
+
+test("коллекция участвует, если под отбор подходит хотя бы один её фильм", () => {
+  const library = filterLibrary();
+  library.franchises = [
+    { id: "fr", name: "Сага", categoryId: "cat", categoryPosition: 0, movieIds: ["fav", "plain"] },
+  ];
+
+  const pool = buildRollPool(library, { favoritesOnly: true, tag: "" });
+  assert.deepEqual(pool.map((item) => item.type), ["franchise"]);
+});
