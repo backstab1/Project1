@@ -9,10 +9,11 @@ import { drawWheel } from "./wheelCanvas.js";
 import { isBackupReminderDue } from "../domain/backupReminder.js";
 import { icon } from "./icons.js";
 
+// «Главная» намеренно отсутствует в боковом меню: на неё ведёт логотип CV.
+// Пункт остаётся только в мобильной нижней навигации, где логотипа нет.
+const DASHBOARD_ITEM = ["dashboard", "Главная", "home"];
+
 const NAV_GROUPS = [
-  ["Обзор", [
-    ["dashboard", "Главная", "home"],
-  ]],
   ["Библиотека", [
     ["catalog", "Каталог", "film"],
     ["franchises", "Коллекции", "collection"],
@@ -28,7 +29,7 @@ const NAV_GROUPS = [
   ]],
 ];
 
-const NAV_ITEMS = NAV_GROUPS.flatMap(([, items]) => items);
+const NAV_ITEMS = [DASHBOARD_ITEM, ...NAV_GROUPS.flatMap(([, items]) => items)];
 
 const VIEW_META = Object.freeze({
   dashboard: { title: "Моя библиотека", eyebrow: "Обзор коллекции" },
@@ -61,7 +62,9 @@ export function renderAppShell(root, state) {
 
       <aside class="sidebar">
         <div class="sidebar__top">
-          <button class="brand" type="button" data-view="dashboard"
+          <button class="brand ${state.view === "dashboard" ? "is-active" : ""}"
+            type="button" data-view="dashboard"
+            ${state.view === "dashboard" ? 'aria-current="page"' : ""}
             aria-label="CineVault — на главную">
             <span class="brand__mark"><span class="brand__mark-glyph">CV</span></span>
             <span class="brand__text">
@@ -401,22 +404,22 @@ function renderDashboard(container, state) {
 
       ${heroMovie ? `
         <figure class="hero__poster">
-          <div class="hero__poster-frame">
-            ${heroMovie.coverUrl
-              ? `<img src="${escapeAttribute(heroMovie.coverUrl)}"
-                   alt="Постер: ${escapeAttribute(heroMovie.title)}"
-                   referrerpolicy="no-referrer">`
-              : `<span class="poster-fallback">${escapeHtml(initials(heroMovie.title))}</span>`}
-          </div>
-          <figcaption>
-            <p class="eyebrow">${heroMovie.watchedAt ? "Просмотрен" : "В очереди"}</p>
-            <strong>${escapeHtml(heroMovie.title)}</strong>
-            <small>${[heroMovie.releaseYear, heroMovie.country].filter(Boolean).join(" · ") || "Без метаданных"}</small>
-            <button class="btn btn--glass btn--sm" type="button"
-              data-action="movie-open" data-id="${heroMovie.id}">
-              Подробнее ${icon("arrowRight")}
-            </button>
-          </figcaption>
+          <button class="hero__poster-card" type="button"
+            data-action="movie-open" data-id="${heroMovie.id}"
+            aria-label="Открыть карточку: ${escapeAttribute(heroMovie.title)}">
+            <span class="hero__poster-frame">
+              ${heroMovie.coverUrl
+                ? `<img src="${escapeAttribute(heroMovie.coverUrl)}" alt=""
+                     referrerpolicy="no-referrer">`
+                : `<span class="poster-fallback">${escapeHtml(initials(heroMovie.title))}</span>`}
+              <span class="hero__poster-hint">${icon("arrowRight")}</span>
+            </span>
+            <span class="hero__poster-meta">
+              <span class="eyebrow">${heroMovie.watchedAt ? "Просмотрен" : "В очереди"}</span>
+              <strong>${escapeHtml(heroMovie.title)}</strong>
+              <small>${escapeHtml([heroMovie.releaseYear, heroMovie.country].filter(Boolean).join(" · ") || "Без метаданных")}</small>
+            </span>
+          </button>
         </figure>
       ` : ""}
     </section>
