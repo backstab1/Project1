@@ -181,6 +181,8 @@ async function start() {
   }
 
   render();
+  // Событие error у изображений не всплывает, поэтому слушаем фазу перехвата.
+  document.addEventListener("error", handleBrokenPoster, true);
   window.addEventListener("keydown", handleGlobalKeydown);
   window.addEventListener("popstate", () => {
     state.view = readViewFromHash();
@@ -192,6 +194,25 @@ async function start() {
 
 function render() {
   renderAppShell(root, state);
+}
+
+// Постер TMDB может не загрузиться: ссылка устарела или интернета нет.
+// Вместо пустой рамки показываем инициалы названия, а фоновую подложку убираем.
+function handleBrokenPoster(event) {
+  const image = event.target;
+  if (!(image instanceof HTMLImageElement)) return;
+  if (!image.hasAttribute("data-poster-fallback")) return;
+
+  const label = image.dataset.posterFallback;
+  if (!label) {
+    image.remove();
+    return;
+  }
+
+  const fallback = document.createElement("span");
+  fallback.className = "poster-fallback";
+  fallback.textContent = label;
+  image.replaceWith(fallback);
 }
 
 async function reloadLibrary() {

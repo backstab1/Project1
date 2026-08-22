@@ -349,7 +349,8 @@ function renderDashboard(container, state) {
       ${heroMovie?.coverUrl
         ? `<div class="hero__backdrop" aria-hidden="true">
              <img src="${escapeAttribute(heroMovie.coverUrl)}" alt=""
-               referrerpolicy="no-referrer">
+               referrerpolicy="no-referrer"
+               data-poster-fallback="">
            </div>`
         : ""}
       <div class="hero__grain" aria-hidden="true"></div>
@@ -410,7 +411,8 @@ function renderDashboard(container, state) {
             <span class="hero__poster-frame">
               ${heroMovie.coverUrl
                 ? `<img src="${escapeAttribute(heroMovie.coverUrl)}" alt=""
-                     referrerpolicy="no-referrer">`
+                     referrerpolicy="no-referrer"
+                     data-poster-fallback="${escapeAttribute(initials(heroMovie.title))}">`
                 : `<span class="poster-fallback">${escapeHtml(initials(heroMovie.title))}</span>`}
               <span class="hero__poster-hint">${icon("arrowRight")}</span>
             </span>
@@ -466,7 +468,8 @@ function renderDashboard(container, state) {
               <span class="queue-chip__poster">
                 ${movie.coverUrl
                   ? `<img src="${escapeAttribute(movie.coverUrl)}" alt="" loading="lazy"
-                      referrerpolicy="no-referrer">`
+                      referrerpolicy="no-referrer"
+                      data-poster-fallback="${escapeAttribute(initials(movie.title))}">`
                   : `<span class="poster-fallback">${escapeHtml(initials(movie.title))}</span>`}
               </span>
               <span class="queue-chip__text">
@@ -634,7 +637,8 @@ function posterTile(movie) {
       <span class="poster-tile__art">
         ${movie.coverUrl
           ? `<img src="${escapeAttribute(movie.coverUrl)}" alt="" loading="lazy"
-              referrerpolicy="no-referrer">`
+              referrerpolicy="no-referrer"
+              data-poster-fallback="${escapeAttribute(initials(movie.title))}">`
           : `<span class="poster-fallback">${escapeHtml(initials(movie.title))}</span>`}
         ${rating === null ? "" : `<span class="poster-tile__rating">${icon("star")}${rating}</span>`}
         ${movie.watchedAt ? `<span class="poster-tile__seen">${icon("check")}</span>` : ""}
@@ -655,7 +659,8 @@ function collectionCard(franchise, movieById) {
           <span class="collection-card__layer" style="--i:${index}">
             ${movie.coverUrl
               ? `<img src="${escapeAttribute(movie.coverUrl)}" alt="" loading="lazy"
-                  referrerpolicy="no-referrer">`
+                  referrerpolicy="no-referrer"
+                  data-poster-fallback="${escapeAttribute(initials(movie.title))}">`
               : `<span class="poster-fallback">${escapeHtml(initials(movie.title))}</span>`}
           </span>
         `).join("") || '<span class="collection-card__layer"><span class="poster-fallback">CV</span></span>'}
@@ -692,14 +697,16 @@ function renderMovieDetail(state) {
         <div class="drawer__hero">
           ${movie.coverUrl
             ? `<img class="drawer__hero-bg" src="${escapeAttribute(movie.coverUrl)}" alt=""
-                referrerpolicy="no-referrer">`
+                referrerpolicy="no-referrer"
+                data-poster-fallback="">`
             : ""}
           <button class="icon-btn drawer__close" type="button" data-action="detail-close"
             aria-label="Закрыть">${icon("close")}</button>
           <div class="drawer__hero-poster">
             ${movie.coverUrl
               ? `<img src="${escapeAttribute(movie.coverUrl)}"
-                  alt="Постер: ${escapeAttribute(movie.title)}" referrerpolicy="no-referrer">`
+                  alt="Постер: ${escapeAttribute(movie.title)}" referrerpolicy="no-referrer"
+                  data-poster-fallback="${escapeAttribute(initials(movie.title))}">`
               : `<span class="poster-fallback">${escapeHtml(initials(movie.title))}</span>`}
           </div>
         </div>
@@ -962,7 +969,8 @@ function movieCard(movie, category, franchise, index = 0) {
       <div class="movie-card__cover">
         ${movie.coverUrl
           ? `<img src="${escapeAttribute(movie.coverUrl)}" alt="" loading="lazy"
-              referrerpolicy="no-referrer">`
+              referrerpolicy="no-referrer"
+              data-poster-fallback="${escapeAttribute(initials(movie.title))}">`
           : `<span class="poster-fallback">${escapeHtml(initials(movie.title))}</span>`}
         <div class="movie-card__gradient"></div>
         <div class="movie-card__badges">
@@ -1005,7 +1013,8 @@ function movieRow(movie, category, franchise) {
       <span class="movie-row__cover">
         ${movie.coverUrl
           ? `<img src="${escapeAttribute(movie.coverUrl)}" alt="" loading="lazy"
-              referrerpolicy="no-referrer">`
+              referrerpolicy="no-referrer"
+              data-poster-fallback="${escapeAttribute(initials(movie.title))}">`
           : `<span class="poster-fallback">${escapeHtml(initials(movie.title))}</span>`}
       </span>
       <span class="movie-row__main">
@@ -1088,7 +1097,8 @@ function watchedRow(movie, category) {
         aria-label="Открыть ${escapeAttribute(movie.title)}">
         ${movie.coverUrl
           ? `<img src="${escapeAttribute(movie.coverUrl)}" alt="" loading="lazy"
-              referrerpolicy="no-referrer">`
+              referrerpolicy="no-referrer"
+              data-poster-fallback="${escapeAttribute(initials(movie.title))}">`
           : `<span class="poster-fallback">${escapeHtml(initials(movie.title))}</span>`}
       </button>
       <div class="watched-row__main">
@@ -1536,7 +1546,8 @@ function renderFranchises(container, library) {
                 <span class="franchise-card__art">
                   ${cover
                     ? `<img src="${escapeAttribute(cover)}" alt="" loading="lazy"
-                        referrerpolicy="no-referrer">`
+                        referrerpolicy="no-referrer"
+                        data-poster-fallback="${escapeAttribute(initials(franchise.name))}">`
                     : `<span class="poster-fallback">${escapeHtml(initials(franchise.name))}</span>`}
                 </span>
                 <div>

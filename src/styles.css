@@ -2957,7 +2957,8 @@ img {
 
 .wheel-frame {
   position: relative;
-  width: min(100%, 30rem);
+  /* Колесо, статус, кнопка «Крутить» и прогресс обязаны помещаться при 768 px. */
+  width: min(100%, 30rem, max(16rem, 100vh - 23rem));
   aspect-ratio: 1;
 }
 

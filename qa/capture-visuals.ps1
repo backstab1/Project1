@@ -7,24 +7,36 @@ param(
 $ErrorActionPreference = "Stop"
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $releaseRoot = Join-Path $projectRoot "release"
+$shotRoot = Join-Path $releaseRoot "qa-shots"
 $profileRoot = Join-Path $releaseRoot "qa-cdp-profile-$DebugPort"
 $edgePath = "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
 $appBaseUrl = "http://127.0.0.1:$AppPort"
 
-function Send-CdpCommand {
-    param(
-        [System.Net.WebSockets.ClientWebSocket]$Socket,
-        [int]$Id,
-        [string]$Method,
-        [hashtable]$Params = @{}
-    )
+$script:socket = $null
+$script:commandId = 0
 
-    $json = @{ id = $Id; method = $Method; params = $Params } |
+# Every shell view. The value is an extra readiness condition for that view.
+$viewChecks = [ordered]@{
+    dashboard  = $null
+    catalog    = "document.querySelectorAll('.movie-card, .movie-row').length > 0"
+    franchises = $null
+    categories = $null
+    watched    = $null
+    wheel      = $null
+    sessions   = $null
+    settings   = $null
+}
+
+function Send-CdpCommand {
+    param([string]$Method, [hashtable]$Params = @{})
+
+    $script:commandId++
+    $id = $script:commandId
+    $json = @{ id = $id; method = $Method; params = $Params } |
         ConvertTo-Json -Depth 20 -Compress
     $bytes = [Text.Encoding]::UTF8.GetBytes($json)
-    $segment = [ArraySegment[byte]]::new($bytes)
-    $null = $Socket.SendAsync(
-        $segment,
+    $null = $script:socket.SendAsync(
+        [ArraySegment[byte]]::new($bytes),
         [System.Net.WebSockets.WebSocketMessageType]::Text,
         $true,
         [Threading.CancellationToken]::None
@@ -34,17 +46,16 @@ function Send-CdpCommand {
         $stream = [IO.MemoryStream]::new()
         do {
             $buffer = [byte[]]::new(65536)
-            $result = $Socket.ReceiveAsync(
+            $result = $script:socket.ReceiveAsync(
                 [ArraySegment[byte]]::new($buffer),
                 [Threading.CancellationToken]::None
             ).GetAwaiter().GetResult()
             $stream.Write($buffer, 0, $result.Count)
         } while (-not $result.EndOfMessage)
 
-        $response = [Text.Encoding]::UTF8.GetString($stream.ToArray()) |
-            ConvertFrom-Json
+        $response = [Text.Encoding]::UTF8.GetString($stream.ToArray()) | ConvertFrom-Json
         $stream.Dispose()
-        if ($response.id -eq $Id) {
+        if ($response.id -eq $id) {
             if ($response.error) {
                 throw "CDP $Method failed: $($response.error.message)"
             }
@@ -53,37 +64,10 @@ function Send-CdpCommand {
     }
 }
 
-function Wait-ForExpression {
-    param(
-        [System.Net.WebSockets.ClientWebSocket]$Socket,
-        [ref]$CommandId,
-        [string]$Expression,
-        [int]$Attempts = 60
-    )
+function Invoke-Eval {
+    param([string]$Expression)
 
-    for ($attempt = 0; $attempt -lt $Attempts; $attempt++) {
-        $CommandId.Value++
-        $result = Send-CdpCommand $Socket $CommandId.Value "Runtime.evaluate" @{
-            expression = "Boolean($Expression)"
-            returnByValue = $true
-        }
-        if ($result.result.value -eq $true) {
-            return
-        }
-        Start-Sleep -Milliseconds 250
-    }
-    throw "Page condition timed out: $Expression"
-}
-
-function Invoke-CdpExpression {
-    param(
-        [System.Net.WebSockets.ClientWebSocket]$Socket,
-        [ref]$CommandId,
-        [string]$Expression
-    )
-
-    $CommandId.Value++
-    $result = Send-CdpCommand $Socket $CommandId.Value "Runtime.evaluate" @{
+    $result = Send-CdpCommand "Runtime.evaluate" @{
         expression = $Expression
         returnByValue = $true
         awaitPromise = $true
@@ -94,31 +78,105 @@ function Invoke-CdpExpression {
     return $result.result.value
 }
 
-function Save-CdpScreenshot {
-    param(
-        [System.Net.WebSockets.ClientWebSocket]$Socket,
-        [ref]$CommandId,
-        [string]$OutputPath
-    )
+function Wait-For {
+    param([string]$Expression, [int]$Attempts = 60)
 
-    $CommandId.Value++
-    $capture = Send-CdpCommand $Socket $CommandId.Value "Page.captureScreenshot" @{
+    for ($attempt = 0; $attempt -lt $Attempts; $attempt++) {
+        $result = Send-CdpCommand "Runtime.evaluate" @{
+            expression = "Boolean($Expression)"
+            returnByValue = $true
+        }
+        if ($result.result.value -eq $true) { return }
+        Start-Sleep -Milliseconds 250
+    }
+    throw "Page condition timed out: $Expression"
+}
+
+function Wait-ForPosters {
+    # A poster that fails to load is swapped for initials, and an unreachable
+    # host can take seconds to fail. Screenshots must wait for that to settle.
+    Invoke-Eval @"
+(async () => {
+  // Lazy posters outside the viewport never start loading, so only the ones
+  // that are actually on screen are worth waiting for.
+  const onScreen = () => [...document.querySelectorAll('img[data-poster-fallback]')]
+    .filter((image) => {
+      const box = image.getBoundingClientRect();
+      return box.bottom > 0 && box.top < innerHeight && box.width > 0;
+    });
+  for (let attempt = 0; attempt < 60; attempt++) {
+    if (onScreen().every((image) => image.complete)) return true;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  return false;
+})()
+"@ | Out-Null
+}
+
+function Wait-ForAnimations {
+    # Content animates in with a stagger, so a screenshot taken right after the
+    # markup appears would capture half-transparent cards.
+    Invoke-Eval @"
+(async () => {
+  const animations = document.getAnimations().filter((animation) =>
+    (animation.effect?.getTiming?.().iterations ?? 1) !== Infinity);
+  await Promise.race([
+    Promise.all(animations.map((animation) => animation.finished.catch(() => {}))),
+    new Promise((resolve) => setTimeout(resolve, 3000)),
+  ]);
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  return true;
+})()
+"@ | Out-Null
+}
+
+function Save-Screenshot {
+    param([string]$Name)
+
+    Wait-ForPosters
+    Wait-ForAnimations
+    $capture = Send-CdpCommand "Page.captureScreenshot" @{
         format = "png"
         fromSurface = $true
         captureBeyondViewport = $false
     }
-    [IO.File]::WriteAllBytes($OutputPath, [Convert]::FromBase64String($capture.data))
+    $outputPath = Join-Path $shotRoot "$Name.png"
+    [IO.File]::WriteAllBytes($outputPath, [Convert]::FromBase64String($capture.data))
+    return $outputPath
 }
 
-function Assert-DialogFitsViewport {
-    param(
-        [System.Net.WebSockets.ClientWebSocket]$Socket,
-        [ref]$CommandId
-    )
+function Set-Viewport {
+    param([ValidateSet("desktop", "mobile")][string]$Device)
 
-    $fits = Invoke-CdpExpression $Socket $CommandId @"
+    if ($Device -eq "desktop") {
+        Send-CdpCommand "Emulation.setDeviceMetricsOverride" @{
+            width = 1366; height = 768; deviceScaleFactor = 1; mobile = $false
+        } | Out-Null
+        return 1366
+    }
+
+    Send-CdpCommand "Emulation.setDeviceMetricsOverride" @{
+        width = 390; height = 844; deviceScaleFactor = 2; mobile = $true
+    } | Out-Null
+    return 390
+}
+
+function Assert-NoHorizontalOverflow {
+    param([string]$Label, [int]$ExpectedWidth)
+
+    $layout = Invoke-Eval "({width: innerWidth, scrollWidth: document.documentElement.scrollWidth})"
+    if ($layout.width -ne $ExpectedWidth) {
+        throw "Unexpected viewport width for ${Label}: $($layout.width)"
+    }
+    if ($layout.scrollWidth -gt $layout.width) {
+        throw "Horizontal overflow in ${Label}: $($layout.scrollWidth)px"
+    }
+}
+
+function Assert-ModalFitsViewport {
+    $fits = Invoke-Eval @"
 (() => {
-  const surface = document.querySelector('dialog[open] .dialog__surface');
+  const surface = document.querySelector('dialog[open] .modal__surface');
   if (!surface) return false;
   const box = surface.getBoundingClientRect();
   return box.left >= 0 && box.top >= 0 && box.right <= innerWidth &&
@@ -126,7 +184,54 @@ function Assert-DialogFitsViewport {
 })()
 "@
     if ($fits -ne $true) {
-        throw "Open dialog does not fit the 1366x768 viewport."
+        throw "Open dialog does not fit the current viewport."
+    }
+}
+
+function Assert-NoConsoleErrors {
+    param([string]$Label)
+
+    $errors = Invoke-Eval "(window.__qaErrors ?? []).join(' | ')"
+    if ($errors) {
+        throw "Console errors in ${Label}: $errors"
+    }
+}
+
+function Open-View {
+    param([string]$View, [switch]$SkipContentCheck)
+
+    Send-CdpCommand "Page.navigate" @{ url = "$appBaseUrl/#$View" } | Out-Null
+    # The active marker lives on the sidebar item, the CV brand and the tabbar.
+    Wait-For "document.querySelector('[data-view=$View].is-active') && document.querySelector('h1')"
+    $extraCheck = $viewChecks[$View]
+    # An empty library has no content conditions: an empty state is expected there.
+    if ($extraCheck -and -not $SkipContentCheck) { Wait-For $extraCheck }
+}
+
+function Set-Theme {
+    param([ValidateSet("light", "dark")][string]$Theme)
+
+    Invoke-Eval "localStorage.setItem('cinevault-theme', '$Theme')" | Out-Null
+    Send-CdpCommand "Page.reload" @{ ignoreCache = $false } | Out-Null
+    Wait-For "document.documentElement.dataset.theme === '$Theme' && document.querySelector('.app')"
+}
+
+function Invoke-ViewSweep {
+    param(
+        [string]$State,
+        [string]$Theme,
+        [ValidateSet("desktop", "mobile")][string]$Device,
+        [string[]]$Views,
+        [switch]$SkipContentCheck
+    )
+
+    $expectedWidth = Set-Viewport $Device
+    foreach ($view in $Views) {
+        Open-View $view -SkipContentCheck:$SkipContentCheck
+        Assert-NoHorizontalOverflow "$State/$Theme/$Device/$view" $expectedWidth
+        Assert-NoConsoleErrors "$State/$Theme/$Device/$view"
+        $path = Save-Screenshot "qa-$State-$Theme-$Device-$view"
+        Write-Host "  $view -> $(Split-Path -Leaf $path)"
     }
 }
 
@@ -135,28 +240,28 @@ if (-not (Test-Path -LiteralPath $edgePath)) {
 }
 
 New-Item -ItemType Directory -Force -Path $releaseRoot | Out-Null
+New-Item -ItemType Directory -Force -Path $shotRoot | Out-Null
+# The empty state is only meaningful on a clean browser profile.
+if (Test-Path -LiteralPath $profileRoot) {
+    Remove-Item -LiteralPath $profileRoot -Recurse -Force
+}
+
 $server = Start-Process -FilePath $Python `
     -ArgumentList "launch.py", "--port", "$AppPort", "--no-browser" `
     -WorkingDirectory $projectRoot -WindowStyle Hidden -PassThru
 $edge = $null
-$socket = $null
 
 try {
     $serverReady = $false
     for ($attempt = 0; $attempt -lt 40; $attempt++) {
         try {
             $health = Invoke-RestMethod "$appBaseUrl/api/health" -TimeoutSec 1
-            if ($health.status -eq "ok") {
-                $serverReady = $true
-                break
-            }
+            if ($health.status -eq "ok") { $serverReady = $true; break }
         } catch {
             Start-Sleep -Milliseconds 200
         }
     }
-    if (-not $serverReady) {
-        throw "CineVault server did not start."
-    }
+    if (-not $serverReady) { throw "CineVault server did not start." }
 
     $edge = Start-Process -FilePath $edgePath -ArgumentList @(
         "--headless",
@@ -178,102 +283,131 @@ try {
             Start-Sleep -Milliseconds 200
         }
     }
-    if (-not $version.webSocketDebuggerUrl) {
-        throw "Edge debugging endpoint did not start."
-    }
+    if (-not $version.webSocketDebuggerUrl) { throw "Edge debugging endpoint did not start." }
 
     $tabs = Invoke-RestMethod "http://127.0.0.1:$DebugPort/json/list"
     $tab = $tabs | Where-Object { $_.type -eq "page" } | Select-Object -First 1
-    if (-not $tab.webSocketDebuggerUrl) {
-        throw "Edge page target was not found."
-    }
+    if (-not $tab.webSocketDebuggerUrl) { throw "Edge page target was not found." }
 
-    $socket = [System.Net.WebSockets.ClientWebSocket]::new()
-    $null = $socket.ConnectAsync(
+    $script:socket = [System.Net.WebSockets.ClientWebSocket]::new()
+    $null = $script:socket.ConnectAsync(
         [Uri]$tab.webSocketDebuggerUrl,
         [Threading.CancellationToken]::None
     ).GetAwaiter().GetResult()
-    $commandId = 0
 
-    $commandId++
-    Send-CdpCommand $socket $commandId "Page.enable" | Out-Null
-    $commandId++
-    Send-CdpCommand $socket $commandId "Runtime.enable" | Out-Null
-    $commandId++
-    Send-CdpCommand $socket $commandId "Emulation.setDeviceMetricsOverride" @{
-        width = 1366
-        height = 768
-        deviceScaleFactor = 1
-        mobile = $false
+    Send-CdpCommand "Page.enable" | Out-Null
+    Send-CdpCommand "Runtime.enable" | Out-Null
+    # Collect page errors in every document the run navigates to.
+    Send-CdpCommand "Page.addScriptToEvaluateOnNewDocument" @{
+        source = @"
+window.__qaErrors = [];
+const reportedError = console.error.bind(console);
+console.error = (...args) => {
+  window.__qaErrors.push(args.map((value) => String(value)).join(' '));
+  reportedError(...args);
+};
+addEventListener('error', (event) => {
+  if (event.message) window.__qaErrors.push('uncaught: ' + event.message);
+});
+addEventListener('unhandledrejection', (event) => {
+  window.__qaErrors.push('unhandled rejection: ' + String(event.reason));
+});
+"@
     } | Out-Null
+    Set-Viewport "desktop" | Out-Null
 
-    $commandId++
-    Send-CdpCommand $socket $commandId "Page.navigate" @{
-        url = "$appBaseUrl/qa/seed.html"
-    } | Out-Null
-    Wait-ForExpression $socket ([ref]$commandId) `
-        "location.pathname === '/' && document.querySelector('.app-shell')"
+    # 1. Empty library.
+    Send-CdpCommand "Page.navigate" @{ url = "$appBaseUrl/" } | Out-Null
+    Wait-For "document.querySelector('.app')"
+    Set-Theme "light"
+    Write-Host "Empty library, light theme, 1366x768:"
+    Invoke-ViewSweep "empty" "light" "desktop" @("dashboard", "catalog", "categories", "wheel") -SkipContentCheck
 
-    $views = @("dashboard", "catalog", "categories", "franchises", "watched", "wheel")
-
-    foreach ($view in $views) {
-        $commandId++
-        Send-CdpCommand $socket $commandId "Page.navigate" @{
-            url = "$appBaseUrl/#$view"
-        } | Out-Null
-        Wait-ForExpression $socket ([ref]$commandId) `
-            "document.querySelector('.navigation__item[data-view=$view]')?.classList.contains('is-active') && document.querySelector('h1')"
-
-        if ($view -eq "catalog") {
-            Wait-ForExpression $socket ([ref]$commandId) `
-                "document.querySelectorAll('.movie-card').length === 10"
-        }
-
-        $commandId++
-        $layout = Send-CdpCommand $socket $commandId "Runtime.evaluate" @{
-            expression = "({width: innerWidth, scrollWidth: document.documentElement.scrollWidth})"
-            returnByValue = $true
-        }
-        if ($layout.result.value.width -ne 1366) {
-            throw "Unexpected viewport width for ${view}: $($layout.result.value.width)"
-        }
-        if ($layout.result.value.scrollWidth -gt $layout.result.value.width) {
-            throw "Horizontal overflow in ${view}: $($layout.result.value.scrollWidth)px"
-        }
-
-        $commandId++
-        $capture = Send-CdpCommand $socket $commandId "Page.captureScreenshot" @{
-            format = "png"
-            fromSurface = $true
-            captureBeyondViewport = $false
-        }
-        $outputPath = Join-Path $releaseRoot "qa-filled-$view-verified.png"
-        [IO.File]::WriteAllBytes($outputPath, [Convert]::FromBase64String($capture.data))
-        Write-Host "Captured $view without horizontal overflow: $outputPath"
+    $emptyStateShown = Invoke-Eval "Boolean(document.querySelector('.empty'))"
+    if ($emptyStateShown -ne $true) {
+        throw "Empty library does not render an empty state."
     }
 
-    $commandId++
-    Send-CdpCommand $socket $commandId "Page.navigate" @{
-        url = "$appBaseUrl/#catalog"
-    } | Out-Null
-    Wait-ForExpression $socket ([ref]$commandId) `
-        "document.querySelectorAll('.movie-card').length === 10"
+    # 2. Filled library.
+    Send-CdpCommand "Page.navigate" @{ url = "$appBaseUrl/qa/seed.html" } | Out-Null
+    Wait-For "location.pathname === '/' && document.querySelector('.app')" 120
 
-    Invoke-CdpExpression $socket ([ref]$commandId) `
-        "document.querySelector('[data-action=movie-add]').click()" | Out-Null
-    Wait-ForExpression $socket ([ref]$commandId) `
-        "document.querySelector('dialog[open]')"
-    Assert-DialogFitsViewport $socket ([ref]$commandId)
+    Write-Host "Filled library, light theme, 1366x768:"
+    Invoke-ViewSweep "filled" "light" "desktop" @($viewChecks.Keys)
 
-    $requiredWorks = Invoke-CdpExpression $socket ([ref]$commandId) `
-        "(() => { const form = document.querySelector('dialog[open] form'); form.elements.title.value = ''; return form.checkValidity() === false; })()"
+    Write-Host "Filled library, dark theme, 1366x768:"
+    Set-Theme "dark"
+    Invoke-ViewSweep "filled" "dark" "desktop" @($viewChecks.Keys)
+
+    # 3. Mobile sizes.
+    Set-Theme "light"
+    Write-Host "Filled library, light theme, 390x844:"
+    Invoke-ViewSweep "filled" "light" "mobile" @("dashboard", "catalog", "watched", "wheel")
+
+    Open-View "catalog"
+    Invoke-Eval "document.querySelector('.tabbar__more').open = true" | Out-Null
+    Wait-For "document.querySelector('.tabbar__sheet')?.getBoundingClientRect().height > 0"
+    Assert-NoHorizontalOverflow "filled/light/mobile/tabbar-sheet" 390
+    Save-Screenshot "qa-filled-light-mobile-tabbar-sheet" | Out-Null
+    Invoke-Eval "document.querySelector('.tabbar__more').open = false" | Out-Null
+    Write-Host "  tabbar sheet fits 390px."
+
+    # 4. Long Russian titles and a broken poster URL.
+    Set-Viewport "desktop" | Out-Null
+    Open-View "catalog"
+    $longTitleFits = Invoke-Eval @"
+(() => {
+  // qa-long carries the longest Russian title and an unreachable poster URL.
+  const card = document.querySelector('[data-action=movie-open][data-id=qa-long]')
+    ?.closest('.movie-card, .movie-row');
+  if (!card) return 'card-missing';
+  return card.scrollWidth <= card.clientWidth + 1 ? 'ok' : 'overflow';
+})()
+"@
+    if ($longTitleFits -ne "ok") {
+        throw "Long Russian title breaks its card: $longTitleFits"
+    }
+    Write-Host "Long title card does not overflow."
+
+    $brokenPoster = Invoke-Eval @"
+(async () => {
+  const card = document.querySelector('[data-action=movie-open][data-id=qa-long]')
+    ?.closest('.movie-card, .movie-row');
+  if (!card) return 'card-missing';
+  // Posters load lazily, so the card has to be on screen before it can fail.
+  card.scrollIntoView({ block: 'center' });
+  // The unreachable poster URL has to degrade into the initials placeholder.
+  for (let attempt = 0; attempt < 40; attempt++) {
+    if (card.querySelector('.poster-fallback')) return 'ok';
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  return card.querySelector('img') ? 'still-a-broken-image' : 'no-placeholder';
+})()
+"@
+    if ($brokenPoster -ne "ok") {
+        throw "Broken poster URL does not fall back to initials: $brokenPoster"
+    }
+    Write-Host "Broken poster URL falls back to initials."
+
+    # 5. Dialogs, the movie drawer and the command palette.
+    Invoke-Eval "document.querySelector('[data-action=movie-add]').click()" | Out-Null
+    Wait-For "document.querySelector('dialog[open]')"
+    Assert-ModalFitsViewport
+
+    $requiredWorks = Invoke-Eval @"
+(() => {
+  const form = document.querySelector('dialog[open] form');
+  form.elements.title.value = '';
+  return form.checkValidity() === false;
+})()
+"@
     if ($requiredWorks -ne $true) {
         throw "Required movie title validation is not active."
     }
-    Save-CdpScreenshot $socket ([ref]$commandId) `
-        (Join-Path $releaseRoot "qa-dialog-movie-add.png")
+    Save-Screenshot "qa-dialog-movie-add" | Out-Null
 
-    Invoke-CdpExpression $socket ([ref]$commandId) @"
+    $cardsBefore = Invoke-Eval "document.querySelectorAll('.movie-card').length"
+    Invoke-Eval @"
 (() => {
   const form = document.querySelector('dialog[open] form');
   form.elements.title.value = 'QA Interactive Movie';
@@ -284,10 +418,10 @@ try {
   return true;
 })()
 "@ | Out-Null
-    Wait-ForExpression $socket ([ref]$commandId) `
-        "!document.querySelector('dialog[open]') && document.querySelectorAll('.movie-card').length === 11"
+    Wait-For "!document.querySelector('dialog[open]') && document.querySelectorAll('.movie-card').length === $($cardsBefore + 1)"
+    Write-Host "Movie creation works."
 
-    Invoke-CdpExpression $socket ([ref]$commandId) @"
+    Invoke-Eval @"
 (() => {
   const card = [...document.querySelectorAll('.movie-card')]
     .find(node => node.textContent.includes('QA Interactive Movie'));
@@ -295,21 +429,15 @@ try {
   return true;
 })()
 "@ | Out-Null
-    Wait-ForExpression $socket ([ref]$commandId) `
-        "document.querySelector('dialog[open] form')?.elements.title.value === 'QA Interactive Movie'"
-    Assert-DialogFitsViewport $socket ([ref]$commandId)
-    Save-CdpScreenshot $socket ([ref]$commandId) `
-        (Join-Path $releaseRoot "qa-dialog-movie-edit.png")
-    Invoke-CdpExpression $socket ([ref]$commandId) `
-        "document.querySelector('dialog[open] [data-dialog-close]').click()" | Out-Null
-    Wait-ForExpression $socket ([ref]$commandId) `
-        "!document.querySelector('dialog[open]')"
+    Wait-For "document.querySelector('dialog[open] form')?.elements.title.value === 'QA Interactive Movie'"
+    Assert-ModalFitsViewport
+    Save-Screenshot "qa-dialog-movie-edit" | Out-Null
+    Invoke-Eval "document.querySelector('dialog[open] [data-dialog-close]').click()" | Out-Null
+    Wait-For "!document.querySelector('dialog[open]')"
 
-    Invoke-CdpExpression $socket ([ref]$commandId) `
-        "document.querySelector('[data-action=movie-add]').click()" | Out-Null
-    Wait-ForExpression $socket ([ref]$commandId) `
-        "document.querySelector('dialog[open]')"
-    Invoke-CdpExpression $socket ([ref]$commandId) @"
+    Invoke-Eval "document.querySelector('[data-action=movie-add]').click()" | Out-Null
+    Wait-For "document.querySelector('dialog[open]')"
+    Invoke-Eval @"
 (() => {
   const form = document.querySelector('dialog[open] form');
   form.elements.title.value = 'QA Interactive Movie';
@@ -319,43 +447,89 @@ try {
   return true;
 })()
 "@ | Out-Null
-    Wait-ForExpression $socket ([ref]$commandId) `
-        "document.querySelector('dialog[open] .form-error')?.textContent.trim().length > 0"
-    Save-CdpScreenshot $socket ([ref]$commandId) `
-        (Join-Path $releaseRoot "qa-dialog-duplicate-error.png")
-    Invoke-CdpExpression $socket ([ref]$commandId) `
-        "document.querySelector('dialog[open] [data-dialog-close]').click()" | Out-Null
+    Wait-For "document.querySelector('dialog[open] [data-dialog-error]')?.textContent.trim().length > 0"
+    Save-Screenshot "qa-dialog-duplicate-error" | Out-Null
+    Invoke-Eval "document.querySelector('dialog[open] [data-dialog-close]').click()" | Out-Null
+    Wait-For "!document.querySelector('dialog[open]')"
+    Write-Host "Duplicate movie is rejected with an inline error."
 
-    $commandId++
-    Send-CdpCommand $socket $commandId "Page.navigate" @{
-        url = "$appBaseUrl/#wheel"
-    } | Out-Null
-    Wait-ForExpression $socket ([ref]$commandId) `
-        "document.querySelector('[data-action=roll-configure]')"
-    Invoke-CdpExpression $socket ([ref]$commandId) `
-        "document.querySelector('[data-action=roll-configure]').click()" | Out-Null
-    Wait-ForExpression $socket ([ref]$commandId) `
-        "document.querySelectorAll('dialog[open] .player-row').length === 4"
-    Assert-DialogFitsViewport $socket ([ref]$commandId)
-    Save-CdpScreenshot $socket ([ref]$commandId) `
-        (Join-Path $releaseRoot "qa-dialog-wheel-config.png")
-    Invoke-CdpExpression $socket ([ref]$commandId) `
-        "document.querySelector('dialog[open] form').requestSubmit()" | Out-Null
-    Wait-ForExpression $socket ([ref]$commandId) `
-        "!document.querySelector('dialog[open]') && document.querySelector('#wheel-canvas')"
-    $wheelFits = Invoke-CdpExpression $socket ([ref]$commandId) `
-        "document.querySelector('.wheel-actions').getBoundingClientRect().bottom <= innerHeight"
-    if ($wheelFits -ne $true) {
-        throw "Wheel actions are below the 768px viewport."
+    Invoke-Eval "document.querySelector('.movie-card [data-action=movie-open]').click()" | Out-Null
+    Wait-For "document.querySelector('.drawer__panel')"
+    $drawerFits = Invoke-Eval @"
+(async () => {
+  const panel = document.querySelector('.drawer__panel');
+  // The drawer slides in, so measure only after its transition settles.
+  await Promise.all(panel.getAnimations().map((animation) => animation.finished.catch(() => {})));
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  const box = panel.getBoundingClientRect();
+  const fits = box.top >= -1 && box.right <= innerWidth + 1 && box.bottom <= innerHeight + 1;
+  return fits ? 'ok' : JSON.stringify({
+    top: Math.round(box.top),
+    right: Math.round(box.right),
+    bottom: Math.round(box.bottom),
+    innerWidth,
+    innerHeight,
+  });
+})()
+"@
+    if ($drawerFits -ne "ok") {
+        throw "Movie drawer does not fit the viewport: $drawerFits"
     }
-    Save-CdpScreenshot $socket ([ref]$commandId) `
-        (Join-Path $releaseRoot "qa-wheel-session-started.png")
+    Assert-NoHorizontalOverflow "filled/light/desktop/drawer" 1366
+    Save-Screenshot "qa-movie-drawer" | Out-Null
+    Invoke-Eval "document.querySelector('[data-action=detail-close]').click()" | Out-Null
+    Wait-For "!document.querySelector('.drawer__panel')"
+    Write-Host "Movie drawer opens and closes."
+
+    Invoke-Eval "document.querySelector('[data-action=palette-open]').click()" | Out-Null
+    Wait-For "document.querySelector('.palette:not([hidden])')"
+    Invoke-Eval @"
+(() => {
+  const input = document.querySelector('.palette__input');
+  input.value = 'QA Interactive';
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  return true;
+})()
+"@ | Out-Null
+    Wait-For "document.querySelectorAll('.palette__item').length > 0"
+    Assert-NoHorizontalOverflow "filled/light/desktop/palette" 1366
+    Save-Screenshot "qa-command-palette" | Out-Null
+    Invoke-Eval "document.querySelector('.palette__input').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))" | Out-Null
+    Wait-For "document.querySelector('.palette')?.hidden !== false"
+    Write-Host "Command palette searches the library."
+
+    # 6. Wheel.
+    Open-View "wheel"
+    Wait-For "document.querySelector('[data-action=roll-configure]')"
+    Invoke-Eval "document.querySelector('[data-action=roll-configure]').click()" | Out-Null
+    Wait-For "document.querySelectorAll('dialog[open] .player-row').length === 4"
+    Assert-ModalFitsViewport
+    Save-Screenshot "qa-dialog-wheel-config" | Out-Null
+    Invoke-Eval "document.querySelector('dialog[open] form').requestSubmit()" | Out-Null
+    Wait-For "!document.querySelector('dialog[open]') && document.querySelector('#wheel-canvas')"
+    $wheelFits = Invoke-Eval @"
+(() => {
+  // Wheel, status, spin button and progress must be readable on a 768px screen
+  // without scrolling. Only the stage padding may fall below the fold.
+  const required = ['.wheel-frame', '.wheel-status', '.wheel-actions', '.wheel-progress'];
+  const below = required.filter((selector) =>
+    document.querySelector(selector).getBoundingClientRect().bottom > innerHeight);
+  return below.length === 0 ? 'ok' : 'below the fold: ' + below.join(', ');
+})()
+"@
+    if ($wheelFits -ne "ok") {
+        throw "Wheel scene does not fit the 768px viewport: $wheelFits"
+    }
+    Save-Screenshot "qa-wheel-session-started" | Out-Null
+    Assert-NoConsoleErrors "interactive checks"
     Write-Host "Interactive dialogs and session start passed."
 
-    $commandId++
-    Send-CdpCommand $socket $commandId "Browser.close" | Out-Null
+    Write-Host ""
+    Write-Host "Visual QA passed. Screenshots: $shotRoot"
+
+    Send-CdpCommand "Browser.close" | Out-Null
 } finally {
-    if ($socket) { $socket.Dispose() }
+    if ($script:socket) { $script:socket.Dispose() }
     if ($edge -and -not $edge.HasExited) {
         Stop-Process -Id $edge.Id -Force -ErrorAction SilentlyContinue
     }
