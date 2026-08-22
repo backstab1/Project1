@@ -1,4 +1,7 @@
 const SCORE_STEP = 0.5;
+const NOTES_MAX_LENGTH = 2000;
+const TAG_MAX_LENGTH = 40;
+const TAGS_MAX_COUNT = 12;
 
 export function createId() {
   if (globalThis.crypto?.randomUUID) {
@@ -76,6 +79,9 @@ export function createMovie(input = {}) {
     releaseYear: normalizeOptionalInteger(input.releaseYear, 1888, 2200),
     durationMinutes: normalizeOptionalInteger(input.durationMinutes, 1, 2000),
     country: String(input.country ?? "").trim(),
+    tags: normalizeTags(input.tags),
+    notes: String(input.notes ?? "").trim().slice(0, NOTES_MAX_LENGTH),
+    isFavorite: Boolean(input.isFavorite),
     watchedAt: normalizeOptionalDate(input.watchedAt),
     ratings: normalizeRatings(input.ratings),
     createdAt: input.createdAt ?? now,
@@ -157,6 +163,45 @@ export function calculateFranchiseRating(franchise, movieById) {
 
   const total = movieRatings.reduce((sum, rating) => sum + rating, 0);
   return Math.round((total / movieRatings.length) * 10) / 10;
+}
+
+// Теги пишет человек, поэтому регистр и лишние пробелы не должны плодить
+// дубликаты: «Новый год» и «новый  год» — одна метка.
+export function normalizeTags(tags) {
+  if (!Array.isArray(tags)) {
+    return [];
+  }
+
+  const byNormalized = new Map();
+  for (const tag of tags) {
+    if (typeof tag !== "string") continue;
+    const label = tag.trim().replace(/\s+/g, " ").slice(0, TAG_MAX_LENGTH);
+    if (!label) continue;
+    const key = normalizeText(label);
+    if (!byNormalized.has(key)) {
+      byNormalized.set(key, label);
+    }
+  }
+
+  return [...byNormalized.values()].slice(0, TAGS_MAX_COUNT);
+}
+
+export function parseTagInput(value) {
+  return normalizeTags(String(value ?? "").split(","));
+}
+
+export function collectLibraryTags(movies) {
+  const byNormalized = new Map();
+  for (const movie of movies ?? []) {
+    for (const tag of movie.tags ?? []) {
+      const key = normalizeText(tag);
+      byNormalized.set(key, (byNormalized.get(key) ?? { tag, count: 0 }));
+      byNormalized.get(key).count += 1;
+    }
+  }
+
+  return [...byNormalized.values()]
+    .sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag, "ru-RU"));
 }
 
 function normalizeRatings(ratings) {

@@ -147,7 +147,13 @@ export function drawWheel(canvas, pool, rotation = 0, options = {}) {
   context.fillText("CV", center, center + size * 0.002);
 }
 
-export function animateWheel(canvas, pool, selectedIndex, duration = 3400) {
+export function animateWheel(canvas, pool, selectedIndex, options = {}) {
+  const {
+    duration = 3400,
+    soundEnabled = true,
+    reducedMotion: forcedReducedMotion = false,
+  } = options;
+
   if (!canvas || pool.length < 2) {
     return Promise.resolve();
   }
@@ -157,8 +163,9 @@ export function animateWheel(canvas, pool, selectedIndex, duration = 3400) {
   const targetBase = normalizeAngle(-selectedCenter);
   const totalRotation = Math.PI * 2 * 8 + targetBase;
   const startedAt = performance.now();
-  const audio = createAudioFeedback();
-  const reducedMotion = globalThis.matchMedia?.(
+  const audio = soundEnabled ? createAudioFeedback() : SILENT_AUDIO;
+  // Настройка приложения имеет приоритет над системной, но не отменяет её.
+  const reducedMotion = forcedReducedMotion || globalThis.matchMedia?.(
     "(prefers-reduced-motion: reduce)",
   ).matches;
   let previousSegment = -1;
@@ -206,6 +213,8 @@ function prepareCanvas(canvas, context) {
   context.setTransform(ratio, 0, 0, ratio, 0, 0);
   return logicalSize;
 }
+
+const SILENT_AUDIO = Object.freeze({ tick() {}, finish() {} });
 
 function createAudioFeedback() {
   const AudioContext = globalThis.AudioContext ?? globalThis.webkitAudioContext;

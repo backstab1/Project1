@@ -4,9 +4,11 @@ import assert from "node:assert/strict";
 import {
   calculateAverageRating,
   calculateFranchiseRating,
+  collectLibraryTags,
   createCategory,
   createMovie,
   normalizeScore,
+  parseTagInput,
   upsertRating,
 } from "../src/domain/entities.js";
 import { buildLibraryStatistics } from "../src/domain/statistics.js";
@@ -92,4 +94,43 @@ test("фильм сохраняет нормализованные метада�
   assert.equal(movie.overview, "Описание фильма.");
   assert.deepEqual(movie.genres, ["Фантастика", "Драма"]);
   assert.equal(movie.tmdbUpdatedAt, "2026-07-18T10:00:00.000Z");
+});
+
+test("теги фильма чистятся от регистра, пробелов и повторов", () => {
+  const movie = createMovie({
+    title: "Дюна",
+    tags: ["  Вечер пятницы ", "вечер   пятницы", "Пересмотр", "", 42],
+  });
+
+  assert.deepEqual(movie.tags, ["Вечер пятницы", "Пересмотр"]);
+});
+
+test("строка тегов разбирается по запятым", () => {
+  assert.deepEqual(parseTagInput(" Уют, ужасы ,, Уют "), ["Уют", "ужасы"]);
+  assert.deepEqual(parseTagInput(""), []);
+});
+
+test("фильм хранит заметку и признак избранного", () => {
+  const movie = createMovie({
+    title: "Дюна",
+    notes: "  Смотреть только с хорошим звуком.  ",
+    isFavorite: 1,
+  });
+
+  assert.equal(movie.notes, "Смотреть только с хорошим звуком.");
+  assert.equal(movie.isFavorite, true);
+  assert.equal(createMovie({ title: "Дюна" }).isFavorite, false);
+});
+
+test("теги библиотеки собираются с частотой и без дублей по регистру", () => {
+  const tags = collectLibraryTags([
+    createMovie({ title: "A", tags: ["Уют", "Ужасы"] }),
+    createMovie({ title: "B", tags: ["уют"] }),
+    createMovie({ title: "C", tags: [] }),
+  ]);
+
+  assert.deepEqual(tags, [
+    { tag: "Уют", count: 2 },
+    { tag: "Ужасы", count: 1 },
+  ]);
 });

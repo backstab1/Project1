@@ -1,5 +1,8 @@
 import { APP_VERSION } from "../config.js";
-import { calculateAverageRating } from "../domain/entities.js";
+import {
+  calculateAverageRating,
+  collectLibraryTags,
+} from "../domain/entities.js";
 import {
   buildCategoryQueue,
   getMovieFranchiseMap,
@@ -739,6 +742,23 @@ function renderMovieDetail(state) {
             ? `<p class="drawer__overview">${escapeHtml(movie.overview)}</p>`
             : `<p class="muted">Описание не заполнено.</p>`}
 
+          ${(movie.tags ?? []).length ? `
+            <div class="chip-row chip-row--soft">
+              ${movie.tags.map((tag) => `
+                <button class="chip chip--tag" type="button"
+                  data-action="catalog-tag-open" data-tag="${escapeAttribute(tag)}"
+                  title="Показать все фильмы с тегом">${icon("tag")}${escapeHtml(tag)}</button>
+              `).join("")}
+            </div>
+          ` : ""}
+
+          ${movie.notes ? `
+            <section class="drawer__notes">
+              <h3>${icon("note")}Заметка</h3>
+              <p>${escapeHtml(movie.notes)}</p>
+            </section>
+          ` : ""}
+
           <section class="drawer__ratings">
             <header>
               <h3>Оценки</h3>
@@ -763,6 +783,12 @@ function renderMovieDetail(state) {
               data-action="${movie.watchedAt ? "rating-add" : "watch-add"}" data-id="${movie.id}">
               ${icon(movie.watchedAt ? "star" : "check")}
               <span>${movie.watchedAt ? "Поставить оценку" : "Отметить просмотренным"}</span>
+            </button>
+            <button class="btn btn--ghost ${movie.isFavorite ? "is-favorite" : ""}" type="button"
+              data-action="movie-favorite-toggle" data-id="${movie.id}"
+              aria-pressed="${Boolean(movie.isFavorite)}">
+              ${icon(movie.isFavorite ? "starFilled" : "star")}
+              <span>${movie.isFavorite ? "В избранном" : "В избранное"}</span>
             </button>
             <button class="btn btn--ghost" type="button" data-action="movie-edit" data-id="${movie.id}">
               ${icon("edit")}<span>Редактировать</span>
@@ -791,6 +817,8 @@ function renderCatalog(container, state) {
   const genres = [...new Set(
     library.movies.flatMap((movie) => movie.genres ?? []).filter(Boolean),
   )].sort((a, b) => a.localeCompare(b, "ru-RU"));
+  const tags = collectLibraryTags(library.movies);
+  const favoriteCount = library.movies.filter((movie) => movie.isFavorite).length;
   const query = catalogFilters.query.trim().toLocaleLowerCase("ru-RU");
   const activeChips = buildFilterChips(catalogFilters, categories);
   const hasCustomizedCatalog = activeChips.length > 0 || catalogFilters.sort !== "title";
@@ -814,6 +842,9 @@ function renderCatalog(container, state) {
         !(movie.genres ?? []).some((genre) => genre === catalogFilters.genre)) return false;
       if (catalogFilters.status === "watched" && !movie.watchedAt) return false;
       if (catalogFilters.status === "unwatched" && movie.watchedAt) return false;
+      if (catalogFilters.favoritesOnly && !movie.isFavorite) return false;
+      if (catalogFilters.tag &&
+        !(movie.tags ?? []).some((tag) => tag === catalogFilters.tag)) return false;
       return true;
     })
     .sort(getMovieSorter(catalogFilters.sort));
@@ -836,6 +867,14 @@ function renderCatalog(container, state) {
                 aria-pressed="${catalogFilters.status === value}">${label}</button>
             `).join("")}
         </div>
+        <button type="button"
+          class="btn btn--ghost btn--sm favorite-filter ${catalogFilters.favoritesOnly ? "is-active" : ""}"
+          data-action="catalog-favorites-toggle"
+          aria-pressed="${Boolean(catalogFilters.favoritesOnly)}"
+          ${favoriteCount ? "" : "disabled"}
+          title="${favoriteCount ? "Только избранное" : "В библиотеке нет избранного"}">
+          ${icon(catalogFilters.favoritesOnly ? "starFilled" : "star")}<span>Избранное</span>
+        </button>
         <div class="segmented segmented--icons" role="group" aria-label="Вид">
           <button type="button" class="${viewMode === "grid" ? "is-active" : ""}"
             data-action="catalog-view" data-mode="grid" aria-label="Плитка"
@@ -878,6 +917,18 @@ function renderCatalog(container, state) {
         </select>
         ${icon("chevronDown", "select-field__caret")}
       </div>
+      ${tags.length ? `
+        <div class="select-field">
+          ${icon("tag")}
+          <select data-control="catalog-tag" aria-label="Тег">
+            <option value="">Все теги</option>
+            ${tags.map(({ tag, count }) => `
+              <option value="${escapeAttribute(tag)}"
+                ${catalogFilters.tag === tag ? "selected" : ""}>${escapeHtml(tag)} · ${count}</option>
+            `).join("")}
+          </select>
+          ${icon("chevronDown", "select-field__caret")}
+        </div>` : ""}
       <div class="select-field">
         ${icon("shuffle")}
         <select data-control="catalog-sort" aria-label="Сортировка">
@@ -957,6 +1008,12 @@ function buildFilterChips(filters, categories) {
       value: filters.status === "watched" ? "Просмотрено" : "В очереди",
     });
   }
+  if (filters.tag) {
+    chips.push({ key: "tag", label: "Тег", value: filters.tag });
+  }
+  if (filters.favoritesOnly) {
+    chips.push({ key: "favoritesOnly", label: "Отбор", value: "Избранное" });
+  }
   return chips;
 }
 
@@ -974,10 +1031,18 @@ function movieCard(movie, category, franchise, index = 0) {
           : `<span class="poster-fallback">${escapeHtml(initials(movie.title))}</span>`}
         <div class="movie-card__gradient"></div>
         <div class="movie-card__badges">
+          ${movie.isFavorite
+            ? `<span class="badge badge--favorite" title="В избранном">${icon("starFilled")}</span>`
+            : ""}
           ${rating === null ? "" : `<span class="badge badge--score">${icon("star")}${rating}</span>`}
           ${movie.watchedAt ? `<span class="badge badge--seen">${icon("check")}Просмотрен</span>` : ""}
         </div>
         <div class="movie-card__tools">
+          <button class="icon-btn icon-btn--glass ${movie.isFavorite ? "is-favorite" : ""}"
+            type="button" data-action="movie-favorite-toggle" data-id="${movie.id}"
+            aria-pressed="${Boolean(movie.isFavorite)}"
+            aria-label="${movie.isFavorite ? "Убрать из избранного" : "В избранное"}"
+            >${icon(movie.isFavorite ? "starFilled" : "star")}</button>
           <button class="icon-btn icon-btn--glass" type="button" data-action="movie-edit"
             data-id="${movie.id}" aria-label="Редактировать">${icon("edit")}</button>
           <button class="icon-btn icon-btn--glass icon-btn--danger" type="button"
@@ -1034,6 +1099,11 @@ function movieRow(movie, category, franchise) {
       </span>
       <span class="movie-row__score">${rating === null ? "—" : `${icon("star")}${rating}`}</span>
       <span class="movie-row__tools">
+        <button class="icon-btn icon-btn--sm ${movie.isFavorite ? "is-favorite" : ""}" type="button"
+          data-action="movie-favorite-toggle" data-id="${movie.id}"
+          aria-pressed="${Boolean(movie.isFavorite)}"
+          aria-label="${movie.isFavorite ? "Убрать из избранного" : "В избранное"}"
+          >${icon(movie.isFavorite ? "starFilled" : "star")}</button>
         ${!movie.watchedAt ? `
           <button class="icon-btn icon-btn--sm" type="button" data-action="watch-add"
             data-id="${movie.id}" aria-label="Отметить просмотренным">${icon("check")}</button>` : ""}
@@ -1595,6 +1665,7 @@ function renderFranchises(container, library) {
 
 function renderSettings(container, state) {
   const tmdb = state.tmdbStatus;
+  const settings = state.library.settings ?? {};
 
   container.innerHTML = `
     <div class="settings-grid">
@@ -1630,6 +1701,50 @@ function renderSettings(container, state) {
             <img src="./assets/tmdb.svg" alt="The Movie Database (TMDB)">
           </a>
           <small>This product uses the TMDB API but is not endorsed or certified by TMDB.</small>
+        </div>
+      </section>
+
+      <section class="panel">
+        <header class="panel__head">
+          <div class="panel__lead">
+            <span class="panel__glyph">${icon("settings")}</span>
+            <div>
+              <p class="eyebrow">Поведение приложения</p>
+              <h3>Звук, движение и сейвы</h3>
+            </div>
+          </div>
+        </header>
+        <div class="preferences">
+          <label class="switch-field">
+            <input type="checkbox" data-control="setting-sound"
+              ${settings.soundEnabled === false ? "" : "checked"}>
+            <span class="switch-field__box">${icon("check")}</span>
+            <span class="switch-field__text">
+              <strong>Звук колеса</strong>
+              <small>Щелчки при вращении и аккорд в конце.</small>
+            </span>
+          </label>
+          <label class="switch-field">
+            <input type="checkbox" data-control="setting-reduced-motion"
+              ${settings.reducedMotion === true ? "checked" : ""}>
+            <span class="switch-field__box">${icon("check")}</span>
+            <span class="switch-field__text">
+              <strong>Меньше движения</strong>
+              <small>Отключает анимации появления и вращение колеса.</small>
+            </span>
+          </label>
+          <label class="field">
+            <span>Сейвы работают, пока участников больше</span>
+            <input type="number" min="1" max="99" data-control="setting-save-threshold"
+              value="${Number(settings.savesEnabledAboveRemaining ?? 3)}">
+            <small class="field__hint">Значение подставляется в диалог настройки
+            сессии колеса.</small>
+          </label>
+          <label class="field">
+            <span>Напоминать о резервной копии, дней</span>
+            <input type="number" min="1" max="365" data-control="setting-backup-days"
+              value="${Number(settings.backupReminderDays ?? 30)}">
+          </label>
         </div>
       </section>
 

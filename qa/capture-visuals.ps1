@@ -481,6 +481,86 @@ addEventListener('unhandledrejection', (event) => {
     Wait-For "!document.querySelector('.drawer__panel')"
     Write-Host "Movie drawer opens and closes."
 
+    # Favorites filter, tag filter and the notes block.
+    $favorites = Invoke-Eval @"
+(async () => {
+  const cardCount = () => document.querySelectorAll('.movie-card').length;
+  const before = cardCount();
+  document.querySelector('[data-action=catalog-favorites-toggle]').click();
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  const filtered = cardCount();
+  if (filtered === 0) return 'favorites filter hides everything';
+  if (filtered >= before) return 'favorites filter changed nothing: ' + before + ' -> ' + filtered;
+  const allFavorite = [...document.querySelectorAll('.movie-card')]
+    .every((card) => card.querySelector('.badge--favorite'));
+  if (!allFavorite) return 'a non-favorite movie passed the filter';
+  // The filter stays on so the screenshot below shows the filtered catalog.
+  window.__qaCatalogBefore = before;
+  return 'ok';
+})()
+"@
+    if ($favorites -ne "ok") {
+        throw "Favorites filter is broken: $favorites"
+    }
+    Save-Screenshot "qa-catalog-favorites" | Out-Null
+
+    $favoritesReset = Invoke-Eval @"
+(async () => {
+  document.querySelector('[data-action=catalog-favorites-toggle]').click();
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  return document.querySelectorAll('.movie-card').length === window.__qaCatalogBefore
+    ? 'ok'
+    : 'favorites filter did not reset';
+})()
+"@
+    if ($favoritesReset -ne "ok") {
+        throw "Favorites filter is broken: $favoritesReset"
+    }
+    Write-Host "Favorites filter narrows the catalog."
+
+    $tagFilter = Invoke-Eval @"
+(async () => {
+  const select = document.querySelector('[data-control=catalog-tag]');
+  if (!select) return 'tag select is missing';
+  const option = [...select.options].find((item) => item.value);
+  if (!option) return 'no tags in the library';
+  select.value = option.value;
+  select.dispatchEvent(new Event('change', { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  const chip = document.querySelector('[data-action=catalog-filter-clear][data-filter=tag]');
+  if (!chip) return 'tag chip is missing';
+  const count = document.querySelectorAll('.movie-card').length;
+  chip.click();
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  return count > 0 ? 'ok' : 'tag filter hides everything';
+})()
+"@
+    if ($tagFilter -ne "ok") {
+        throw "Tag filter is broken: $tagFilter"
+    }
+    Write-Host "Tag filter works and can be cleared."
+
+    $notes = Invoke-Eval @"
+(async () => {
+  document.querySelector('[data-action=movie-open][data-id=qa-hunt]').click();
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const panel = document.querySelector('.drawer__panel');
+    if (panel?.querySelector('.drawer__notes') && panel.querySelector('.chip--tag')) {
+      return 'ok';
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  return 'drawer has no notes or tags';
+})()
+"@
+    if ($notes -ne "ok") {
+        throw "Movie drawer misses notes or tags: $notes"
+    }
+    Save-Screenshot "qa-movie-drawer-notes" | Out-Null
+    Invoke-Eval "document.querySelector('[data-action=detail-close]').click()" | Out-Null
+    Wait-For "!document.querySelector('.drawer__panel')"
+    Write-Host "Drawer shows tags and the personal note."
+
     Invoke-Eval "document.querySelector('[data-action=palette-open]').click()" | Out-Null
     Wait-For "document.querySelector('.palette:not([hidden])')"
     Invoke-Eval @"
@@ -497,6 +577,37 @@ addEventListener('unhandledrejection', (event) => {
     Invoke-Eval "document.querySelector('.palette__input').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))" | Out-Null
     Wait-For "document.querySelector('.palette')?.hidden !== false"
     Write-Host "Command palette searches the library."
+
+    Open-View "settings"
+    $preferences = Invoke-Eval @"
+(async () => {
+  const motion = document.querySelector('[data-control=setting-reduced-motion]');
+  if (!motion) return 'motion switch is missing';
+  motion.checked = true;
+  motion.dispatchEvent(new Event('change', { bubbles: true }));
+  for (let attempt = 0; attempt < 20; attempt++) {
+    if (document.documentElement.dataset.motion === 'reduced') break;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  if (document.documentElement.dataset.motion !== 'reduced') {
+    return 'reduced motion was not applied to the document';
+  }
+  const restored = document.querySelector('[data-control=setting-reduced-motion]');
+  if (!restored.checked) return 'the switch lost its state after re-render';
+  restored.checked = false;
+  restored.dispatchEvent(new Event('change', { bubbles: true }));
+  for (let attempt = 0; attempt < 20; attempt++) {
+    if (!document.documentElement.dataset.motion) return 'ok';
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  return 'reduced motion was not turned off';
+})()
+"@
+    if ($preferences -ne "ok") {
+        throw "Behaviour settings are broken: $preferences"
+    }
+    Save-Screenshot "qa-settings-preferences" | Out-Null
+    Write-Host "Behaviour settings persist and apply."
 
     # 6. Wheel.
     Open-View "wheel"

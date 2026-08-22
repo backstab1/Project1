@@ -18,6 +18,7 @@ import {
   createMovie,
   createParticipant,
   normalizeText,
+  parseTagInput,
   upsertRating,
 } from "./domain/entities.js";
 import {
@@ -93,7 +94,9 @@ const DEFAULT_CATALOG_FILTERS = Object.freeze({
   query: "",
   categoryId: "",
   genre: "",
+  tag: "",
   status: "all",
+  favoritesOnly: false,
   sort: "title",
 });
 
@@ -180,6 +183,7 @@ async function start() {
     state.error = error instanceof Error ? error : new Error(String(error));
   }
 
+  applyMotionPreference();
   render();
   // Событие error у изображений не всплывает, поэтому слушаем фазу перехвата.
   document.addEventListener("error", handleBrokenPoster, true);
@@ -194,6 +198,23 @@ async function start() {
 
 function render() {
   renderAppShell(root, state);
+}
+
+// Настройка «меньше движения» действует поверх системной, поэтому её нужно
+// проставлять на корне документа, а не только в анимации колеса.
+function applyMotionPreference() {
+  const reduced = state.library.settings?.reducedMotion === true;
+  if (reduced) {
+    document.documentElement.dataset.motion = "reduced";
+  } else {
+    delete document.documentElement.dataset.motion;
+  }
+}
+
+function clampNumber(value, min, max, fallback) {
+  const number = Number.parseInt(value, 10);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.min(max, Math.max(min, number));
 }
 
 // Постер TMDB может не загрузиться: ссылка устарела или интернета нет.
@@ -271,6 +292,10 @@ async function handleAction(action, payload) {
     "catalog-status-set": () => setCatalogFilter("status", payload.value),
     "catalog-filter-clear": () => clearCatalogFilter(payload.filter),
     "catalog-view": () => setCatalogView(payload.mode),
+    "catalog-favorites-toggle": () =>
+      setCatalogFilter("favoritesOnly", !state.catalogFilters.favoritesOnly),
+    "catalog-tag-open": () => openCatalogTag(payload.tag),
+    "movie-favorite-toggle": () => toggleMovieFavorite(payload.id),
     "movie-open": () => openMovieDetail(payload.id),
     "detail-close": () => closeMovieDetail(),
     "sidebar-toggle": () => toggleSidebar(),
@@ -296,6 +321,35 @@ function setCatalogFilter(field, value) {
 
 function clearCatalogFilter(field) {
   setCatalogFilter(field, DEFAULT_CATALOG_FILTERS[field]);
+}
+
+function openCatalogFavorites() {
+  openCatalogWithFilters({ favoritesOnly: true });
+}
+
+// Тег из карточки фильма открывает каталог с уже применённым фильтром.
+function openCatalogTag(tag) {
+  openCatalogWithFilters({ tag: String(tag ?? "") });
+}
+
+function openCatalogWithFilters(filters) {
+  state.detailMovieId = null;
+  state.catalogFilters = { ...DEFAULT_CATALOG_FILTERS, ...filters };
+  state.view = "catalog";
+  if (location.hash !== "#catalog") {
+    history.pushState(null, "", "#catalog");
+  }
+  state.focusControl = null;
+  render();
+}
+
+async function toggleMovieFavorite(movieId) {
+  const movie = state.library.movies.find((item) => item.id === movieId);
+  if (!movie) return;
+
+  await saveMovie(createMovie({ ...movie, isFavorite: !movie.isFavorite }));
+  await reloadLibrary();
+  showToast(movie.isFavorite ? "Убрано из избранного" : "Добавлено в избранное");
 }
 
 function setCatalogView(mode) {
@@ -381,6 +435,15 @@ function buildCommands() {
       run: () => state.onAction("franchise-add", {}),
     },
     {
+      id: "action-favorites",
+      group: "Действия",
+      label: "Показать избранное",
+      hint: "Каталог только из отмеченных звездой фильмов",
+      icon: "star",
+      keywords: "избранное favorites звезда любимые",
+      run: () => openCatalogFavorites(),
+    },
+    {
       id: "action-roll",
       group: "Действия",
       label: state.activeSession ? "Вернуться к сессии" : "Запустить колесо",
@@ -432,6 +495,7 @@ async function handleControl(control, payload) {
     "catalog-query": "query",
     "catalog-category": "categoryId",
     "catalog-genre": "genre",
+    "catalog-tag": "tag",
     "catalog-status": "status",
     "catalog-sort": "sort",
   };
@@ -439,6 +503,27 @@ async function handleControl(control, payload) {
     state.catalogFilters[catalogControls[control]] = payload.value;
     state.focusControl = control === "catalog-query" ? control : null;
     render();
+    return;
+  }
+
+  const settingControls = {
+    "setting-sound": ["soundEnabled", (value) => value.checked],
+    "setting-reduced-motion": ["reducedMotion", (value) => value.checked],
+    "setting-save-threshold": [
+      "savesEnabledAboveRemaining",
+      (value) => clampNumber(value.value, 1, 99, 3),
+    ],
+    "setting-backup-days": [
+      "backupReminderDays",
+      (value) => clampNumber(value.value, 1, 365, 30),
+    ],
+  };
+  if (settingControls[control]) {
+    const [key, read] = settingControls[control];
+    await saveSetting(key, read(payload));
+    await reloadLibrary();
+    applyMotionPreference();
+    showToast("Настройка сохранена.");
     return;
   }
 
@@ -801,7 +886,10 @@ function openRollConfiguration() {
         <span>Сейвы работают, пока участников больше</span>
         <input name="saveThreshold" type="number" min="1"
           max="${state.rollDraftPool.length - 1}"
-          value="${Math.min(3, state.rollDraftPool.length - 1)}">
+          value="${Math.min(
+            Number(state.library.settings.savesEnabledAboveRemaining ?? 3),
+            state.rollDraftPool.length - 1,
+          )}">
       </label>
     `,
     onSubmit: async (formData) => {
@@ -840,6 +928,10 @@ async function spinActiveSession() {
       canvas,
       state.activeSession.pool,
       nextSession.pendingIndex,
+      {
+        soundEnabled: state.library.settings.soundEnabled !== false,
+        reducedMotion: state.library.settings.reducedMotion === true,
+      },
     );
     state.activeSession = nextSession;
   } finally {
@@ -1069,6 +1161,18 @@ function openMovieDialog(movieId = null) {
             <input name="coverUrl" type="text" inputmode="url" maxlength="2000"
               value="${escapeAttribute(movie?.coverUrl ?? "")}">
           </label>
+          <label class="field">
+            <span>Теги</span>
+            <input name="tags" maxlength="300" placeholder="Вечер пятницы, пересмотр"
+              value="${escapeAttribute((movie?.tags ?? []).join(", "))}">
+            <small class="field__hint">Свои метки через запятую: по ним можно
+            фильтровать каталог.</small>
+          </label>
+          <label class="field">
+            <span>Личная заметка</span>
+            <textarea name="notes" maxlength="2000" rows="3"
+              placeholder="Почему стоит посмотреть, с кем и когда">${escapeHtml(movie?.notes ?? "")}</textarea>
+          </label>
         </div>
       </details>
     `,
@@ -1087,6 +1191,8 @@ function openMovieDialog(movieId = null) {
         overview: formData.get("overview"),
         genres: String(formData.get("genres") ?? "")
           .split(",").map((genre) => genre.trim()).filter(Boolean),
+        tags: parseTagInput(formData.get("tags")),
+        notes: formData.get("notes"),
       };
       const duplicate = findDuplicateMovie(
         state.library.movies,

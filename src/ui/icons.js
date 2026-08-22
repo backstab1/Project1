@@ -59,13 +59,27 @@ const PATHS = Object.freeze({
   target: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.6"/><circle cx="12" cy="12" r="1"/>',
   folder: '<path d="M3.5 7.2a2 2 0 0 1 2-2h3.3l2 2.4h7.7a2 2 0 0 1 2 2v8.2a2 2 0 0 1-2 2H5.5a2 2 0 0 1-2-2z"/>',
   image: '<rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><circle cx="8.8" cy="9.5" r="1.6"/><path d="m4 17 4.8-4.5 3.4 3.2 3-2.6 4.8 4.4"/>',
+  tag: '<path d="M3.8 11.2V4.8a1 1 0 0 1 1-1h6.4a1 1 0 0 1 .7.3l8 8a1 1 0 0 1 0 1.4l-6.4 6.4a1 1 0 0 1-1.4 0l-8-8a1 1 0 0 1-.3-.7z"/><circle cx="7.9" cy="7.9" r="1.3"/>',
+  note: '<path d="M5 4.5h14v10.2L14.2 19.5H5z"/><path d="M19 14.7h-4.8v4.8M8.2 8.6h7.6M8.2 12.1h5.4"/>',
+});
+
+// Заливка нужна только там, где иконка обозначает включённое состояние.
+const FILLED_PATHS = Object.freeze({
+  starFilled: PATHS.star,
 });
 
 export function icon(name, className = "") {
-  const path = PATHS[name];
+  const filled = FILLED_PATHS[name];
+  const path = filled ?? PATHS[name];
   if (!path) return "";
   const classAttribute = className ? ` class="${className}"` : "";
-  return `<svg${classAttribute} ${STROKE_ATTRS}>${path}</svg>`;
+  const attributes = filled
+    ? STROKE_ATTRS.replace('fill="none"', 'fill="currentColor"')
+    : STROKE_ATTRS;
+  return `<svg${classAttribute} ${attributes}>${path}</svg>`;
 }
 
-export const ICON_NAMES = Object.freeze(Object.keys(PATHS));
+export const ICON_NAMES = Object.freeze([
+  ...Object.keys(PATHS),
+  ...Object.keys(FILLED_PATHS),
+]);
