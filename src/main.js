@@ -67,6 +67,11 @@ import { openDialog } from "./ui/dialog.js";
 import { animateWheel } from "./ui/wheelCanvas.js";
 import { showToast } from "./ui/toast.js";
 import {
+  closePalette,
+  isPaletteOpen,
+  openPalette,
+} from "./ui/commandPalette.js";
+import {
   applyTheme,
   getInitialTheme,
   saveTheme,
@@ -92,9 +97,28 @@ const DEFAULT_CATALOG_FILTERS = Object.freeze({
   sort: "title",
 });
 
+const CATALOG_VIEW_KEY = "cinevault-catalog-view";
+const SIDEBAR_KEY = "cinevault-sidebar-collapsed";
+
 function readViewFromHash() {
   const view = location.hash.slice(1);
   return VIEW_IDS.has(view) ? view : "dashboard";
+}
+
+function readStoredPreference(key, fallback) {
+  try {
+    return localStorage.getItem(key) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeStoredPreference(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Настройка вида не критична: работаем в памяти текущей сессии.
+  }
 }
 
 const state = {
@@ -118,6 +142,9 @@ const state = {
   activeSession: null,
   isSpinning: false,
   catalogFilters: { ...DEFAULT_CATALOG_FILTERS },
+  catalogView: readStoredPreference(CATALOG_VIEW_KEY, "grid"),
+  sidebarCollapsed: readStoredPreference(SIDEBAR_KEY, "0") === "1",
+  detailMovieId: null,
   focusControl: null,
   tmdbStatus: { configured: false, loading: true, error: null },
   error: null,
@@ -125,6 +152,7 @@ const state = {
     if (!VIEW_IDS.has(view)) return;
     state.view = view;
     state.focusControl = null;
+    state.detailMovieId = null;
     if (location.hash !== `#${view}`) {
       history.pushState(null, "", `#${view}`);
     }
@@ -157,6 +185,7 @@ async function start() {
   window.addEventListener("popstate", () => {
     state.view = readViewFromHash();
     state.focusControl = null;
+    state.detailMovieId = null;
     render();
   });
 }
@@ -218,6 +247,14 @@ async function handleAction(action, payload) {
     "tmdb-configure": () => openTmdbTokenDialog(),
     "tmdb-clear": () => removeTmdbToken(),
     "catalog-filters-reset": () => resetCatalogFilters(),
+    "catalog-status-set": () => setCatalogFilter("status", payload.value),
+    "catalog-filter-clear": () => clearCatalogFilter(payload.filter),
+    "catalog-view": () => setCatalogView(payload.mode),
+    "movie-open": () => openMovieDetail(payload.id),
+    "detail-close": () => closeMovieDetail(),
+    "sidebar-toggle": () => toggleSidebar(),
+    "palette-open": () => openCommandPalette(),
+    "theme-set": () => setTheme(payload.theme),
     "theme-toggle": () => changeTheme(),
   };
 
@@ -228,6 +265,145 @@ function resetCatalogFilters() {
   state.catalogFilters = { ...DEFAULT_CATALOG_FILTERS };
   state.focusControl = null;
   render();
+}
+
+function setCatalogFilter(field, value) {
+  state.catalogFilters[field] = value;
+  state.focusControl = null;
+  render();
+}
+
+function clearCatalogFilter(field) {
+  setCatalogFilter(field, DEFAULT_CATALOG_FILTERS[field]);
+}
+
+function setCatalogView(mode) {
+  state.catalogView = mode === "list" ? "list" : "grid";
+  writeStoredPreference(CATALOG_VIEW_KEY, state.catalogView);
+  render();
+}
+
+function toggleSidebar() {
+  state.sidebarCollapsed = !state.sidebarCollapsed;
+  writeStoredPreference(SIDEBAR_KEY, state.sidebarCollapsed ? "1" : "0");
+  render();
+}
+
+function openMovieDetail(movieId) {
+  state.detailMovieId = movieId ?? null;
+  render();
+}
+
+function closeMovieDetail() {
+  if (!state.detailMovieId) return;
+  state.detailMovieId = null;
+  render();
+}
+
+function setTheme(theme) {
+  if (theme !== "light" && theme !== "dark") return;
+  state.theme = applyTheme(theme);
+  saveTheme(state.theme);
+  render();
+}
+
+function openCommandPalette() {
+  openPalette(buildCommands());
+}
+
+function buildCommands() {
+  const navigation = [
+    ["dashboard", "Главная", "home"],
+    ["catalog", "Каталог", "film"],
+    ["franchises", "Коллекции", "collection"],
+    ["categories", "Списки", "layers"],
+    ["watched", "Просмотренные", "eye"],
+    ["wheel", "Колесо", "wheel"],
+    ["sessions", "История роллов", "history"],
+    ["settings", "Настройки", "settings"],
+  ].map(([view, label, iconName]) => ({
+    id: `nav-${view}`,
+    group: "Переход",
+    label,
+    hint: "Открыть раздел",
+    icon: iconName,
+    keywords: view,
+    run: () => state.onNavigate(view),
+  }));
+
+  const actions = [
+    {
+      id: "action-add-movie",
+      group: "Действия",
+      label: "Добавить фильм",
+      hint: "Создать карточку вручную или через TMDB",
+      icon: "plus",
+      keywords: "новый фильм создать add",
+      run: () => state.onAction("movie-add", {}),
+    },
+    {
+      id: "action-add-category",
+      group: "Действия",
+      label: "Новый список",
+      hint: "Создать список с квотой для колеса",
+      icon: "layers",
+      keywords: "категория список",
+      run: () => state.onAction("category-add", {}),
+    },
+    {
+      id: "action-add-franchise",
+      group: "Действия",
+      label: "Новая коллекция",
+      hint: "Объединить фильмы во франшизу",
+      icon: "collection",
+      keywords: "франшиза коллекция сага",
+      run: () => state.onAction("franchise-add", {}),
+    },
+    {
+      id: "action-roll",
+      group: "Действия",
+      label: state.activeSession ? "Вернуться к сессии" : "Запустить колесо",
+      hint: "Кинорулетка с механикой выбывания",
+      icon: "wheel",
+      keywords: "ролл рулетка колесо spin",
+      run: () => state.onNavigate("wheel"),
+    },
+    {
+      id: "action-backup",
+      group: "Действия",
+      label: "Скачать резервную копию",
+      hint: "Экспорт библиотеки в JSON",
+      icon: "download",
+      keywords: "бэкап backup экспорт json",
+      run: () => state.onAction("backup-export", {}),
+    },
+    {
+      id: "action-theme",
+      group: "Действия",
+      label: state.theme === "dark" ? "Включить светлую тему" : "Включить тёмную тему",
+      hint: "Переключение оформления",
+      icon: state.theme === "dark" ? "sun" : "moon",
+      keywords: "тема theme dark light",
+      run: () => state.onAction("theme-toggle", {}),
+    },
+  ];
+
+  const movies = state.library.movies
+    .slice()
+    .sort((a, b) => a.title.localeCompare(b.title, "ru-RU"))
+    .map((movie) => ({
+      id: `movie-${movie.id}`,
+      group: "Фильмы",
+      label: movie.title,
+      hint: [movie.releaseYear, movie.country, movie.watchedAt ? "просмотрен" : "в очереди"]
+        .filter(Boolean).join(" · "),
+      icon: "film",
+      keywords: [movie.originalTitle, ...(movie.genres ?? [])].filter(Boolean).join(" "),
+      hiddenByDefault: true,
+      run: () => openMovieDetail(movie.id),
+    }));
+
+  return [...navigation, ...actions, ...movies];
 }
 
 async function handleControl(control, payload) {
@@ -741,6 +917,22 @@ async function rememberParticipants(participants) {
 }
 
 function handleGlobalKeydown(event) {
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+    event.preventDefault();
+    if (isPaletteOpen()) {
+      closePalette();
+    } else {
+      openCommandPalette();
+    }
+    return;
+  }
+
+  if (event.key === "Escape" && state.detailMovieId && !isPaletteOpen()) {
+    event.preventDefault();
+    closeMovieDetail();
+    return;
+  }
+
   if (
     event.code !== "Space" ||
     event.repeat ||
@@ -785,7 +977,7 @@ function openMovieDialog(movieId = null) {
               autocomplete="off" placeholder="Например, Интерстеллар"
               aria-label="Название фильма для поиска в TMDB"
               value="${escapeAttribute(movie?.title ?? "")}">
-            <button class="button button--primary" type="button" data-tmdb-search>
+            <button class="btn btn--primary" type="button" data-tmdb-search>
               Найти
             </button>
           </div>
@@ -797,7 +989,7 @@ function openMovieDialog(movieId = null) {
               <h3>Подключите TMDB для быстрого добавления</h3>
               <p>После подключения достаточно найти фильм и выбрать карточку — остальные поля заполнятся сами.</p>
             </div>
-            <button class="button button--primary" type="button" data-tmdb-connect>
+            <button class="btn btn--primary" type="button" data-tmdb-connect>
               Подключить TMDB
             </button>
           </div>

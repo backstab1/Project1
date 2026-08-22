@@ -7,130 +7,189 @@ import {
 import { setupDialog } from "./dialog.js";
 import { drawWheel } from "./wheelCanvas.js";
 import { isBackupReminderDue } from "../domain/backupReminder.js";
+import { icon } from "./icons.js";
 
-const NAV_ITEMS = [
-  ["dashboard", "Главная", "home"],
-  ["catalog", "Каталог", "film"],
-  ["franchises", "Коллекции", "collection"],
-  ["categories", "Списки", "categories"],
-  ["watched", "Просмотренные", "eye"],
-  ["wheel", "Колесо", "wheel"],
-  ["sessions", "История роллов", "history"],
-  ["settings", "Настройки", "settings"],
+const NAV_GROUPS = [
+  ["Обзор", [
+    ["dashboard", "Главная", "home"],
+  ]],
+  ["Библиотека", [
+    ["catalog", "Каталог", "film"],
+    ["franchises", "Коллекции", "collection"],
+    ["categories", "Списки", "layers"],
+    ["watched", "Просмотренные", "eye"],
+  ]],
+  ["Кинорулетка", [
+    ["wheel", "Колесо", "wheel"],
+    ["sessions", "История роллов", "history"],
+  ]],
+  ["Система", [
+    ["settings", "Настройки", "settings"],
+  ]],
 ];
 
-const ICONS = Object.freeze({
-  home: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 11 9-8 9 8v9a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"/></svg>',
-  film: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M7 4v16M17 4v16M3 9h4m10 0h4M3 15h4m10 0h4"/></svg>',
-  collection: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="3"/><path d="M8 2h8M8 22h8m-6-13 6 3-6 3z"/></svg>',
-  categories: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></svg>',
-  eye: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>',
-  wheel: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m12 3 2 7 7 2-7 2-2 7-2-7-7-2 7-2z"/></svg>',
-  history: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5m4-1v5l3 2"/></svg>',
-  star: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-2.9-5.6 2.9 1.1-6.2L3 9.6l6.2-.9z"/></svg>',
-  clock: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>',
-  settings: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3A1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1z"/></svg>',
-  sun: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
-  moon: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 15.5A8.5 8.5 0 0 1 8.5 4 8.5 8.5 0 1 0 20 15.5z"/></svg>',
-  more: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>',
+const NAV_ITEMS = NAV_GROUPS.flatMap(([, items]) => items);
+
+const VIEW_META = Object.freeze({
+  dashboard: { title: "Моя библиотека", eyebrow: "Обзор коллекции" },
+  catalog: { title: "Каталог", eyebrow: "Все фильмы" },
+  franchises: { title: "Коллекции", eyebrow: "Франшизы и циклы" },
+  categories: { title: "Списки", eyebrow: "Структура и очереди" },
+  watched: { title: "Просмотренные", eyebrow: "История и оценки" },
+  wheel: { title: "Колесо", eyebrow: "Батл-рояль" },
+  sessions: { title: "История роллов", eyebrow: "Завершённые сессии" },
+  settings: { title: "Настройки", eyebrow: "Данные и интеграции" },
 });
 
-export function renderAppShell(root, state) {
-  root.innerHTML = `
-    <div class="app-shell">
-      <aside class="sidebar">
-        <button class="brand" type="button" data-view="dashboard">
-          <span class="brand__mark">CV</span>
-          <span class="brand__name">CineVault</span>
-        </button>
+const MOBILE_VIEWS = ["dashboard", "catalog", "wheel", "watched"];
 
-        <nav class="navigation" aria-label="Основная навигация">
-          ${NAV_ITEMS.map(([id, label, iconName]) => `
-            <button
-              class="navigation__item ${state.view === id ? "is-active" : ""}"
-              type="button"
-              data-view="${id}"
-              ${state.view === id ? 'aria-current="page"' : ""}
-            >
-              <span class="navigation__icon">${ICONS[iconName]}</span>
-              <span>${label}</span>
-            </button>
+let previousView = null;
+
+export function renderAppShell(root, state) {
+  const collapsed = Boolean(state.sidebarCollapsed);
+  const counts = getNavCounts(state);
+  const viewChanged = previousView !== state.view;
+  previousView = state.view;
+
+  root.innerHTML = `
+    <div class="app" data-collapsed="${collapsed}">
+      <div class="app__aurora" aria-hidden="true">
+        <span class="app__aurora-blob app__aurora-blob--one"></span>
+        <span class="app__aurora-blob app__aurora-blob--two"></span>
+        <span class="app__aurora-blob app__aurora-blob--three"></span>
+      </div>
+
+      <aside class="sidebar">
+        <div class="sidebar__top">
+          <button class="brand" type="button" data-view="dashboard"
+            aria-label="CineVault — на главную">
+            <span class="brand__mark"><span class="brand__mark-glyph">CV</span></span>
+            <span class="brand__text">
+              <strong>CineVault</strong>
+              <small>личная фильмотека</small>
+            </span>
+          </button>
+          <button class="sidebar__collapse" type="button" data-action="sidebar-toggle"
+            aria-label="${collapsed ? "Развернуть меню" : "Свернуть меню"}"
+            title="${collapsed ? "Развернуть меню" : "Свернуть меню"}">
+            ${icon("sidebar")}
+          </button>
+        </div>
+
+        <nav class="nav" aria-label="Основная навигация">
+          ${NAV_GROUPS.map(([groupLabel, items]) => `
+            <div class="nav__group">
+              <p class="nav__group-label">${escapeHtml(groupLabel)}</p>
+              ${items.map(([id, label, iconName]) => `
+                <button
+                  class="nav__item ${state.view === id ? "is-active" : ""}"
+                  type="button"
+                  data-view="${id}"
+                  title="${escapeAttribute(label)}"
+                  ${state.view === id ? 'aria-current="page"' : ""}
+                >
+                  <span class="nav__icon">${icon(iconName)}</span>
+                  <span class="nav__label">${escapeHtml(label)}</span>
+                  ${counts[id] ? `<span class="nav__badge">${counts[id]}</span>` : ""}
+                </button>
+              `).join("")}
+            </div>
           `).join("")}
         </nav>
 
-        <div class="sidebar__footer">
-          <button class="theme-toggle" type="button" data-action="theme-toggle"
-            aria-label="${state.theme === "dark" ? "Включить светлую тему" : "Включить тёмную тему"}">
-            <span>${state.theme === "dark" ? ICONS.sun : ICONS.moon}</span>
-            <span>${state.theme === "dark" ? "Светлая тема" : "Тёмная тема"}</span>
-          </button>
-          <div class="storage-summary">
-            <span><i class="storage-summary__dot"></i> Локальная база</span>
-            <strong>v${APP_VERSION}</strong>
+        <div class="sidebar__bottom">
+          <div class="theme-switch" role="group" aria-label="Тема оформления">
+            <button type="button" class="${state.theme === "light" ? "is-active" : ""}"
+              data-action="theme-set" data-theme="light"
+              aria-pressed="${state.theme === "light"}">
+              ${icon("sun")}<span>Светлая</span>
+            </button>
+            <button type="button" class="${state.theme === "dark" ? "is-active" : ""}"
+              data-action="theme-set" data-theme="dark"
+              aria-pressed="${state.theme === "dark"}">
+              ${icon("moon")}<span>Тёмная</span>
+            </button>
+          </div>
+          <div class="storage-chip ${state.error ? "is-error" : ""}">
+            <span class="storage-chip__icon">${icon(state.error ? "warning" : "shield")}</span>
+            <span class="storage-chip__text">
+              <strong>${state.error ? "Хранилище недоступно" : "Данные на устройстве"}</strong>
+              <small>CineVault ${escapeHtml(APP_VERSION)}</small>
+            </span>
           </div>
         </div>
       </aside>
 
-      <main class="main-area">
+      <div class="main">
         <header class="topbar">
-          <div>
-            <h1>${escapeHtml(getViewTitle(state.view))}</h1>
+          <div class="topbar__lead">
+            <button class="icon-btn topbar__menu" type="button"
+              data-action="sidebar-toggle" aria-label="Меню">${icon("more")}</button>
+            <div class="topbar__titles">
+              <p class="eyebrow">${escapeHtml(getViewMeta(state.view).eyebrow)}</p>
+              <h1>${escapeHtml(getViewMeta(state.view).title)}</h1>
+            </div>
           </div>
-          <div class="storage-status ${state.error ? "is-error" : ""}">
-            <span class="storage-status__dot"></span>
-            ${state.error ? "Ошибка хранилища" : "Сохранение включено"}
+
+          <div class="topbar__tools">
+            <button class="search-trigger" type="button" data-action="palette-open">
+              ${icon("search")}
+              <span>Поиск и команды</span>
+              <kbd>Ctrl</kbd><kbd>K</kbd>
+            </button>
+            <button class="icon-btn" type="button" data-action="theme-toggle"
+              aria-label="${state.theme === "dark" ? "Включить светлую тему" : "Включить тёмную тему"}"
+              title="${state.theme === "dark" ? "Светлая тема" : "Тёмная тема"}">
+              ${state.theme === "dark" ? icon("sun") : icon("moon")}
+            </button>
+            ${renderPrimaryAction(state)}
           </div>
         </header>
 
-        <section class="content" id="view-content"></section>
-      </main>
+        <div class="content-scroll">
+          <section class="content ${viewChanged ? "is-entering" : ""}" id="view-content"></section>
+        </div>
+      </div>
 
-      <nav class="mobile-navigation" aria-label="Мобильная навигация">
-        ${NAV_ITEMS.filter(([id]) => ["dashboard", "catalog", "wheel"].includes(id))
-          .map(([id, label, iconName]) => `
-            <button class="${state.view === id ? "is-active" : ""}" type="button"
-              data-view="${id}" ${state.view === id ? 'aria-current="page"' : ""}>
-              ${ICONS[iconName]}<span>${label}</span>
-            </button>
-          `).join("")}
-        <details class="mobile-more">
-          <summary>${ICONS.more}<span>Ещё</span></summary>
-          <div class="mobile-more__menu">
-            ${NAV_ITEMS.filter(([id]) => !["dashboard", "catalog", "wheel"].includes(id))
-              .map(([id, label, iconName]) => `
-                <button type="button" data-view="${id}">${ICONS[iconName]}<span>${label}</span></button>
-              `).join("")}
+      <nav class="tabbar" aria-label="Мобильная навигация">
+        ${NAV_ITEMS.filter(([id]) => MOBILE_VIEWS.includes(id)).map(([id, label, iconName]) => `
+          <button class="${state.view === id ? "is-active" : ""}" type="button"
+            data-view="${id}" ${state.view === id ? 'aria-current="page"' : ""}>
+            ${icon(iconName)}<span>${escapeHtml(label)}</span>
+          </button>
+        `).join("")}
+        <details class="tabbar__more">
+          <summary aria-label="Ещё разделы">${icon("more")}<span>Ещё</span></summary>
+          <div class="tabbar__sheet">
+            <p class="tabbar__sheet-title">Все разделы</p>
+            ${NAV_ITEMS.filter(([id]) => !MOBILE_VIEWS.includes(id)).map(([id, label, iconName]) => `
+              <button type="button" data-view="${id}">${icon(iconName)}<span>${escapeHtml(label)}</span></button>
+            `).join("")}
             <button type="button" data-action="theme-toggle">
-              ${state.theme === "dark" ? ICONS.sun : ICONS.moon}
+              ${state.theme === "dark" ? icon("sun") : icon("moon")}
               <span>${state.theme === "dark" ? "Светлая тема" : "Тёмная тема"}</span>
             </button>
           </div>
         </details>
       </nav>
 
-      <dialog class="dialog" id="entity-dialog">
-        <form method="dialog" class="dialog__surface">
-          <header class="dialog__header">
+      ${renderMovieDetail(state)}
+
+      <dialog class="modal" id="entity-dialog">
+        <form method="dialog" class="modal__surface">
+          <header class="modal__header">
             <div>
               <p class="eyebrow">CineVault</p>
               <h2 id="dialog-title"></h2>
             </div>
-            <button
-              class="icon-button"
-              type="button"
-              data-dialog-close
-              aria-label="Закрыть"
-            >×</button>
+            <button class="icon-btn" type="button" data-dialog-close
+              aria-label="Закрыть">${icon("close")}</button>
           </header>
-          <div class="dialog__body" id="dialog-body"></div>
+          <div class="modal__body" id="dialog-body"></div>
           <p class="form-error" data-dialog-error role="alert"></p>
-          <footer class="dialog__footer">
-            <button class="button button--ghost" type="button" data-dialog-close>
-              Отмена
-            </button>
-            <button class="button button--primary" type="submit" data-dialog-submit>
-              Сохранить
-            </button>
+          <footer class="modal__footer">
+            <button class="btn btn--ghost" type="button" data-dialog-close>Отмена</button>
+            <button class="btn btn--primary" type="submit" data-dialog-submit>Сохранить</button>
           </footer>
         </form>
       </dialog>
@@ -138,7 +197,28 @@ export function renderAppShell(root, state) {
   `;
 
   renderCurrentView(root.querySelector("#view-content"), state);
+  bindEvents(root, state);
 
+  setupDialog();
+  const wheelCanvas = root.querySelector("#wheel-canvas");
+  if (wheelCanvas) {
+    drawWheel(wheelCanvas, state.activeSession?.pool ?? state.rollDraftPool, 0, {
+      theme: state.theme,
+    });
+  }
+  if (state.focusControl) {
+    const control = root.querySelector(`[data-control="${state.focusControl}"]`);
+    control?.focus();
+    if (control?.setSelectionRange) {
+      const end = control.value.length;
+      control.setSelectionRange(end, end);
+    }
+  }
+  setupImageFallbacks(root);
+  setupScrollShadow(root);
+}
+
+function bindEvents(root, state) {
   root.querySelectorAll("[data-view]").forEach((button) => {
     button.addEventListener("click", () => state.onNavigate(button.dataset.view));
   });
@@ -148,7 +228,9 @@ export function renderAppShell(root, state) {
     });
   });
   root.querySelectorAll("[data-control]").forEach((control) => {
-    const eventName = control.matches('input[type="search"]') ? "input" : "change";
+    const eventName = control.matches('input[type="search"], input[type="text"]')
+      ? "input"
+      : "change";
     control.addEventListener(eventName, () => {
       state.onControl(control.dataset.control, {
         value: control.value,
@@ -157,380 +239,569 @@ export function renderAppShell(root, state) {
       });
     });
   });
+}
 
-  setupDialog();
-  const wheelCanvas = root.querySelector("#wheel-canvas");
-  if (wheelCanvas) {
-    drawWheel(
-      wheelCanvas,
-      state.activeSession?.pool ?? state.rollDraftPool,
-    );
-  }
-  if (state.focusControl) {
-    const control = root.querySelector(
-      `[data-control="${state.focusControl}"]`,
-    );
-    control?.focus();
-    if (control?.setSelectionRange) {
-      const end = control.value.length;
-      control.setSelectionRange(end, end);
-    }
-  }
-  setupImageFallbacks(root);
+function setupScrollShadow(root) {
+  const scroller = root.querySelector(".content-scroll");
+  const topbar = root.querySelector(".topbar");
+  if (!scroller || !topbar) return;
+  const update = () => topbar.classList.toggle("is-stuck", scroller.scrollTop > 8);
+  scroller.addEventListener("scroll", update, { passive: true });
+  update();
+}
+
+function renderPrimaryAction(state) {
+  const actions = {
+    dashboard: ["movie-add", "Добавить фильм", "plus"],
+    catalog: ["movie-add", "Добавить фильм", "plus"],
+    watched: ["movie-add", "Добавить фильм", "plus"],
+    sessions: ["roll-configure", "Новый ролл", "wheel"],
+  };
+  const action = actions[state.view];
+  if (!action) return "";
+  const [id, label, iconName] = action;
+  return `
+    <button class="btn btn--primary topbar__cta" type="button" data-action="${id}">
+      ${icon(iconName)}<span>${escapeHtml(label)}</span>
+    </button>`;
+}
+
+function getNavCounts(state) {
+  const library = state.library ?? {};
+  return {
+    catalog: (library.movies ?? []).length,
+    franchises: (library.franchises ?? []).length,
+    categories: (library.categories ?? []).length,
+    watched: (library.movies ?? []).filter((movie) => movie.watchedAt).length,
+    wheel: state.activeSession
+      ? state.activeSession.pool.length
+      : (state.rollDraftPool ?? []).length,
+    sessions: (library.rollSessions ?? [])
+      .filter((session) => session.status === "completed").length,
+  };
+}
+
+function getViewMeta(view) {
+  return VIEW_META[view] ?? { title: "CineVault", eyebrow: "Раздел" };
 }
 
 function renderCurrentView(container, state) {
   if (state.error) {
     container.innerHTML = `
       <section class="notice notice--error">
-        <p class="eyebrow">Хранилище недоступно</p>
-        <h2>Не удалось открыть локальную базу</h2>
-        <p>${escapeHtml(state.error.message)}</p>
-        <p>Запускайте приложение через <code>launch.py</code>, а не напрямую
-        из файла.</p>
+        <span class="notice__icon">${icon("warning")}</span>
+        <div>
+          <p class="eyebrow">Хранилище недоступно</p>
+          <h2>Не удалось открыть локальную базу</h2>
+          <p>${escapeHtml(state.error.message)}</p>
+          <p class="muted">Запускайте приложение через <code>launch.py</code>,
+          а не открывайте <code>index.html</code> напрямую из файла.</p>
+        </div>
       </section>
     `;
     return;
   }
 
-  if (state.view === "dashboard") {
-    renderDashboard(container, state);
-    return;
-  }
-
-  if (state.view === "catalog") {
-    renderCatalog(container, state);
-    return;
-  }
-
-  if (state.view === "categories") {
-    renderCategories(container, state.library);
-    return;
-  }
-
-  if (state.view === "franchises") {
-    renderFranchises(container, state.library);
-    return;
-  }
-
-  if (state.view === "wheel") {
-    renderWheel(container, state);
-    return;
-  }
-
-  if (state.view === "watched") {
-    renderWatched(container, state.library);
-    return;
-  }
-
-  if (state.view === "sessions") {
-    renderSessions(container, state.library.rollSessions);
-    return;
-  }
-
-  if (state.view === "settings") {
-    renderSettings(container, state);
-    return;
-  }
-
-  const descriptions = {
-    catalog: "Здесь появятся фильмы, поиск, фильтры и создание карточек.",
-    categories: "Здесь будут пользовательские списки и ручное управление очередями.",
-    franchises: "Здесь будут франшизы и порядок фильмов внутри них.",
-    watched: "Здесь появятся просмотренные фильмы и оценки зрителей.",
-    wheel: "Здесь будет формирование пула и колесо батл-рояля.",
-    sessions: "Здесь будет история завершённых розыгрышей и применения сейвов.",
-    settings: "Здесь будут участники, резервные копии, импорт и параметры.",
+  const views = {
+    dashboard: renderDashboard,
+    catalog: renderCatalog,
+    categories: (node, appState) => renderCategories(node, appState.library),
+    franchises: (node, appState) => renderFranchises(node, appState.library),
+    wheel: renderWheel,
+    watched: (node, appState) => renderWatched(node, appState.library),
+    sessions: (node, appState) => renderSessions(node, appState.library.rollSessions),
+    settings: renderSettings,
   };
 
-  container.innerHTML = `
-    <section class="empty-state">
-      <div class="empty-state__icon">✦</div>
-      <p class="eyebrow">Этап основания</p>
-      <h2>${escapeHtml(getViewTitle(state.view))}</h2>
-      <p>${escapeHtml(descriptions[state.view] ?? "Раздел находится в разработке.")}</p>
-    </section>
-  `;
+  (views[state.view] ?? renderDashboard)(container, state);
 }
 
-function renderWatched(container, library) {
-  const watchedMovies = library.movies
-    .filter((movie) => movie.watchedAt)
-    .sort((a, b) => String(b.watchedAt).localeCompare(String(a.watchedAt)));
-  const categoryById = new Map(
-    library.categories.map((category) => [category.id, category]),
-  );
+/* ---------------------------------------------------------------- Главная */
+
+function renderDashboard(container, state) {
+  const { statistics, library } = state;
+  const recentMovies = [...library.movies]
+    .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
+    .slice(0, 12);
+  const movieById = new Map(library.movies.map((movie) => [movie.id, movie]));
+  const collections = library.franchises.slice(0, 4);
+  const heroMovie = pickHeroMovie(library.movies);
+  const watchedShare = statistics.movieCount
+    ? Math.round((statistics.watchedMovieCount / statistics.movieCount) * 100)
+    : 0;
+  const topGenres = getTopGenres(library.movies, 6);
+  const nextUp = library.movies
+    .filter((movie) => !movie.watchedAt)
+    .sort((a, b) => a.categoryPosition - b.categoryPosition)
+    .slice(0, 4);
+  const backupDue = isBackupReminderDue({
+    movieCount: library.movies.length,
+    lastBackupAt: library.settings.lastBackupAt,
+    dismissedUntil: library.settings.backupReminderDismissedUntil,
+    reminderDays: library.settings.backupReminderDays,
+  });
 
   container.innerHTML = `
-    <div class="view-toolbar">
-      <div>
-        <p class="eyebrow">История просмотров</p>
-        <h2>${watchedMovies.length}
-          ${pluralize(watchedMovies.length, ["фильм", "фильма", "фильмов"])}
+    <section class="hero ${heroMovie?.coverUrl ? "has-poster" : ""}">
+      ${heroMovie?.coverUrl
+        ? `<div class="hero__backdrop" aria-hidden="true">
+             <img src="${escapeAttribute(heroMovie.coverUrl)}" alt=""
+               referrerpolicy="no-referrer">
+           </div>`
+        : ""}
+      <div class="hero__grain" aria-hidden="true"></div>
+
+      <div class="hero__content">
+        <p class="eyebrow eyebrow--accent">
+          ${icon("sparkles")} Личная киноколлекция
+        </p>
+        <h2 class="hero__title">
+          ${statistics.movieCount
+            ? "Что посмотрим<br>сегодня вечером?"
+            : "Соберите свою<br>идеальную фильмотеку"}
         </h2>
-      </div>
-    </div>
-
-    ${watchedMovies.length === 0 ? emptyBlock(
-      "Просмотренных фильмов пока нет",
-      "Победитель колеса появится здесь автоматически. Фильм также можно отметить вручную из каталога.",
-    ) : `
-      <div class="watched-list">
-        ${watchedMovies.map((movie) => watchedRow(
-          movie,
-          categoryById.get(movie.categoryId),
-        )).join("")}
-      </div>
-    `}
-  `;
-}
-
-function renderSessions(container, sessions) {
-  const completed = [...sessions]
-    .filter((session) => session.status === "completed")
-    .sort((a, b) => String(b.completedAt).localeCompare(String(a.completedAt)));
-
-  container.innerHTML = `
-    <div class="view-toolbar">
-      <div>
-        <p class="eyebrow">Архив</p>
-        <h2>${completed.length}
-          ${pluralize(completed.length, ["сессия", "сессии", "сессий"])}
-        </h2>
-      </div>
-    </div>
-
-    ${completed.length === 0 ? emptyBlock(
-      "Завершённых роллов пока нет",
-      "После определения первого победителя здесь появится состав, журнал выбываний и использованные сейвы.",
-    ) : `
-      <div class="session-list">
-        ${completed.map((session) => {
-          const savesUsed = session.events.filter(
-            (event) => event.type === "save-used",
-          ).length;
-          return `
-            <article class="session-card">
-              <div>
-                <p class="eyebrow">${formatDateTime(session.completedAt)}</p>
-                <h3>${escapeHtml(session.winner?.title ?? "Победитель не указан")}</h3>
-                <p class="card-meta">
-                  Старт: ${session.originalPool.length} ·
-                  Выбыли: ${session.eliminated.length} ·
-                  Сейвы: ${savesUsed}
-                </p>
-              </div>
-              <div class="session-players">
-                ${session.participants.map((participant) => `
-                  <span>${escapeHtml(participant.name)}
-                    <small>${participant.savesRemaining}/${participant.savesInitial}</small>
-                  </span>
-                `).join("")}
-                <button class="button button--ghost" type="button"
-                  data-action="session-open" data-id="${session.id}">
-                  Подробнее
-                </button>
-              </div>
-            </article>
-          `;
-        }).join("")}
-      </div>
-    `}
-  `;
-}
-
-function renderWheel(container, state) {
-  if (!state.activeSession) {
-    const quotaCategories = state.library.categories
-      .filter((category) => category.rollQuota > 0)
-      .sort(sortByPosition);
-    container.innerHTML = `
-      <div class="view-toolbar">
-        <div>
-          <p class="eyebrow">Подготовка сессии</p>
-          <h2>${state.rollDraftPool.length}
-            ${pluralize(state.rollDraftPool.length, ["участник", "участника", "участников"])}
-          </h2>
-        </div>
-        <div class="toolbar-actions">
-          <button class="button button--ghost" type="button"
-            data-action="roll-shuffle">Перемешать</button>
-          <button class="button button--primary" type="button"
-            data-action="roll-configure">Настроить и начать</button>
-        </div>
-      </div>
-
-      <div class="wheel-setup-grid">
-        <section class="panel">
-          <p class="eyebrow">Предварительный состав</p>
-          ${state.rollDraftPool.length ? `
-            <ol class="pool-preview">
-              ${state.rollDraftPool.map((item, index) => `
-                <li>
-                  <span>${index + 1}</span>
-                  <strong>${escapeHtml(item.title)}</strong>
-                  <small>${item.type === "franchise" ? "Франшиза" : "Фильм"}</small>
-                </li>
-              `).join("")}
-            </ol>
+        <p class="hero__lead">
+          ${statistics.movieCount
+            ? "Откройте каталог, чтобы выбрать вручную, или доверьте решение колесу с механикой выбывания."
+            : "Добавьте первый фильм вручную или найдите его в TMDB — постер, год, жанры и описание заполнятся автоматически."}
+        </p>
+        <div class="hero__actions">
+          ${statistics.movieCount ? `
+            <button class="btn btn--primary btn--lg" type="button" data-view="wheel">
+              ${icon("wheel")}<span>Запустить колесо</span>
+            </button>
+            <button class="btn btn--glass btn--lg" type="button" data-view="catalog">
+              ${icon("film")}<span>Открыть каталог</span>
+            </button>
           ` : `
-            <p class="muted">Пул пуст. Задайте квоту минимум одного списка
-            и добавьте в очередь непросмотренные фильмы.</p>
-          `}
-        </section>
-        <section class="panel panel--accent">
-          <p class="eyebrow">Квоты списков</p>
-          ${quotaCategories.length ? `
-            <div class="quota-list">
-              ${quotaCategories.map((category) => `
-                <div>
-                  <span>${escapeHtml(category.name)}</span>
-                  <strong>${category.rollQuota}</strong>
-                </div>
-              `).join("")}
-            </div>
-          ` : `<p class="muted">Квоты ещё не настроены.</p>`}
-        </section>
-      </div>
-    `;
-    return;
-  }
-
-  const session = state.activeSession;
-  const pending = session.pendingIndex === null
-    ? null
-    : session.pool[session.pendingIndex];
-
-  container.innerHTML = `
-    <div class="wheel-layout">
-      <section class="wheel-stage">
-        <div class="wheel-frame">
-          <div class="wheel-pointer" aria-hidden="true"></div>
-          <canvas id="wheel-canvas" width="560" height="560"
-            aria-label="Колесо с участниками"></canvas>
-        </div>
-        <div class="wheel-status">
-          ${pending ? `
-            <p>Выбывает</p>
-            <h2>${escapeHtml(pending.title)}</h2>
-          ` : `
-            <p>В колесе осталось</p>
-            <h2>${session.pool.length}
-              ${pluralize(session.pool.length, ["участник", "участника", "участников"])}
-            </h2>
-          `}
-        </div>
-        <div class="wheel-actions">
-          ${pending ? `
-            <button class="button button--ghost" type="button"
-              data-action="roll-reroll">Перекрутить</button>
-            <button class="button button--danger" type="button"
-              data-action="roll-confirm-elimination">Подтвердить выбывание</button>
-          ` : `
-            <button class="button button--primary button--spin" type="button"
-              data-action="roll-spin" ${state.isSpinning ? "disabled" : ""}>
-              ${state.isSpinning ? "Колесо вращается…" : "Крутить · Пробел"}
+            <button class="btn btn--primary btn--lg" type="button" data-action="movie-add">
+              ${icon("plus")}<span>Добавить первый фильм</span>
+            </button>
+            <button class="btn btn--glass btn--lg" type="button" data-view="settings">
+              ${icon("bolt")}<span>Подключить TMDB</span>
             </button>
           `}
         </div>
-      </section>
 
-      <aside class="wheel-sidebar">
-        <section class="wheel-panel">
-          <p class="eyebrow">Сейвы</p>
-          <div class="save-list">
-            ${session.participants.map((participant) => `
-              <div>
-                <span>
-                  <strong>${escapeHtml(participant.name)}</strong>
-                  <small>${participant.savesRemaining} из ${participant.savesInitial}</small>
-                </span>
-                ${pending ? `
-                  <button class="mini-button mini-button--wide" type="button"
-                    data-action="roll-save" data-id="${participant.id}"
-                    ${participant.savesRemaining <= 0 ||
-                      session.pool.length <= session.savesEnabledAboveRemaining
-                      ? "disabled" : ""}>
-                    Спасти
-                  </button>
-                ` : ""}
-              </div>
-            `).join("")}
+        <dl class="hero__facts">
+          <div>
+            <dt>Всего фильмов</dt>
+            <dd>${statistics.movieCount.toLocaleString("ru-RU")}</dd>
           </div>
-          <p class="form-hint">Сейвы работают, пока остаётся больше
-          ${session.savesEnabledAboveRemaining} участников.</p>
-        </section>
+          <div>
+            <dt>Просмотрено</dt>
+            <dd>${watchedShare}<span>%</span></dd>
+          </div>
+          <div>
+            <dt>Часов кино</dt>
+            <dd>${formatWatchedHours(statistics.watchedDurationMinutes)}</dd>
+          </div>
+        </dl>
+      </div>
 
-        <section class="wheel-panel">
-          <div class="panel-heading">
-            <p class="eyebrow">Выбыли</p>
-            <strong>${session.eliminated.length}</strong>
+      ${heroMovie ? `
+        <figure class="hero__poster">
+          <div class="hero__poster-frame">
+            ${heroMovie.coverUrl
+              ? `<img src="${escapeAttribute(heroMovie.coverUrl)}"
+                   alt="Постер: ${escapeAttribute(heroMovie.title)}"
+                   referrerpolicy="no-referrer">`
+              : `<span class="poster-fallback">${escapeHtml(initials(heroMovie.title))}</span>`}
           </div>
-          <div class="eliminated-list">
-            ${session.eliminated.map((item) => `
-              <div>
-                <span>${escapeHtml(item.title)}</span>
-                <button class="mini-button" type="button"
-                  data-action="roll-restore" data-id="${item.id}"
-                  data-entity-type="${item.type}" aria-label="Вернуть">↺</button>
-              </div>
-            `).join("") || '<p class="muted">Пока никто не выбыл.</p>'}
-          </div>
-        </section>
-      </aside>
+          <figcaption>
+            <p class="eyebrow">${heroMovie.watchedAt ? "Просмотрен" : "В очереди"}</p>
+            <strong>${escapeHtml(heroMovie.title)}</strong>
+            <small>${[heroMovie.releaseYear, heroMovie.country].filter(Boolean).join(" · ") || "Без метаданных"}</small>
+            <button class="btn btn--glass btn--sm" type="button"
+              data-action="movie-open" data-id="${heroMovie.id}">
+              Подробнее ${icon("arrowRight")}
+            </button>
+          </figcaption>
+        </figure>
+      ` : ""}
+    </section>
+
+    <div class="stat-row">
+      ${statCard("Фильмов в базе", statistics.movieCount, "film", "catalog")}
+      ${statCard("Просмотрено", statistics.watchedMovieCount, "eye", "watched", watchedShare)}
+      ${statCard("Ждут очереди", statistics.unwatchedMovieCount, "bookmark", "catalog")}
+      ${statCard("Коллекций", statistics.franchiseCount, "collection", "franchises")}
     </div>
+
+    ${statistics.movieCount ? `
+      <section class="block">
+        <header class="block__head">
+          <div>
+            <p class="eyebrow">Свежее пополнение</p>
+            <h2>Недавно добавлено</h2>
+          </div>
+          <button class="btn btn--ghost btn--sm" type="button" data-view="catalog">
+            Весь каталог ${icon("arrowRight")}
+          </button>
+        </header>
+        <div class="rail">
+          ${recentMovies.map(posterTile).join("")}
+        </div>
+      </section>
+    ` : ""}
+
+    ${nextUp.length ? `
+      <section class="block">
+        <header class="block__head">
+          <div>
+            <p class="eyebrow">Следующий шаг</p>
+            <h2>Первые в очереди</h2>
+          </div>
+          <button class="btn btn--ghost btn--sm" type="button" data-view="wheel">
+            К колесу ${icon("arrowRight")}
+          </button>
+        </header>
+        <div class="queue-row">
+          ${nextUp.map((movie, index) => `
+            <article class="queue-chip">
+              <span class="queue-chip__index">${index + 1}</span>
+              <span class="queue-chip__poster">
+                ${movie.coverUrl
+                  ? `<img src="${escapeAttribute(movie.coverUrl)}" alt="" loading="lazy"
+                      referrerpolicy="no-referrer">`
+                  : `<span class="poster-fallback">${escapeHtml(initials(movie.title))}</span>`}
+              </span>
+              <span class="queue-chip__text">
+                <strong>${escapeHtml(movie.title)}</strong>
+                <small>${movie.releaseYear ?? "—"}${movie.durationMinutes ? ` · ${movie.durationMinutes} мин` : ""}</small>
+              </span>
+              <button class="icon-btn icon-btn--sm" type="button"
+                data-action="movie-open" data-id="${movie.id}"
+                aria-label="Открыть карточку">${icon("chevronRight")}</button>
+            </article>
+          `).join("")}
+        </div>
+      </section>
+    ` : ""}
+
+    ${collections.length ? `
+      <section class="block">
+        <header class="block__head">
+          <div>
+            <p class="eyebrow">Циклы и саги</p>
+            <h2>Коллекции</h2>
+          </div>
+          <button class="btn btn--ghost btn--sm" type="button" data-view="franchises">
+            Все коллекции ${icon("arrowRight")}
+          </button>
+        </header>
+        <div class="collection-row">
+          ${collections.map((franchise) => collectionCard(franchise, movieById)).join("")}
+        </div>
+      </section>
+    ` : ""}
+
+    <section class="insight-grid">
+      <article class="panel panel--chart">
+        <p class="eyebrow">Профиль вкуса</p>
+        <h3>Жанры коллекции</h3>
+        ${topGenres.length ? `
+          <ul class="bar-list">
+            ${topGenres.map(([genre, count]) => `
+              <li>
+                <span class="bar-list__label">${escapeHtml(genre)}</span>
+                <span class="bar-list__track">
+                  <span class="bar-list__fill"
+                    style="--value:${Math.round((count / topGenres[0][1]) * 100)}%"></span>
+                </span>
+                <span class="bar-list__value">${count}</span>
+              </li>
+            `).join("")}
+          </ul>
+        ` : `<p class="muted">Жанры появятся после добавления фильмов через TMDB
+          или ручного заполнения поля «Жанры».</p>`}
+      </article>
+
+      <article class="panel">
+        <p class="eyebrow">Рейтинг</p>
+        <h3>Лидеры и аутсайдеры</h3>
+        ${statistics.highestRatedMovie ? `
+          <div class="rank-item">
+            <span class="rank-item__badge rank-item__badge--top">${icon("trophy")}</span>
+            <span>
+              <strong>${escapeHtml(statistics.highestRatedMovie.movie.title)}</strong>
+              <small>Лучшая средняя оценка</small>
+            </span>
+            <b>${formatRating(statistics.highestRatedMovie.rating)}</b>
+          </div>
+          ${statistics.lowestRatedMovie &&
+            statistics.lowestRatedMovie.movie.id !== statistics.highestRatedMovie.movie.id ? `
+            <div class="rank-item">
+              <span class="rank-item__badge">${icon("target")}</span>
+              <span>
+                <strong>${escapeHtml(statistics.lowestRatedMovie.movie.title)}</strong>
+                <small>Самая низкая оценка</small>
+              </span>
+              <b>${formatRating(statistics.lowestRatedMovie.rating)}</b>
+            </div>
+          ` : ""}
+          <div class="mini-stats">
+            <div><strong>${formatRating(statistics.libraryAverageRating)}</strong><small>средняя</small></div>
+            <div><strong>${statistics.totalRatingCount}</strong><small>оценок</small></div>
+            <div><strong>${statistics.watchedFranchiseCount}</strong><small>коллекций пройдено</small></div>
+          </div>
+        ` : `
+          <p class="muted">${statistics.movieCount
+            ? "Оцените просмотренные фильмы — здесь появится рейтинг коллекции."
+            : "Добавьте фильмы, отметьте просмотр и поставьте оценки."}</p>
+          <button class="btn btn--ghost btn--sm" type="button" data-view="watched">
+            К просмотренным ${icon("arrowRight")}
+          </button>
+        `}
+      </article>
+
+      <article class="panel panel--cta">
+        <span class="panel__glyph">${icon("wheel")}</span>
+        <p class="eyebrow">Кинорулетка</p>
+        <h3>${statistics.movieCount ? "Не знаете, что выбрать?" : "Колесо ждёт фильмы"}</h3>
+        <p>${statistics.movieCount
+          ? "Колесо соберёт участников по квотам списков и устроит батл-рояль с сейвами."
+          : "Задайте квоты спискам — и колесо соберёт пул автоматически."}</p>
+        <button class="btn btn--primary" type="button"
+          ${statistics.movieCount ? 'data-view="wheel"' : 'data-action="movie-add"'}>
+          ${statistics.movieCount ? "Открыть колесо" : "Добавить фильм"} ${icon("arrowRight")}
+        </button>
+      </article>
+    </section>
+
+    ${backupDue ? `
+      <section class="notice notice--accent">
+        <span class="notice__icon">${icon("download")}</span>
+        <div>
+          <p class="eyebrow">Резервная копия</p>
+          <h2>${library.settings.lastBackupAt
+            ? "Пора обновить резервную копию"
+            : "Резервная копия ещё не создавалась"}</h2>
+          <p>Библиотека живёт локально в браузере. Скачайте JSON сейчас или
+          отложите напоминание на ${library.settings.backupReminderDays ?? 30} дней.</p>
+        </div>
+        <div class="notice__actions">
+          <button class="btn btn--primary" type="button" data-action="backup-export">
+            ${icon("download")}<span>Скачать JSON</span>
+          </button>
+          <button class="btn btn--ghost" type="button" data-action="backup-remind-later">
+            Напомнить позже
+          </button>
+        </div>
+      </section>
+    ` : ""}
+
+    ${state.legacyDataFound ? `
+      <section class="notice">
+        <span class="notice__icon">${icon("database")}</span>
+        <div>
+          <p class="eyebrow">Найдена старая версия</p>
+          <h2>Данные Movie Manager готовы к переносу</h2>
+          <p>Миграция объединит старую библиотеку с текущей и ничего не удалит.</p>
+        </div>
+        <div class="notice__actions">
+          <button class="btn btn--primary" type="button" data-view="settings">
+            Открыть настройки ${icon("arrowRight")}
+          </button>
+        </div>
+      </section>
+    ` : ""}
   `;
 }
 
+function statCard(label, value, iconName, view, progress = null) {
+  return `
+    <button class="stat-card" type="button" data-view="${view}">
+      <span class="stat-card__icon">${icon(iconName)}</span>
+      <span class="stat-card__value">${Number(value ?? 0).toLocaleString("ru-RU")}</span>
+      <span class="stat-card__label">${escapeHtml(label)}</span>
+      ${progress === null ? "" : `
+        <span class="stat-card__progress" aria-hidden="true">
+          <span style="--value:${progress}%"></span>
+        </span>
+        <span class="stat-card__hint">${progress}% библиотеки</span>
+      `}
+    </button>`;
+}
+
+function posterTile(movie) {
+  const rating = calculateAverageRating(movie.ratings);
+  return `
+    <button class="poster-tile" type="button" data-action="movie-open" data-id="${movie.id}">
+      <span class="poster-tile__art">
+        ${movie.coverUrl
+          ? `<img src="${escapeAttribute(movie.coverUrl)}" alt="" loading="lazy"
+              referrerpolicy="no-referrer">`
+          : `<span class="poster-fallback">${escapeHtml(initials(movie.title))}</span>`}
+        ${rating === null ? "" : `<span class="poster-tile__rating">${icon("star")}${rating}</span>`}
+        ${movie.watchedAt ? `<span class="poster-tile__seen">${icon("check")}</span>` : ""}
+      </span>
+      <strong>${escapeHtml(movie.title)}</strong>
+      <small>${movie.releaseYear ?? "год неизвестен"}</small>
+    </button>`;
+}
+
+function collectionCard(franchise, movieById) {
+  const movies = franchise.movieIds.map((id) => movieById.get(id)).filter(Boolean);
+  const watched = movies.filter((movie) => movie.watchedAt).length;
+  const progress = movies.length ? Math.round((watched / movies.length) * 100) : 0;
+  return `
+    <article class="collection-card">
+      <div class="collection-card__stack">
+        ${movies.slice(0, 3).map((movie, index) => `
+          <span class="collection-card__layer" style="--i:${index}">
+            ${movie.coverUrl
+              ? `<img src="${escapeAttribute(movie.coverUrl)}" alt="" loading="lazy"
+                  referrerpolicy="no-referrer">`
+              : `<span class="poster-fallback">${escapeHtml(initials(movie.title))}</span>`}
+          </span>
+        `).join("") || '<span class="collection-card__layer"><span class="poster-fallback">CV</span></span>'}
+      </div>
+      <div class="collection-card__body">
+        <p class="eyebrow">Коллекция</p>
+        <h3>${escapeHtml(franchise.name)}</h3>
+        <p class="muted">${movies.length} ${pluralize(movies.length, ["фильм", "фильма", "фильмов"])}
+          · просмотрено ${watched}</p>
+        <span class="progress" aria-hidden="true"><span style="--value:${progress}%"></span></span>
+        <button class="btn btn--ghost btn--sm" type="button"
+          data-action="franchise-edit" data-id="${franchise.id}">
+          Открыть ${icon("arrowRight")}
+        </button>
+      </div>
+    </article>`;
+}
+
+/* -------------------------------------------------- Карточка фильма (drawer) */
+
+function renderMovieDetail(state) {
+  const movie = state.library?.movies?.find((item) => item.id === state.detailMovieId);
+  if (!movie) return "";
+
+  const category = state.library.categories.find((item) => item.id === movie.categoryId);
+  const franchise = getMovieFranchiseMap(state.library.franchises).get(movie.id);
+  const rating = calculateAverageRating(movie.ratings);
+
+  return `
+    <div class="drawer">
+      <div class="drawer__scrim" data-action="detail-close"></div>
+      <aside class="drawer__panel" role="dialog" aria-modal="true"
+        aria-label="${escapeAttribute(movie.title)}">
+        <div class="drawer__hero">
+          ${movie.coverUrl
+            ? `<img class="drawer__hero-bg" src="${escapeAttribute(movie.coverUrl)}" alt=""
+                referrerpolicy="no-referrer">`
+            : ""}
+          <button class="icon-btn drawer__close" type="button" data-action="detail-close"
+            aria-label="Закрыть">${icon("close")}</button>
+          <div class="drawer__hero-poster">
+            ${movie.coverUrl
+              ? `<img src="${escapeAttribute(movie.coverUrl)}"
+                  alt="Постер: ${escapeAttribute(movie.title)}" referrerpolicy="no-referrer">`
+              : `<span class="poster-fallback">${escapeHtml(initials(movie.title))}</span>`}
+          </div>
+        </div>
+
+        <div class="drawer__body">
+          <p class="eyebrow">${escapeHtml(category?.name ?? "Без списка")}</p>
+          <h2>${escapeHtml(movie.title)}</h2>
+          ${movie.originalTitle
+            ? `<p class="drawer__original">${escapeHtml(movie.originalTitle)}</p>`
+            : ""}
+
+          <div class="chip-row">
+            ${movie.releaseYear ? `<span class="chip">${icon("calendar")}${movie.releaseYear}</span>` : ""}
+            ${movie.durationMinutes ? `<span class="chip">${icon("clock")}${movie.durationMinutes} мин</span>` : ""}
+            ${movie.country ? `<span class="chip">${icon("globe")}${escapeHtml(movie.country)}</span>` : ""}
+            ${franchise ? `<span class="chip chip--accent">${icon("collection")}${escapeHtml(franchise.name)}</span>` : ""}
+            <span class="chip ${movie.watchedAt ? "chip--success" : ""}">
+              ${icon(movie.watchedAt ? "check" : "bookmark")}
+              ${movie.watchedAt ? `Просмотрен ${formatDate(movie.watchedAt)}` : "В очереди"}
+            </span>
+          </div>
+
+          ${(movie.genres ?? []).length ? `
+            <div class="chip-row chip-row--soft">
+              ${movie.genres.map((genre) => `<span class="chip chip--soft">${escapeHtml(genre)}</span>`).join("")}
+            </div>
+          ` : ""}
+
+          ${movie.overview
+            ? `<p class="drawer__overview">${escapeHtml(movie.overview)}</p>`
+            : `<p class="muted">Описание не заполнено.</p>`}
+
+          <section class="drawer__ratings">
+            <header>
+              <h3>Оценки</h3>
+              <strong class="score ${rating === null ? "is-empty" : ""}">
+                ${rating === null ? "—" : `${icon("star")}${rating}`}
+              </strong>
+            </header>
+            <div class="rating-list">
+              ${(movie.ratings ?? []).map((item) => `
+                <span class="rating-chip">
+                  <b>${escapeHtml(item.participantName)}</b>
+                  <span>${item.value}</span>
+                  <button type="button" data-action="rating-delete" data-id="${movie.id}"
+                    data-rating-id="${item.id}" aria-label="Удалить оценку">${icon("close")}</button>
+                </span>
+              `).join("") || '<span class="muted">Оценок пока нет</span>'}
+            </div>
+          </section>
+
+          <div class="drawer__actions">
+            <button class="btn btn--primary" type="button"
+              data-action="${movie.watchedAt ? "rating-add" : "watch-add"}" data-id="${movie.id}">
+              ${icon(movie.watchedAt ? "star" : "check")}
+              <span>${movie.watchedAt ? "Поставить оценку" : "Отметить просмотренным"}</span>
+            </button>
+            <button class="btn btn--ghost" type="button" data-action="movie-edit" data-id="${movie.id}">
+              ${icon("edit")}<span>Редактировать</span>
+            </button>
+            ${movie.watchedAt ? `
+              <button class="btn btn--ghost" type="button" data-action="watch-remove" data-id="${movie.id}">
+                ${icon("refresh")}<span>Вернуть в очередь</span>
+              </button>
+            ` : ""}
+            <button class="btn btn--danger-ghost" type="button" data-action="movie-delete" data-id="${movie.id}">
+              ${icon("trash")}<span>Удалить</span>
+            </button>
+          </div>
+        </div>
+      </aside>
+    </div>`;
+}
+
+/* --------------------------------------------------------------- Каталог */
+
 function renderCatalog(container, state) {
   const { library, catalogFilters } = state;
-  const categories = new Map(
-    library.categories.map((category) => [category.id, category]),
-  );
+  const viewMode = state.catalogView === "list" ? "list" : "grid";
+  const categories = new Map(library.categories.map((category) => [category.id, category]));
   const franchiseByMovieId = getMovieFranchiseMap(library.franchises);
   const genres = [...new Set(
     library.movies.flatMap((movie) => movie.genres ?? []).filter(Boolean),
   )].sort((a, b) => a.localeCompare(b, "ru-RU"));
   const query = catalogFilters.query.trim().toLocaleLowerCase("ru-RU");
-  const hasActiveFilters = Boolean(
-    query ||
-    catalogFilters.categoryId ||
-    catalogFilters.genre ||
-    catalogFilters.status !== "all"
-  );
-  const hasCustomizedCatalog =
-    hasActiveFilters || catalogFilters.sort !== "title";
+  const activeChips = buildFilterChips(catalogFilters, categories);
+  const hasCustomizedCatalog = activeChips.length > 0 || catalogFilters.sort !== "title";
+
   const movies = library.movies
     .filter((movie) => {
-      if (
-        query &&
-        ![
-          movie.title,
-          movie.originalTitle,
-          movie.country,
-          movie.overview,
-          ...(movie.genres ?? []),
-          categories.get(movie.categoryId)?.name,
-          franchiseByMovieId.get(movie.id)?.name,
-          movie.releaseYear,
-        ].some((value) =>
-          String(value ?? "").toLocaleLowerCase("ru-RU").includes(query)
-        )
-      ) {
+      if (query && ![
+        movie.title,
+        movie.originalTitle,
+        movie.country,
+        movie.overview,
+        ...(movie.genres ?? []),
+        categories.get(movie.categoryId)?.name,
+        franchiseByMovieId.get(movie.id)?.name,
+        movie.releaseYear,
+      ].some((value) => String(value ?? "").toLocaleLowerCase("ru-RU").includes(query))) {
         return false;
       }
-      if (
-        catalogFilters.categoryId &&
-        movie.categoryId !== catalogFilters.categoryId
-      ) {
-        return false;
-      }
-      if (
-        catalogFilters.genre &&
-        !(movie.genres ?? []).some((genre) => genre === catalogFilters.genre)
-      ) {
-        return false;
-      }
+      if (catalogFilters.categoryId && movie.categoryId !== catalogFilters.categoryId) return false;
+      if (catalogFilters.genre &&
+        !(movie.genres ?? []).some((genre) => genre === catalogFilters.genre)) return false;
       if (catalogFilters.status === "watched" && !movie.watchedAt) return false;
       if (catalogFilters.status === "unwatched" && movie.watchedAt) return false;
       return true;
@@ -538,73 +809,113 @@ function renderCatalog(container, state) {
     .sort(getMovieSorter(catalogFilters.sort));
 
   container.innerHTML = `
-    <div class="view-toolbar">
-      <div>
+    <div class="toolbar">
+      <div class="toolbar__count">
         <p class="eyebrow">Библиотека</p>
-        <h2>
-          ${movies.length} ${pluralize(movies.length, ["фильм", "фильма", "фильмов"])}
-          ${hasActiveFilters
-            ? `<span class="view-toolbar__total">из ${library.movies.length}</span>`
-            : ""}
+        <h2>${movies.length}
+          <small>${pluralize(movies.length, ["фильм", "фильма", "фильмов"])}${
+            activeChips.length ? ` из ${library.movies.length}` : ""}</small>
         </h2>
       </div>
-      <div class="view-toolbar__actions">
-        ${hasCustomizedCatalog ? `
-          <button class="button button--ghost" type="button"
-            data-action="catalog-filters-reset">Сбросить фильтры</button>
-        ` : ""}
-        <button class="button button--primary" type="button" data-action="movie-add">
-          + Добавить фильм
-        </button>
+      <div class="toolbar__actions">
+        <div class="segmented" role="group" aria-label="Статус">
+          ${[["all", "Все"], ["unwatched", "В очереди"], ["watched", "Просмотрено"]]
+            .map(([value, label]) => `
+              <button type="button" class="${catalogFilters.status === value ? "is-active" : ""}"
+                data-action="catalog-status-set" data-value="${value}"
+                aria-pressed="${catalogFilters.status === value}">${label}</button>
+            `).join("")}
+        </div>
+        <div class="segmented segmented--icons" role="group" aria-label="Вид">
+          <button type="button" class="${viewMode === "grid" ? "is-active" : ""}"
+            data-action="catalog-view" data-mode="grid" aria-label="Плитка"
+            aria-pressed="${viewMode === "grid"}">${icon("grid")}</button>
+          <button type="button" class="${viewMode === "list" ? "is-active" : ""}"
+            data-action="catalog-view" data-mode="list" aria-label="Список"
+            aria-pressed="${viewMode === "list"}">${icon("list")}</button>
+        </div>
       </div>
     </div>
 
-    <div class="filter-bar">
-      <label class="filter-search">
+    <div class="filters">
+      <label class="search-field">
         <span class="sr-only">Поиск</span>
+        ${icon("search")}
         <input type="search" data-control="catalog-query"
-          placeholder="Поиск по названию, стране, жанру…"
+          placeholder="Название, страна, жанр, коллекция…"
           value="${escapeAttribute(catalogFilters.query)}">
       </label>
-      <select data-control="catalog-category" aria-label="Список">
-        <option value="">Все списки</option>
-        ${[...library.categories].sort(sortByPosition).map((category) => `
-          <option value="${category.id}"
-            ${catalogFilters.categoryId === category.id ? "selected" : ""}>
-            ${escapeHtml(category.name)}
-          </option>
-        `).join("")}
-      </select>
-      <select data-control="catalog-genre" aria-label="Жанр">
-        <option value="">Все жанры</option>
-        ${genres.map((genre) => `
-          <option value="${escapeAttribute(genre)}"
-            ${catalogFilters.genre === genre ? "selected" : ""}>
-            ${escapeHtml(genre)}
-          </option>
-        `).join("")}
-      </select>
-      <select data-control="catalog-status" aria-label="Статус">
-        <option value="all" ${catalogFilters.status === "all" ? "selected" : ""}>Все статусы</option>
-        <option value="unwatched" ${catalogFilters.status === "unwatched" ? "selected" : ""}>Не просмотрено</option>
-        <option value="watched" ${catalogFilters.status === "watched" ? "selected" : ""}>Просмотрено</option>
-      </select>
-      <select data-control="catalog-sort" aria-label="Сортировка">
-        <option value="title" ${catalogFilters.sort === "title" ? "selected" : ""}>По названию</option>
-        <option value="year" ${catalogFilters.sort === "year" ? "selected" : ""}>По году</option>
-        <option value="rating" ${catalogFilters.sort === "rating" ? "selected" : ""}>По рейтингу</option>
-        <option value="queue" ${catalogFilters.sort === "queue" ? "selected" : ""}>По очереди</option>
-      </select>
+      <div class="select-field">
+        ${icon("layers")}
+        <select data-control="catalog-category" aria-label="Список">
+          <option value="">Все списки</option>
+          ${[...library.categories].sort(sortByPosition).map((category) => `
+            <option value="${category.id}"
+              ${catalogFilters.categoryId === category.id ? "selected" : ""}>
+              ${escapeHtml(category.name)}
+            </option>`).join("")}
+        </select>
+        ${icon("chevronDown", "select-field__caret")}
+      </div>
+      <div class="select-field">
+        ${icon("ticket")}
+        <select data-control="catalog-genre" aria-label="Жанр">
+          <option value="">Все жанры</option>
+          ${genres.map((genre) => `
+            <option value="${escapeAttribute(genre)}"
+              ${catalogFilters.genre === genre ? "selected" : ""}>${escapeHtml(genre)}</option>
+          `).join("")}
+        </select>
+        ${icon("chevronDown", "select-field__caret")}
+      </div>
+      <div class="select-field">
+        ${icon("shuffle")}
+        <select data-control="catalog-sort" aria-label="Сортировка">
+          <option value="title" ${catalogFilters.sort === "title" ? "selected" : ""}>По названию</option>
+          <option value="year" ${catalogFilters.sort === "year" ? "selected" : ""}>По году</option>
+          <option value="rating" ${catalogFilters.sort === "rating" ? "selected" : ""}>По рейтингу</option>
+          <option value="queue" ${catalogFilters.sort === "queue" ? "selected" : ""}>По очереди</option>
+        </select>
+        ${icon("chevronDown", "select-field__caret")}
+      </div>
+      ${hasCustomizedCatalog ? `
+        <button class="btn btn--ghost btn--sm" type="button" data-action="catalog-filters-reset">
+          ${icon("refresh")}<span>Сбросить</span>
+        </button>` : ""}
     </div>
 
+    ${activeChips.length ? `
+      <div class="active-filters">
+        ${activeChips.map((chip) => `
+          <button class="chip chip--removable" type="button"
+            data-action="catalog-filter-clear" data-filter="${chip.key}">
+            <small>${escapeHtml(chip.label)}</small>
+            <b>${escapeHtml(chip.value)}</b>
+            ${icon("close")}
+          </button>
+        `).join("")}
+      </div>` : ""}
+
     ${movies.length === 0 ? emptyBlock(
-      library.movies.length ? "Ничего не найдено" : "Каталог пока пуст",
+      library.movies.length ? "Ничего не нашлось" : "Каталог пока пуст",
       library.movies.length
-        ? "Измените запрос или сбросьте фильтры списка, жанра и статуса."
-        : "Добавьте первый фильм. Достаточно выбрать карточку TMDB и при желании список.",
-    ) : `
+        ? "Попробуйте изменить запрос или сбросить фильтры списка, жанра и статуса."
+        : "Добавьте первый фильм: найдите карточку в TMDB или заполните поля вручную.",
+      library.movies.length
+        ? { action: "catalog-filters-reset", label: "Сбросить фильтры", icon: "refresh" }
+        : { action: "movie-add", label: "Добавить фильм", icon: "plus" },
+    ) : viewMode === "grid" ? `
       <div class="movie-grid">
-        ${movies.map((movie) => movieCard(
+        ${movies.map((movie, index) => movieCard(
+          movie,
+          categories.get(movie.categoryId),
+          franchiseByMovieId.get(movie.id),
+          index,
+        )).join("")}
+      </div>
+    ` : `
+      <div class="movie-list">
+        ${movies.map((movie) => movieRow(
           movie,
           categories.get(movie.categoryId),
           franchiseByMovieId.get(movie.id),
@@ -614,45 +925,692 @@ function renderCatalog(container, state) {
   `;
 }
 
-function renderSettings(container, state) {
+function buildFilterChips(filters, categories) {
+  const chips = [];
+  if (filters.query.trim()) {
+    chips.push({ key: "query", label: "Поиск", value: filters.query.trim() });
+  }
+  if (filters.categoryId) {
+    chips.push({
+      key: "categoryId",
+      label: "Список",
+      value: categories.get(filters.categoryId)?.name ?? "—",
+    });
+  }
+  if (filters.genre) {
+    chips.push({ key: "genre", label: "Жанр", value: filters.genre });
+  }
+  if (filters.status !== "all") {
+    chips.push({
+      key: "status",
+      label: "Статус",
+      value: filters.status === "watched" ? "Просмотрено" : "В очереди",
+    });
+  }
+  return chips;
+}
+
+function movieCard(movie, category, franchise, index = 0) {
+  const rating = calculateAverageRating(movie.ratings);
+  return `
+    <article class="movie-card ${movie.watchedAt ? "is-watched" : ""}" style="--i:${index % 24}">
+      <button class="movie-card__hit" type="button" data-action="movie-open" data-id="${movie.id}"
+        aria-label="Открыть карточку ${escapeAttribute(movie.title)}"></button>
+      <div class="movie-card__cover">
+        ${movie.coverUrl
+          ? `<img src="${escapeAttribute(movie.coverUrl)}" alt="" loading="lazy"
+              referrerpolicy="no-referrer">`
+          : `<span class="poster-fallback">${escapeHtml(initials(movie.title))}</span>`}
+        <div class="movie-card__gradient"></div>
+        <div class="movie-card__badges">
+          ${rating === null ? "" : `<span class="badge badge--score">${icon("star")}${rating}</span>`}
+          ${movie.watchedAt ? `<span class="badge badge--seen">${icon("check")}Просмотрен</span>` : ""}
+        </div>
+        <div class="movie-card__tools">
+          <button class="icon-btn icon-btn--glass" type="button" data-action="movie-edit"
+            data-id="${movie.id}" aria-label="Редактировать">${icon("edit")}</button>
+          <button class="icon-btn icon-btn--glass icon-btn--danger" type="button"
+            data-action="movie-delete" data-id="${movie.id}" aria-label="Удалить">${icon("trash")}</button>
+        </div>
+        ${!movie.watchedAt ? `
+          <button class="movie-card__quick" type="button" data-action="watch-add" data-id="${movie.id}">
+            ${icon("check")}<span>Просмотрен</span>
+          </button>` : ""}
+      </div>
+      <div class="movie-card__body">
+        <p class="movie-card__list">${escapeHtml(category?.name ?? "Без списка")}</p>
+        <h3>${escapeHtml(movie.title)}</h3>
+        <p class="movie-card__meta">
+          ${movie.releaseYear ?? "—"}${movie.durationMinutes ? ` · ${movie.durationMinutes} мин` : ""}${movie.country ? ` · ${escapeHtml(movie.country)}` : ""}
+        </p>
+        ${(movie.genres ?? []).length ? `
+          <p class="movie-card__genres">
+            ${movie.genres.slice(0, 3).map((genre) =>
+              `<span>${escapeHtml(genre)}</span>`).join("")}
+          </p>` : ""}
+        ${franchise ? `<span class="tag">${icon("collection")}${escapeHtml(franchise.name)}</span>` : ""}
+      </div>
+    </article>`;
+}
+
+function movieRow(movie, category, franchise) {
+  const rating = calculateAverageRating(movie.ratings);
+  return `
+    <article class="movie-row ${movie.watchedAt ? "is-watched" : ""}">
+      <button class="movie-row__hit" type="button" data-action="movie-open" data-id="${movie.id}"
+        aria-label="Открыть карточку ${escapeAttribute(movie.title)}"></button>
+      <span class="movie-row__cover">
+        ${movie.coverUrl
+          ? `<img src="${escapeAttribute(movie.coverUrl)}" alt="" loading="lazy"
+              referrerpolicy="no-referrer">`
+          : `<span class="poster-fallback">${escapeHtml(initials(movie.title))}</span>`}
+      </span>
+      <span class="movie-row__main">
+        <strong>${escapeHtml(movie.title)}</strong>
+        <small>${[
+          category?.name ?? "Без списка",
+          movie.releaseYear,
+          movie.durationMinutes ? `${movie.durationMinutes} мин` : null,
+          movie.country,
+          franchise?.name,
+        ].filter(Boolean).map((value) => escapeHtml(String(value))).join(" · ")}</small>
+      </span>
+      <span class="movie-row__status">
+        ${movie.watchedAt
+          ? `<span class="badge badge--seen">${icon("check")}Просмотрен</span>`
+          : `<span class="badge">${icon("bookmark")}В очереди</span>`}
+      </span>
+      <span class="movie-row__score">${rating === null ? "—" : `${icon("star")}${rating}`}</span>
+      <span class="movie-row__tools">
+        ${!movie.watchedAt ? `
+          <button class="icon-btn icon-btn--sm" type="button" data-action="watch-add"
+            data-id="${movie.id}" aria-label="Отметить просмотренным">${icon("check")}</button>` : ""}
+        <button class="icon-btn icon-btn--sm" type="button" data-action="movie-edit"
+          data-id="${movie.id}" aria-label="Редактировать">${icon("edit")}</button>
+        <button class="icon-btn icon-btn--sm icon-btn--danger" type="button"
+          data-action="movie-delete" data-id="${movie.id}" aria-label="Удалить">${icon("trash")}</button>
+      </span>
+    </article>`;
+}
+
+/* --------------------------------------------------------- Просмотренные */
+
+function renderWatched(container, library) {
+  const watchedMovies = library.movies
+    .filter((movie) => movie.watchedAt)
+    .sort((a, b) => String(b.watchedAt).localeCompare(String(a.watchedAt)));
+  const categoryById = new Map(library.categories.map((item) => [item.id, item]));
+  const totalMinutes = watchedMovies.reduce(
+    (sum, movie) => sum + (movie.durationMinutes ?? 0), 0,
+  );
+  const rated = watchedMovies
+    .map((movie) => calculateAverageRating(movie.ratings))
+    .filter((value) => value !== null);
+  const average = rated.length
+    ? Math.round((rated.reduce((sum, value) => sum + value, 0) / rated.length) * 10) / 10
+    : null;
+
   container.innerHTML = `
-    <div class="view-toolbar">
-      <div>
-        <p class="eyebrow">Обслуживание</p>
-        <h2>Настройки и данные</h2>
+    <div class="toolbar">
+      <div class="toolbar__count">
+        <p class="eyebrow">История просмотров</p>
+        <h2>${watchedMovies.length}
+          <small>${pluralize(watchedMovies.length, ["фильм", "фильма", "фильмов"])}</small>
+        </h2>
+      </div>
+      <div class="summary-pills">
+        <span class="pill">${icon("clock")}${formatWatchedHours(totalMinutes)} ч</span>
+        <span class="pill">${icon("star")}${average === null ? "—" : average}</span>
       </div>
     </div>
 
-    <div class="settings-grid">
-      <section class="panel tmdb-settings ${state.tmdbStatus.configured ? "panel--accent" : ""}">
-        <div class="tmdb-settings__header">
-          <div>
-            <p class="eyebrow">Каталог фильмов</p>
-            <h2>TMDB</h2>
+    ${watchedMovies.length === 0 ? emptyBlock(
+      "Просмотренных фильмов пока нет",
+      "Победитель колеса попадёт сюда автоматически. Фильм также можно отметить вручную прямо из каталога.",
+      { action: "movie-add", label: "Добавить фильм", icon: "plus" },
+    ) : `
+      <div class="watched-list">
+        ${watchedMovies.map((movie) =>
+          watchedRow(movie, categoryById.get(movie.categoryId))).join("")}
+      </div>
+    `}
+  `;
+}
+
+function watchedRow(movie, category) {
+  const average = calculateAverageRating(movie.ratings);
+  return `
+    <article class="watched-row">
+      <button class="watched-row__cover" type="button" data-action="movie-open" data-id="${movie.id}"
+        aria-label="Открыть ${escapeAttribute(movie.title)}">
+        ${movie.coverUrl
+          ? `<img src="${escapeAttribute(movie.coverUrl)}" alt="" loading="lazy"
+              referrerpolicy="no-referrer">`
+          : `<span class="poster-fallback">${escapeHtml(initials(movie.title))}</span>`}
+      </button>
+      <div class="watched-row__main">
+        <p class="eyebrow">${escapeHtml(category?.name ?? "Без списка")}</p>
+        <h3>${escapeHtml(movie.title)}</h3>
+        <p class="watched-row__meta">
+          ${icon("calendar")}<span>${formatDate(movie.watchedAt)}</span>
+          ${movie.durationMinutes ? `${icon("clock")}<span>${movie.durationMinutes} мин</span>` : ""}
+        </p>
+        <div class="rating-list">
+          ${(movie.ratings ?? []).map((rating) => `
+            <span class="rating-chip">
+              <b>${escapeHtml(rating.participantName)}</b>
+              <span>${rating.value}</span>
+              <button type="button" data-action="rating-delete" data-id="${movie.id}"
+                data-rating-id="${rating.id}" aria-label="Удалить оценку">${icon("close")}</button>
+            </span>
+          `).join("") || '<span class="muted">Оценок пока нет</span>'}
+        </div>
+      </div>
+      <div class="watched-row__aside">
+        <span class="score-dial ${average === null ? "is-empty" : ""}"
+          style="--value:${average === null ? 0 : Math.round((average / 10) * 100)}%">
+          <b>${average === null ? "—" : average}</b>
+        </span>
+        <div class="watched-row__actions">
+          <button class="btn btn--primary btn--sm" type="button"
+            data-action="rating-add" data-id="${movie.id}">${icon("star")}<span>Оценить</span></button>
+          <button class="icon-btn icon-btn--sm" type="button" data-action="watch-edit"
+            data-id="${movie.id}" aria-label="Изменить дату">${icon("calendar")}</button>
+          <button class="icon-btn icon-btn--sm icon-btn--danger" type="button"
+            data-action="watch-remove" data-id="${movie.id}"
+            aria-label="Вернуть в каталог">${icon("refresh")}</button>
+        </div>
+      </div>
+    </article>`;
+}
+
+/* ------------------------------------------------------- История роллов */
+
+function renderSessions(container, sessions) {
+  const completed = [...sessions]
+    .filter((session) => session.status === "completed")
+    .sort((a, b) => String(b.completedAt).localeCompare(String(a.completedAt)));
+
+  container.innerHTML = `
+    <div class="toolbar">
+      <div class="toolbar__count">
+        <p class="eyebrow">Архив кинорулетки</p>
+        <h2>${completed.length}
+          <small>${pluralize(completed.length, ["сессия", "сессии", "сессий"])}</small>
+        </h2>
+      </div>
+    </div>
+
+    ${completed.length === 0 ? emptyBlock(
+      "Завершённых роллов пока нет",
+      "После первого победителя здесь появятся состав пула, журнал выбываний и использованные сейвы.",
+      { action: "roll-configure", label: "Запустить колесо", icon: "wheel" },
+    ) : `
+      <div class="session-list">
+        ${completed.map((session) => {
+          const savesUsed = session.events.filter((event) => event.type === "save-used").length;
+          return `
+            <article class="session-card">
+              <div class="session-card__medal">${icon("trophy")}</div>
+              <div class="session-card__main">
+                <p class="eyebrow">${escapeHtml(formatDateTime(session.completedAt))}</p>
+                <h3>${escapeHtml(session.winner?.title ?? "Победитель не указан")}</h3>
+                <div class="session-card__stats">
+                  <span>${icon("target")}Старт: <b>${session.originalPool.length}</b></span>
+                  <span>${icon("close")}Выбыли: <b>${session.eliminated.length}</b></span>
+                  <span>${icon("shield")}Сейвы: <b>${savesUsed}</b></span>
+                </div>
+                <div class="session-card__players">
+                  ${session.participants.map((participant) => `
+                    <span class="pill pill--soft">${escapeHtml(participant.name)}
+                      <b>${participant.savesRemaining}/${participant.savesInitial}</b></span>
+                  `).join("")}
+                </div>
+              </div>
+              <button class="btn btn--ghost btn--sm" type="button"
+                data-action="session-open" data-id="${session.id}">
+                Журнал ${icon("arrowRight")}
+              </button>
+            </article>`;
+        }).join("")}
+      </div>
+    `}
+  `;
+}
+
+/* ---------------------------------------------------------------- Колесо */
+
+function renderWheel(container, state) {
+  if (!state.activeSession) {
+    renderWheelSetup(container, state);
+    return;
+  }
+
+  const session = state.activeSession;
+  const pending = session.pendingIndex === null ? null : session.pool[session.pendingIndex];
+  const total = session.originalPool.length;
+  const progress = total ? Math.round((session.eliminated.length / (total - 1)) * 100) : 0;
+  const savesLocked = session.pool.length <= session.savesEnabledAboveRemaining;
+
+  container.innerHTML = `
+    <div class="wheel-layout">
+      <section class="wheel-stage ${state.isSpinning ? "is-spinning" : ""}">
+        <div class="wheel-stage__glow" aria-hidden="true"></div>
+        <div class="wheel-frame">
+          <div class="wheel-pointer" aria-hidden="true"></div>
+          <canvas id="wheel-canvas" width="620" height="620"
+            aria-label="Колесо с участниками"></canvas>
+        </div>
+
+        <div class="wheel-status ${pending ? "is-pending" : ""}">
+          ${pending ? `
+            <p class="eyebrow eyebrow--danger">Кандидат на выбывание</p>
+            <h2>${escapeHtml(pending.title)}</h2>
+            <p class="muted">Подтвердите выбывание, потратьте сейв или перекрутите колесо.</p>
+          ` : `
+            <p class="eyebrow">В колесе осталось</p>
+            <h2>${session.pool.length}
+              <small>${pluralize(session.pool.length, ["участник", "участника", "участников"])}</small>
+            </h2>
+          `}
+        </div>
+
+        <div class="wheel-actions">
+          ${pending ? `
+            <button class="btn btn--glass btn--lg" type="button" data-action="roll-reroll">
+              ${icon("refresh")}<span>Перекрутить</span>
+            </button>
+            <button class="btn btn--danger btn--lg" type="button" data-action="roll-confirm-elimination">
+              ${icon("close")}<span>Подтвердить выбывание</span>
+            </button>
+          ` : `
+            <button class="btn btn--primary btn--spin" type="button" data-action="roll-spin"
+              ${state.isSpinning ? "disabled" : ""}>
+              ${icon("wheel")}
+              <span>${state.isSpinning ? "Колесо вращается…" : "Крутить"}</span>
+              ${state.isSpinning ? "" : "<kbd>Space</kbd>"}
+            </button>
+          `}
+        </div>
+
+        <div class="wheel-progress">
+          <span class="progress"><span style="--value:${progress}%"></span></span>
+          <small>Выбыло ${session.eliminated.length} из ${Math.max(total - 1, 0)}</small>
+        </div>
+      </section>
+
+      <aside class="wheel-side">
+        <section class="panel">
+          <header class="panel__head">
+            <div>
+              <p class="eyebrow">Сейвы</p>
+              <h3>Игроки</h3>
+            </div>
+            <span class="pill pill--soft">${session.participants.length}</span>
+          </header>
+          <div class="save-list">
+            ${session.participants.map((participant) => `
+              <div class="save-list__row ${participant.savesRemaining <= 0 ? "is-empty" : ""}">
+                <span class="save-list__avatar">${escapeHtml(initials(participant.name))}</span>
+                <span class="save-list__name">
+                  <strong>${escapeHtml(participant.name)}</strong>
+                  <small>${participant.savesRemaining} из ${participant.savesInitial} сейвов</small>
+                </span>
+                ${pending ? `
+                  <button class="btn btn--ghost btn--sm" type="button" data-action="roll-save"
+                    data-id="${participant.id}"
+                    ${participant.savesRemaining <= 0 || savesLocked ? "disabled" : ""}>
+                    ${icon("shield")}<span>Спасти</span>
+                  </button>` : ""}
+              </div>
+            `).join("")}
           </div>
-          <span class="status-pill ${state.tmdbStatus.configured ? "status-pill--success" : ""}">
-            ${state.tmdbStatus.loading
-              ? "Проверка…"
-              : state.tmdbStatus.configured ? "Подключён" : "Не подключён"}
+          <p class="form-hint">${savesLocked
+            ? `Сейвы отключены: осталось ${session.pool.length} участников.`
+            : `Сейвы работают, пока участников больше ${session.savesEnabledAboveRemaining}.`}</p>
+        </section>
+
+        <section class="panel">
+          <header class="panel__head">
+            <div>
+              <p class="eyebrow">Выбыли</p>
+              <h3>Журнал</h3>
+            </div>
+            <span class="pill pill--soft">${session.eliminated.length}</span>
+          </header>
+          <div class="eliminated-list">
+            ${session.eliminated.map((item) => `
+              <div class="eliminated-list__row">
+                <span>${escapeHtml(item.title)}</span>
+                <button class="icon-btn icon-btn--sm" type="button" data-action="roll-restore"
+                  data-id="${item.id}" data-entity-type="${item.type}"
+                  aria-label="Вернуть в колесо">${icon("refresh")}</button>
+              </div>
+            `).join("") || '<p class="muted">Пока никто не выбыл.</p>'}
+          </div>
+        </section>
+      </aside>
+    </div>
+  `;
+}
+
+function renderWheelSetup(container, state) {
+  const quotaCategories = state.library.categories
+    .filter((category) => category.rollQuota > 0)
+    .sort(sortByPosition);
+  const pool = state.rollDraftPool ?? [];
+
+  container.innerHTML = `
+    <div class="toolbar">
+      <div class="toolbar__count">
+        <p class="eyebrow">Подготовка сессии</p>
+        <h2>${pool.length}
+          <small>${pluralize(pool.length, ["участник", "участника", "участников"])} в пуле</small>
+        </h2>
+      </div>
+      <div class="toolbar__actions">
+        <button class="btn btn--ghost" type="button" data-action="roll-shuffle"
+          ${pool.length < 2 ? "disabled" : ""}>
+          ${icon("shuffle")}<span>Перемешать</span>
+        </button>
+        <button class="btn btn--primary" type="button" data-action="roll-configure"
+          ${pool.length < 2 ? "disabled" : ""}>
+          ${icon("play")}<span>Настроить и начать</span>
+        </button>
+      </div>
+    </div>
+
+    ${pool.length < 2 ? emptyBlock(
+      "Пул пока не собран",
+      "Задайте квоту колеса хотя бы одному списку и добавьте в него непросмотренные фильмы — участники подтянутся автоматически.",
+      { action: "category-add", label: "Настроить списки", icon: "layers" },
+    ) : `
+      <div class="wheel-setup">
+        <section class="wheel-preview">
+          <div class="wheel-preview__glow" aria-hidden="true"></div>
+          <div class="wheel-frame wheel-frame--preview">
+            <div class="wheel-pointer" aria-hidden="true"></div>
+            <canvas id="wheel-canvas" width="520" height="520"
+              aria-label="Предварительный вид колеса"></canvas>
+          </div>
+          <p class="muted">Так будет выглядеть колесо. Порядок можно перемешать
+          перед стартом.</p>
+        </section>
+
+        <div class="wheel-setup__side">
+          <section class="panel">
+            <header class="panel__head">
+              <div>
+                <p class="eyebrow">Состав</p>
+                <h3>Участники</h3>
+              </div>
+              <span class="pill pill--soft">${pool.length}</span>
+            </header>
+            <ol class="pool-list">
+              ${pool.map((item, index) => `
+                <li>
+                  <span class="pool-list__index">${index + 1}</span>
+                  <span class="pool-list__title">${escapeHtml(item.title)}</span>
+                  ${item.type === "franchise"
+                    ? `<span class="pill pill--accent">${icon("collection")}Коллекция</span>`
+                    : ""}
+                </li>
+              `).join("")}
+            </ol>
+          </section>
+
+          <section class="panel">
+            <header class="panel__head">
+              <div>
+                <p class="eyebrow">Источники</p>
+                <h3>Квоты списков</h3>
+              </div>
+              <button class="icon-btn icon-btn--sm" type="button" data-view="categories"
+                aria-label="Настроить списки">${icon("settings")}</button>
+            </header>
+            ${quotaCategories.length ? `
+              <div class="quota-list">
+                ${quotaCategories.map((category) => `
+                  <div class="quota-list__row">
+                    <span>${escapeHtml(category.name)}</span>
+                    <b>${category.rollQuota}</b>
+                  </div>
+                `).join("")}
+              </div>
+            ` : '<p class="muted">Квоты ещё не настроены.</p>'}
+          </section>
+        </div>
+      </div>
+    `}
+  `;
+}
+
+/* --------------------------------------------------------------- Списки */
+
+function renderCategories(container, library) {
+  const roots = library.categories.filter((category) => !category.parentId).sort(sortByPosition);
+  const uncategorized = library.movies.filter((movie) => !movie.categoryId).length;
+
+  container.innerHTML = `
+    <div class="toolbar">
+      <div class="toolbar__count">
+        <p class="eyebrow">Организация</p>
+        <h2>${library.categories.length}
+          <small>${pluralize(library.categories.length, ["список", "списка", "списков"])}</small>
+        </h2>
+      </div>
+      <div class="toolbar__actions">
+        <span class="pill">${icon("folder")}Без списка: <b>${uncategorized}</b></span>
+        <button class="btn btn--primary" type="button" data-action="category-add">
+          ${icon("plus")}<span>Новый список</span>
+        </button>
+      </div>
+    </div>
+
+    ${roots.length === 0 ? emptyBlock(
+      "Списков пока нет",
+      "Списки задают структуру библиотеки и квоты для колеса. Жанры TMDB хранятся отдельно и на списки не влияют.",
+      { action: "category-add", label: "Создать список", icon: "plus" },
+    ) : `
+      <div class="category-tree">
+        ${roots.map((category) => categoryNode(category, library, 0)).join("")}
+      </div>
+    `}
+  `;
+}
+
+function categoryNode(category, library, depth) {
+  const children = library.categories
+    .filter((item) => item.parentId === category.id)
+    .sort(sortByPosition);
+  const queue = buildCategoryQueue(library, category.id);
+  const subtreeCategoryIds = new Set([
+    category.id,
+    ...getDescendantIds(library.categories, category.id),
+  ]);
+  const subtreeMovies = library.movies.filter((movie) =>
+    subtreeCategoryIds.has(movie.categoryId));
+  const watchedCount = subtreeMovies.filter((movie) => movie.watchedAt).length;
+  const progress = subtreeMovies.length
+    ? Math.round((watchedCount / subtreeMovies.length) * 100)
+    : 0;
+
+  return `
+    <section class="category-node" style="--depth:${depth}">
+      <header class="category-node__head">
+        <div class="category-node__title">
+          <span class="category-node__icon">${icon(depth ? "chevronRight" : "layers")}</span>
+          <div>
+            <h3>${escapeHtml(category.name)}</h3>
+            <p class="category-node__meta">
+              <span class="pill pill--soft">${icon("wheel")}Квота: <b>${category.rollQuota}</b></span>
+              <span>${subtreeMovies.length} ${pluralize(subtreeMovies.length, ["фильм", "фильма", "фильмов"])}</span>
+              ${subtreeMovies.length ? `
+                <span class="meter" title="Просмотрено ${watchedCount} из ${subtreeMovies.length}">
+                  <span class="meter__track"><span style="--value:${progress}%"></span></span>
+                  <b>${progress}%</b>
+                </span>` : ""}
+            </p>
+          </div>
+        </div>
+        <div class="row-actions">
+          <button class="icon-btn icon-btn--sm" type="button" data-action="category-up"
+            data-id="${category.id}" aria-label="Выше">${icon("arrowUp")}</button>
+          <button class="icon-btn icon-btn--sm" type="button" data-action="category-down"
+            data-id="${category.id}" aria-label="Ниже">${icon("arrowDown")}</button>
+          <button class="icon-btn icon-btn--sm" type="button" data-action="category-child-add"
+            data-id="${category.id}" aria-label="Вложенный список">${icon("plus")}</button>
+          <button class="icon-btn icon-btn--sm" type="button" data-action="category-edit"
+            data-id="${category.id}" aria-label="Редактировать">${icon("edit")}</button>
+          <button class="icon-btn icon-btn--sm icon-btn--danger" type="button"
+            data-action="category-delete" data-id="${category.id}"
+            aria-label="Удалить">${icon("trash")}</button>
+        </div>
+      </header>
+
+      ${queue.length ? `
+        <ol class="queue-list">
+          ${queue.map((item, index) => `
+            <li>
+              <span class="queue-list__index">${index + 1}</span>
+              <span class="queue-list__title">
+                ${escapeHtml(item.title)}
+                ${item.type === "franchise"
+                  ? `<span class="pill pill--accent">${icon("collection")}Коллекция</span>`
+                  : ""}
+              </span>
+              <span class="queue-list__tools">
+                <button class="icon-btn icon-btn--sm" type="button" data-action="${item.type}-up"
+                  data-id="${item.id}" aria-label="Выше">${icon("arrowUp")}</button>
+                <button class="icon-btn icon-btn--sm" type="button" data-action="${item.type}-down"
+                  data-id="${item.id}" aria-label="Ниже">${icon("arrowDown")}</button>
+              </span>
+            </li>
+          `).join("")}
+        </ol>
+      ` : '<p class="muted category-node__empty">В списке пока нет непросмотренных фильмов.</p>'}
+
+      ${children.length ? `
+        <div class="category-node__children">
+          ${children.map((child) => categoryNode(child, library, depth + 1)).join("")}
+        </div>` : ""}
+    </section>`;
+}
+
+/* ------------------------------------------------------------ Коллекции */
+
+function renderFranchises(container, library) {
+  const movieById = new Map(library.movies.map((movie) => [movie.id, movie]));
+  const categoryById = new Map(library.categories.map((item) => [item.id, item]));
+
+  container.innerHTML = `
+    <div class="toolbar">
+      <div class="toolbar__count">
+        <p class="eyebrow">Циклы и саги</p>
+        <h2>${library.franchises.length}
+          <small>${pluralize(library.franchises.length, ["коллекция", "коллекции", "коллекций"])}</small>
+        </h2>
+      </div>
+      <button class="btn btn--primary" type="button" data-action="franchise-add">
+        ${icon("plus")}<span>Новая коллекция</span>
+      </button>
+    </div>
+
+    ${library.franchises.length === 0 ? emptyBlock(
+      "Коллекций пока нет",
+      "Коллекция объединяет несколько фильмов и участвует в колесе как один объект — удобно для трилогий и сериалов-саг.",
+      { action: "franchise-add", label: "Создать коллекцию", icon: "plus" },
+    ) : `
+      <div class="franchise-grid">
+        ${library.franchises.map((franchise) => {
+          const movies = franchise.movieIds.map((id) => movieById.get(id)).filter(Boolean);
+          const watched = movies.filter((movie) => movie.watchedAt).length;
+          const progress = movies.length ? Math.round((watched / movies.length) * 100) : 0;
+          const cover = movies.find((movie) => movie.coverUrl)?.coverUrl;
+          return `
+            <article class="franchise-card">
+              <div class="franchise-card__head">
+                <span class="franchise-card__art">
+                  ${cover
+                    ? `<img src="${escapeAttribute(cover)}" alt="" loading="lazy"
+                        referrerpolicy="no-referrer">`
+                    : `<span class="poster-fallback">${escapeHtml(initials(franchise.name))}</span>`}
+                </span>
+                <div>
+                  <p class="eyebrow">${escapeHtml(categoryById.get(franchise.categoryId)?.name ?? "Без списка")}</p>
+                  <h3>${escapeHtml(franchise.name)}</h3>
+                  <p class="muted">${movies.length}
+                    ${pluralize(movies.length, ["фильм", "фильма", "фильмов"])} · просмотрено ${watched}</p>
+                </div>
+                <div class="row-actions">
+                  <button class="icon-btn icon-btn--sm" type="button" data-action="franchise-edit"
+                    data-id="${franchise.id}" aria-label="Редактировать">${icon("edit")}</button>
+                  <button class="icon-btn icon-btn--sm icon-btn--danger" type="button"
+                    data-action="franchise-delete" data-id="${franchise.id}"
+                    aria-label="Удалить">${icon("trash")}</button>
+                </div>
+              </div>
+              <span class="progress progress--thin"><span style="--value:${progress}%"></span></span>
+              <ol class="franchise-movies">
+                ${movies.map((movie) => `
+                  <li class="${movie.watchedAt ? "is-watched" : ""}">
+                    <span class="franchise-movies__marker">${icon(movie.watchedAt ? "check" : "play")}</span>
+                    <button class="franchise-movies__title" type="button"
+                      data-action="movie-open" data-id="${movie.id}">
+                      ${escapeHtml(movie.title)}
+                    </button>
+                    <span class="queue-list__tools">
+                      <button class="icon-btn icon-btn--sm" type="button"
+                        data-action="franchise-member-up" data-id="${franchise.id}"
+                        data-movie-id="${movie.id}" aria-label="Выше">${icon("arrowUp")}</button>
+                      <button class="icon-btn icon-btn--sm" type="button"
+                        data-action="franchise-member-down" data-id="${franchise.id}"
+                        data-movie-id="${movie.id}" aria-label="Ниже">${icon("arrowDown")}</button>
+                    </span>
+                  </li>
+                `).join("") || '<li class="muted">Фильмы ещё не добавлены</li>'}
+              </ol>
+            </article>`;
+        }).join("")}
+      </div>
+    `}
+  `;
+}
+
+/* ------------------------------------------------------------ Настройки */
+
+function renderSettings(container, state) {
+  const tmdb = state.tmdbStatus;
+
+  container.innerHTML = `
+    <div class="settings-grid">
+      <section class="panel panel--wide ${tmdb.configured ? "panel--ok" : ""}">
+        <header class="panel__head">
+          <div class="panel__lead">
+            <span class="panel__glyph">${icon("bolt")}</span>
+            <div>
+              <p class="eyebrow">Каталог фильмов</p>
+              <h3>Интеграция с TMDB</h3>
+            </div>
+          </div>
+          <span class="status-pill ${tmdb.configured ? "status-pill--ok" : ""}">
+            <i></i>${tmdb.loading ? "Проверка…" : tmdb.configured ? "Подключён" : "Не подключён"}
           </span>
-        </div>
-        <p>${state.tmdbStatus.configured
-          ? "Поиск доступен в форме добавления фильма. Название, год, длительность, страна, жанры, описание и постер заполняются автоматически."
-          : "Подключите API Read Access Token, чтобы искать фильмы и сохранять постеры локально."}</p>
-        ${state.tmdbStatus.error
-          ? `<p class="dialog-error">${escapeHtml(state.tmdbStatus.error)}</p>`
-          : ""}
-        <div class="settings-actions">
-          <button class="button button--primary" type="button"
-            data-action="tmdb-configure">
-            ${state.tmdbStatus.configured ? "Заменить токен" : "Подключить TMDB"}
+        </header>
+        <p>${tmdb.configured
+          ? "Поиск доступен в форме добавления фильма: название, год, длительность, страна, жанры, описание и постер заполняются автоматически, а постеры кэшируются локально."
+          : "Подключите API Read Access Token, чтобы искать фильмы по названию и сохранять постеры на этом компьютере."}</p>
+        ${tmdb.error ? `<p class="form-error is-visible">${escapeHtml(tmdb.error)}</p>` : ""}
+        <div class="panel__actions">
+          <button class="btn btn--primary" type="button" data-action="tmdb-configure">
+            ${icon("bolt")}<span>${tmdb.configured ? "Заменить токен" : "Подключить TMDB"}</span>
           </button>
-          ${state.tmdbStatus.configured ? `
-            <button class="button button--ghost" type="button"
-              data-action="tmdb-clear">Удалить токен</button>
-          ` : ""}
+          ${tmdb.configured ? `
+            <button class="btn btn--ghost" type="button" data-action="tmdb-clear">
+              ${icon("trash")}<span>Удалить токен</span>
+            </button>` : ""}
         </div>
-        <div class="tmdb-attribution">
+        <div class="attribution">
           <a href="https://www.themoviedb.org" target="_blank" rel="noreferrer"
             aria-label="The Movie Database">
             <img src="./assets/tmdb.svg" alt="The Movie Database (TMDB)">
@@ -662,349 +1620,157 @@ function renderSettings(container, state) {
       </section>
 
       <section class="panel">
-        <p class="eyebrow">Резервная копия</p>
-        <h2>Экспорт и импорт</h2>
-        <p>Экспорт содержит фильмы, списки, франшизы, оценки, игроков и
-        историю завершённых роллов.</p>
-        <div class="settings-actions">
-          <button class="button button--primary" type="button"
-            data-action="backup-export">Скачать JSON</button>
-          <label class="button button--ghost file-button">
-            Импортировать JSON
-            <input type="file" accept=".json,application/json"
-              data-control="backup-import">
+        <header class="panel__head">
+          <div class="panel__lead">
+            <span class="panel__glyph">${icon("download")}</span>
+            <div>
+              <p class="eyebrow">Резервная копия</p>
+              <h3>Экспорт и импорт</h3>
+            </div>
+          </div>
+        </header>
+        <p>Копия содержит фильмы, списки, коллекции, оценки, игроков и историю
+        завершённых роллов.</p>
+        <div class="panel__actions">
+          <button class="btn btn--primary" type="button" data-action="backup-export">
+            ${icon("download")}<span>Скачать JSON</span>
+          </button>
+          <label class="btn btn--ghost file-btn">
+            ${icon("upload")}<span>Импортировать JSON</span>
+            <input type="file" accept=".json,application/json" data-control="backup-import">
           </label>
         </div>
-        <p class="form-hint">Последняя резервная копия:
-          ${state.library.settings.lastBackupAt
-            ? formatDateTime(state.library.settings.lastBackupAt)
-            : "не создавалась"}.
-        </p>
+        <p class="form-hint">Последняя копия: ${state.library.settings.lastBackupAt
+          ? escapeHtml(formatDateTime(state.library.settings.lastBackupAt))
+          : "не создавалась"}.</p>
       </section>
 
       <section class="panel">
-        <p class="eyebrow">Google Таблицы и Excel</p>
-        <h2>Импорт CSV, TSV или XLSX</h2>
+        <header class="panel__head">
+          <div class="panel__lead">
+            <span class="panel__glyph">${icon("table")}</span>
+            <div>
+              <p class="eyebrow">Google Таблицы и Excel</p>
+              <h3>Импорт CSV, TSV, XLSX</h3>
+            </div>
+          </div>
+        </header>
         <p>Поддерживаются столбцы «Название», «Список» или «Категория», «Франшиза»,
-        «Год», «Длительность», «Страна», «Просмотрено», «Дата просмотра»
-        и оценки вида «Оценка Антон».</p>
-        <label class="button button--primary file-button">
-          Выбрать таблицу
-          <input type="file" accept=".csv,.tsv,.xlsx,text/csv"
-            data-control="table-import">
-        </label>
+        «Год», «Длительность», «Страна», «Просмотрено», «Дата просмотра» и оценки
+        вида «Оценка Антон».</p>
+        <div class="panel__actions">
+          <label class="btn btn--primary file-btn">
+            ${icon("upload")}<span>Выбрать таблицу</span>
+            <input type="file" accept=".csv,.tsv,.xlsx,text/csv" data-control="table-import">
+          </label>
+        </div>
       </section>
 
-      <section class="panel ${state.legacyDataFound ? "panel--accent" : ""}">
-        <p class="eyebrow">Movie Manager V13</p>
-        <h2>${state.legacyDataFound
-          ? "Найдены старые данные"
-          : "Старая база не обнаружена"}</h2>
+      <section class="panel ${state.legacyDataFound ? "panel--ok" : ""}">
+        <header class="panel__head">
+          <div class="panel__lead">
+            <span class="panel__glyph">${icon("database")}</span>
+            <div>
+              <p class="eyebrow">Movie Manager V13</p>
+              <h3>${state.legacyDataFound ? "Найдены старые данные" : "Старая база не найдена"}</h3>
+            </div>
+          </div>
+        </header>
         <p>${state.legacyDataFound
           ? "Миграция объединит старую библиотеку с новой и не удалит текущие записи."
           : "Если старая версия использовалась в другом браузере, сначала экспортируйте её данные там."}</p>
-        <button class="button button--primary" type="button"
-          data-action="legacy-migrate" ${state.legacyDataFound ? "" : "disabled"}>
-          Перенести данные
-        </button>
-      </section>
-
-      <section class="panel">
-        <p class="eyebrow">Игроки</p>
-        <h2>Сохранённые имена</h2>
-        <div class="participant-tags">
-          ${state.library.participants.map((participant) =>
-            `<span>
-              ${escapeHtml(participant.name)}
-              <button type="button" data-action="participant-edit"
-                data-id="${participant.id}" aria-label="Редактировать">✎</button>
-              <button type="button" data-action="participant-delete"
-                data-id="${participant.id}" aria-label="Удалить">×</button>
-            </span>`
-          ).join("") || '<span class="muted">Имена появятся после первой сессии или оценки.</span>'}
-        </div>
-      </section>
-
-      <section class="panel">
-        <p class="eyebrow">Формат данных</p>
-        <h2>IndexedDB · схема v3</h2>
-        <p>Данные сохраняются автоматически в профиле текущего браузера.
-        Для переноса на другой компьютер используйте резервный JSON.</p>
-      </section>
-    </div>
-  `;
-}
-
-function renderCategories(container, library) {
-  const roots = library.categories
-    .filter((category) => !category.parentId)
-    .sort(sortByPosition);
-
-  container.innerHTML = `
-    <div class="view-toolbar">
-      <div>
-        <p class="eyebrow">Организация</p>
-        <h2>Списки и очереди</h2>
-      </div>
-      <button class="button button--primary" type="button" data-action="category-add">
-        + Новый список
-      </button>
-    </div>
-
-    <section class="uncategorized-row">
-      <div>
-        <strong>Без списка</strong>
-        <small>${library.movies.filter((movie) => !movie.categoryId).length} фильмов</small>
-      </div>
-    </section>
-
-    ${roots.length === 0 ? emptyBlock(
-      "Списков пока нет",
-      "Создайте пользовательские списки и настройте порядок фильмов для колеса. Жанры TMDB хранятся отдельно.",
-    ) : `
-      <div class="category-tree">
-        ${roots.map((category) => categoryNode(category, library, 0)).join("")}
-      </div>
-    `}
-  `;
-}
-
-function renderFranchises(container, library) {
-  const movieById = new Map(library.movies.map((movie) => [movie.id, movie]));
-  const categoryById = new Map(
-    library.categories.map((category) => [category.id, category]),
-  );
-
-  container.innerHTML = `
-    <div class="view-toolbar">
-      <div>
-        <p class="eyebrow">Коллекции</p>
-        <h2>${library.franchises.length}
-          ${pluralize(library.franchises.length, ["франшиза", "франшизы", "франшиз"])}
-        </h2>
-      </div>
-      <button class="button button--primary" type="button" data-action="franchise-add">
-        + Новая франшиза
-      </button>
-    </div>
-
-    ${library.franchises.length === 0 ? emptyBlock(
-      "Франшиз пока нет",
-      "Франшиза объединяет несколько фильмов и участвует в колесе как один объект.",
-    ) : `
-      <div class="franchise-grid">
-        ${library.franchises.map((franchise) => `
-          <article class="franchise-card">
-            <div class="card-actions">
-              <button class="icon-button" type="button"
-                data-action="franchise-edit" data-id="${franchise.id}"
-                aria-label="Редактировать">✎</button>
-              <button class="icon-button icon-button--danger" type="button"
-                data-action="franchise-delete" data-id="${franchise.id}"
-                aria-label="Удалить">×</button>
-            </div>
-            <p class="eyebrow">Франшиза</p>
-            <h3>${escapeHtml(franchise.name)}</h3>
-            <p class="card-meta">
-              ${escapeHtml(categoryById.get(franchise.categoryId)?.name ?? "Без списка")}
-            </p>
-            <ol class="franchise-movies">
-              ${franchise.movieIds.map((id) => movieById.get(id)).filter(Boolean)
-                .map((movie) => `
-                  <li>
-                    <span>${escapeHtml(movie.title)}</span>
-                    <span class="queue-list__actions">
-                      <button class="mini-button" type="button"
-                        data-action="franchise-member-up"
-                        data-id="${franchise.id}" data-movie-id="${movie.id}"
-                        aria-label="Выше">↑</button>
-                      <button class="mini-button" type="button"
-                        data-action="franchise-member-down"
-                        data-id="${franchise.id}" data-movie-id="${movie.id}"
-                        aria-label="Ниже">↓</button>
-                    </span>
-                  </li>
-                `).join("")
-                || "<li class=\"muted\">Фильмы ещё не добавлены</li>"}
-            </ol>
-          </article>
-        `).join("")}
-      </div>
-    `}
-  `;
-}
-
-function renderDashboard(container, state) {
-  const { statistics, legacyDataFound } = state;
-  const recentMovies = [...state.library.movies]
-    .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
-    .slice(0, 5);
-  const movieById = new Map(state.library.movies.map((movie) => [movie.id, movie]));
-  const recentCollections = state.library.franchises.slice(0, 3);
-  const heroMovie = recentMovies.find((movie) => movie.coverUrl) ?? recentMovies[0];
-  const backupDue = isBackupReminderDue({
-    movieCount: state.library.movies.length,
-    lastBackupAt: state.library.settings.lastBackupAt,
-    dismissedUntil: state.library.settings.backupReminderDismissedUntil,
-    reminderDays: state.library.settings.backupReminderDays,
-  });
-  container.innerHTML = `
-    <section class="dashboard-hero ${heroMovie?.coverUrl ? "has-poster" : ""}">
-      <div class="dashboard-hero__visual">
-        ${heroMovie?.coverUrl
-          ? `<img src="${escapeAttribute(heroMovie.coverUrl)}"
-              alt="Постер фильма ${escapeAttribute(heroMovie.title)}">`
-          : '<span aria-hidden="true">CV</span>'}
-      </div>
-      <div class="dashboard-hero__content">
-        <p class="eyebrow">Личная киноколлекция</p>
-        <h2>${statistics.movieCount ? "Что посмотрим сегодня?" : "Начните свою библиотеку"}</h2>
-        <p>${statistics.movieCount
-          ? "Откройте каталог или запустите колесо, чтобы выбрать фильм для следующего вечера."
-          : "Добавьте первый фильм вручную или найдите его через TMDB — постер и основные данные заполнятся автоматически."}</p>
-        <button class="button button--primary" type="button"
-          ${statistics.movieCount ? 'data-view="catalog"' : 'data-action="movie-add"'}>
-          ${statistics.movieCount ? "Открыть каталог" : "Добавить первый фильм"}
-          <span aria-hidden="true">→</span>
-        </button>
-      </div>
-      <div class="dashboard-hero__counter">
-        <span>Всего фильмов</span>
-        <strong>${statistics.movieCount.toLocaleString("ru-RU")}</strong>
-      </div>
-    </section>
-
-    <div class="dashboard-metrics">
-      ${dashboardMetric("Фильмов", statistics.movieCount, "film")}
-      ${dashboardMetric("Просмотрено", statistics.watchedMovieCount, "eye")}
-      ${dashboardMetric("В очереди", statistics.unwatchedMovieCount, "history")}
-      ${dashboardMetric("Коллекций", statistics.franchiseCount, "collection")}
-    </div>
-
-    ${statistics.movieCount ? `
-      <div class="dashboard-sections ${recentCollections.length ? "has-collections" : ""}">
-        <section class="dashboard-section">
-          <header class="section-heading">
-            <h2>Недавно добавлено</h2>
-            <button type="button" data-view="catalog">Все <span aria-hidden="true">→</span></button>
-          </header>
-          <div class="recent-movies">
-            ${recentMovies.map(dashboardMovieCard).join("")}
-          </div>
-        </section>
-
-        ${recentCollections.length ? `
-          <section class="dashboard-section">
-            <header class="section-heading">
-              <h2>Коллекции</h2>
-              <button type="button" data-view="franchises">Все <span aria-hidden="true">→</span></button>
-            </header>
-            <div class="dashboard-collections">
-              ${recentCollections.map((franchise) =>
-                dashboardCollectionCard(franchise, movieById)).join("")}
-            </div>
-          </section>
-        ` : ""}
-      </div>
-    ` : ""}
-
-    <section class="dashboard-overview">
-      <header class="dashboard-overview__heading">
-        <div>
-          <p class="eyebrow">Сводка библиотеки</p>
-          <h2>Ваша коллекция в цифрах</h2>
-        </div>
-        <button type="button" data-view="catalog">Открыть каталог <span aria-hidden="true">→</span></button>
-      </header>
-
-      <div class="dashboard-overview__metrics">
-        ${dashboardMetric("Списков", statistics.categoryCount, "categories")}
-        ${dashboardMetric(
-          "Средняя оценка",
-          statistics.libraryAverageRating == null
-            ? "—"
-            : statistics.libraryAverageRating.toLocaleString("ru-RU", { maximumFractionDigits: 1 }),
-          "star",
-        )}
-        ${dashboardMetric("Всего оценок", statistics.totalRatingCount, "wheel")}
-        ${dashboardMetric("Просмотрено часов", formatWatchedHours(statistics.watchedDurationMinutes), "clock")}
-      </div>
-
-      <div class="dashboard-overview__panels">
-        <article class="dashboard-summary-card">
-          <p class="eyebrow">Библиотека</p>
-          ${statistics.highestRatedMovie ? `
-            <h3>Лидер — ${escapeHtml(statistics.highestRatedMovie.movie.title)}</h3>
-            <p>Самая высокая средняя оценка в вашей коллекции: <strong>${statistics.highestRatedMovie.rating.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}</strong>.</p>
-            ${statistics.lowestRatedMovie && statistics.lowestRatedMovie.movie.id !== statistics.highestRatedMovie.movie.id
-              ? `<small>Самая низкая оценка сейчас у фильма «${escapeHtml(statistics.lowestRatedMovie.movie.title)}» — ${statistics.lowestRatedMovie.rating.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}.</small>`
-              : ""}
-          ` : `
-            <h3>${statistics.movieCount ? "Оценок пока нет" : "Библиотека ждёт первые фильмы"}</h3>
-            <p>${statistics.movieCount
-              ? "Оцените просмотренные фильмы — здесь появятся лидер коллекции и полезная сводка."
-              : "Начните с фильма, который точно хочется сохранить. Остальная статистика заполнится автоматически."}</p>
-          `}
-        </article>
-
-        <article class="dashboard-summary-card dashboard-summary-card--accent">
-          <p class="eyebrow">Быстрый старт</p>
-          <h3>${statistics.movieCount ? "Не знаете, что посмотреть?" : "Добавьте первый фильм"}</h3>
-          <p>${statistics.movieCount
-            ? "Колесо соберёт доступные фильмы и поможет выбрать следующий без долгого просмотра каталога."
-            : "Найдите фильм через TMDB или заполните карточку вручную — данные останутся на этом устройстве."}</p>
-          <button class="button button--ghost" type="button"
-            ${statistics.movieCount ? 'data-view="wheel"' : 'data-action="movie-add"'}>
-            ${statistics.movieCount ? "Запустить колесо" : "Открыть форму добавления"}
-            <span aria-hidden="true">→</span>
+        <div class="panel__actions">
+          <button class="btn btn--primary" type="button" data-action="legacy-migrate"
+            ${state.legacyDataFound ? "" : "disabled"}>
+            ${icon("refresh")}<span>Перенести данные</span>
           </button>
-        </article>
-      </div>
-    </section>
-
-    ${backupDue ? `
-      <section class="notice backup-notice">
-        <div>
-          <p class="eyebrow">Резервная копия</p>
-          <h2>${state.library.settings.lastBackupAt
-            ? "Пора обновить резервную копию"
-            : "Резервная копия ещё не создавалась"}</h2>
-          <p>Библиотека хранится локально в браузере. Экспортируйте JSON
-          сейчас или отложите напоминание на ${
-            state.library.settings.backupReminderDays ?? 30
-          } дней.</p>
-        </div>
-        <div class="notice-actions">
-          <button class="button button--primary" type="button"
-            data-action="backup-export">Скачать JSON</button>
-          <button class="button button--ghost" type="button"
-            data-action="backup-remind-later">Напомнить позже</button>
         </div>
       </section>
-    ` : ""}
 
-    ${legacyDataFound ? `
-      <section class="notice">
-        <p class="eyebrow">Найдена старая версия</p>
-        <h2>Данные Movie Manager готовы к миграции</h2>
-        <p>Откройте «Настройки» и нажмите «Перенести данные». Текущая
-        библиотека при этом не удаляется.</p>
+      <section class="panel">
+        <header class="panel__head">
+          <div class="panel__lead">
+            <span class="panel__glyph">${icon("users")}</span>
+            <div>
+              <p class="eyebrow">Игроки</p>
+              <h3>Сохранённые имена</h3>
+            </div>
+          </div>
+        </header>
+        <div class="participant-tags">
+          ${state.library.participants.map((participant) => `
+            <span class="participant-tag">
+              <i>${escapeHtml(initials(participant.name))}</i>
+              ${escapeHtml(participant.name)}
+              <button type="button" data-action="participant-edit" data-id="${participant.id}"
+                aria-label="Редактировать">${icon("edit")}</button>
+              <button type="button" data-action="participant-delete" data-id="${participant.id}"
+                aria-label="Удалить">${icon("close")}</button>
+            </span>
+          `).join("") || '<span class="muted">Имена появятся после первой сессии или оценки.</span>'}
+        </div>
       </section>
-    ` : ""}
 
+      <section class="panel">
+        <header class="panel__head">
+          <div class="panel__lead">
+            <span class="panel__glyph">${icon("shield")}</span>
+            <div>
+              <p class="eyebrow">Формат данных</p>
+              <h3>IndexedDB · схема v3</h3>
+            </div>
+          </div>
+        </header>
+        <p>Библиотека сохраняется автоматически в профиле текущего браузера и
+        никуда не отправляется. Для переноса на другой компьютер используйте
+        резервный JSON.</p>
+        <div class="kv-list">
+          <div><span>Фильмов</span><b>${state.library.movies.length}</b></div>
+          <div><span>Списков</span><b>${state.library.categories.length}</b></div>
+          <div><span>Коллекций</span><b>${state.library.franchises.length}</b></div>
+          <div><span>Сессий</span><b>${state.library.rollSessions.length}</b></div>
+        </div>
+      </section>
+    </div>
   `;
 }
 
-function dashboardMetric(label, value, iconName) {
-  const displayValue = typeof value === "number"
-    ? value.toLocaleString("ru-RU")
-    : escapeHtml(String(value ?? 0));
+/* -------------------------------------------------------------- Хелперы */
+
+function emptyBlock(title, text, action = null) {
   return `
-    <article class="dashboard-metric">
-      <span class="dashboard-metric__icon">${ICONS[iconName]}</span>
-      <span><strong>${displayValue}</strong>
-        <small>${escapeHtml(label)}</small></span>
-    </article>`;
+    <section class="empty">
+      <div class="empty__art" aria-hidden="true">
+        <span class="empty__ring"></span>
+        <span class="empty__glyph">${icon("sparkles")}</span>
+      </div>
+      <h2>${escapeHtml(title)}</h2>
+      <p>${escapeHtml(text)}</p>
+      ${action ? `
+        <button class="btn btn--primary" type="button" data-action="${action.action}">
+          ${icon(action.icon ?? "plus")}<span>${escapeHtml(action.label)}</span>
+        </button>` : ""}
+    </section>`;
+}
+
+function pickHeroMovie(movies) {
+  const sorted = [...movies].sort((a, b) =>
+    String(b.createdAt).localeCompare(String(a.createdAt)));
+  return sorted.find((movie) => movie.coverUrl && !movie.watchedAt)
+    ?? sorted.find((movie) => movie.coverUrl)
+    ?? sorted[0]
+    ?? null;
+}
+
+function getTopGenres(movies, limit) {
+  const counts = new Map();
+  for (const movie of movies) {
+    for (const genre of movie.genres ?? []) {
+      if (!genre) continue;
+      counts.set(genre, (counts.get(genre) ?? 0) + 1);
+    }
+  }
+  return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, limit);
 }
 
 function formatWatchedHours(minutes) {
@@ -1012,205 +1778,17 @@ function formatWatchedHours(minutes) {
     .toLocaleString("ru-RU", { maximumFractionDigits: 1 });
 }
 
-function dashboardMovieCard(movie) {
-  return `
-    <article class="recent-movie">
-      <button type="button" data-action="movie-edit" data-id="${movie.id}"
-        aria-label="Открыть ${escapeAttribute(movie.title)}">
-        <span class="recent-movie__poster">
-          ${movie.coverUrl
-            ? `<img src="${escapeAttribute(movie.coverUrl)}" alt="" loading="lazy">`
-            : `<span aria-hidden="true">${escapeHtml(movie.title.slice(0, 2).toUpperCase())}</span>`}
-        </span>
-        <strong>${escapeHtml(movie.title)}</strong>
-        <small>${movie.releaseYear ?? "Год не указан"}</small>
-      </button>
-    </article>`;
+function formatRating(value) {
+  return value === null || value === undefined
+    ? "—"
+    : Number(value).toLocaleString("ru-RU", { maximumFractionDigits: 1 });
 }
 
-function dashboardCollectionCard(franchise, movieById) {
-  const movies = franchise.movieIds.map((id) => movieById.get(id)).filter(Boolean);
-  const cover = movies.find((movie) => movie.coverUrl)?.coverUrl;
-  return `
-    <article class="dashboard-collection">
-      <div class="dashboard-collection__image">
-        ${cover
-          ? `<img src="${escapeAttribute(cover)}" alt="" loading="lazy">`
-          : '<span aria-hidden="true">CV</span>'}
-      </div>
-      <div>
-        <h3>${escapeHtml(franchise.name)}</h3>
-        <p>${movies.length} ${pluralize(movies.length, ["фильм", "фильма", "фильмов"])}</p>
-        <button type="button" data-action="franchise-edit" data-id="${franchise.id}">
-          Открыть коллекцию
-        </button>
-      </div>
-    </article>`;
-}
-
-function watchedRow(movie, category) {
-  const average = calculateAverageRating(movie.ratings);
-  return `
-    <article class="watched-row">
-      <div class="watched-row__cover">
-        ${movie.coverUrl
-          ? `<img src="${escapeAttribute(movie.coverUrl)}" alt="" loading="lazy"
-              referrerpolicy="no-referrer">`
-          : '<span aria-hidden="true">CV</span>'}
-      </div>
-      <div class="watched-row__main">
-        <p class="eyebrow">${escapeHtml(category?.name ?? "Без списка")}</p>
-        <h3>${escapeHtml(movie.title)}</h3>
-        <p class="card-meta">Просмотрен: ${formatDate(movie.watchedAt)}
-          ${movie.durationMinutes ? ` · ${movie.durationMinutes} мин` : ""}</p>
-        <div class="rating-list">
-          ${(movie.ratings ?? []).map((rating) => `
-            <span class="rating-chip">
-              ${escapeHtml(rating.participantName)}: <strong>${rating.value}</strong>
-              <button type="button" data-action="rating-delete"
-                data-id="${movie.id}" data-rating-id="${rating.id}"
-                aria-label="Удалить оценку">×</button>
-            </span>
-          `).join("") || '<span class="muted">Оценок пока нет</span>'}
-        </div>
-      </div>
-      <div class="watched-row__aside">
-        <strong class="watched-rating">${average === null ? "—" : `★ ${average}`}</strong>
-        <button class="button button--primary" type="button"
-          data-action="rating-add" data-id="${movie.id}">Оценить</button>
-        <button class="button button--ghost" type="button"
-          data-action="watch-edit" data-id="${movie.id}">Изменить дату</button>
-        <button class="button button--danger" type="button"
-          data-action="watch-remove" data-id="${movie.id}">Вернуть в каталог</button>
-      </div>
-    </article>
-  `;
-}
-
-function movieCard(movie, category, franchise) {
-  const rating = calculateAverageRating(movie.ratings);
-  const cover = movie.coverUrl
-    ? `<img src="${escapeAttribute(movie.coverUrl)}" alt="" loading="lazy"
-        referrerpolicy="no-referrer">`
-    : `<div class="movie-card__placeholder" aria-hidden="true">CV</div>`;
-
-  return `
-    <article class="movie-card">
-      <div class="movie-card__cover">
-        ${cover}
-        <div class="card-actions card-actions--overlay">
-          <button class="icon-button" type="button" data-action="movie-edit"
-            data-id="${movie.id}" aria-label="Редактировать">✎</button>
-          <button class="icon-button icon-button--danger" type="button"
-            data-action="movie-delete" data-id="${movie.id}"
-            aria-label="Удалить">×</button>
-        </div>
-      </div>
-      <div class="movie-card__content">
-        <p class="eyebrow">${escapeHtml(category?.name ?? "Без списка")}</p>
-        <h3>${escapeHtml(movie.title)}</h3>
-        <p class="card-meta">
-          ${movie.releaseYear ?? "Год не указан"}
-          ${movie.durationMinutes ? ` · ${movie.durationMinutes} мин` : ""}
-        </p>
-        ${(movie.genres ?? []).length
-          ? `<p class="movie-card__genres">${escapeHtml(movie.genres.slice(0, 3).join(" · "))}</p>`
-          : ""}
-        ${franchise ? `<span class="tag">${escapeHtml(franchise.name)}</span>` : ""}
-        <div class="movie-card__footer">
-          <span>${movie.watchedAt ? "Просмотрен" : "Не просмотрен"}</span>
-          <strong>${rating === null ? "—" : `★ ${rating}`}</strong>
-        </div>
-        ${!movie.watchedAt ? `
-          <button class="text-button" type="button"
-            data-action="watch-add" data-id="${movie.id}">
-            Отметить просмотренным
-          </button>
-        ` : ""}
-      </div>
-    </article>
-  `;
-}
-
-function categoryNode(category, library, depth) {
-  const children = library.categories
-    .filter((item) => item.parentId === category.id)
-    .sort(sortByPosition);
-  const queue = buildCategoryQueue(library, category.id);
-  const movieCount = queue.filter((item) => item.type === "movie").length;
-  const subtreeCategoryIds = new Set([
-    category.id,
-    ...getDescendantIds(library.categories, category.id),
-  ]);
-  const subtreeMovies = library.movies.filter((movie) =>
-    subtreeCategoryIds.has(movie.categoryId),
-  );
-  const watchedCount = subtreeMovies.filter((movie) => movie.watchedAt).length;
-
-  return `
-    <section class="category-node" style="--depth:${depth}">
-      <header class="category-node__header">
-        <div>
-          <p class="eyebrow">Квота колеса: ${category.rollQuota}</p>
-          <h3>${escapeHtml(category.name)}</h3>
-          <small>
-            В ветке: ${subtreeMovies.length} · просмотрено: ${watchedCount} ·
-            осталось: ${subtreeMovies.length - watchedCount} ·
-            напрямую: ${movieCount}
-          </small>
-        </div>
-        <div class="row-actions">
-          <button class="icon-button" type="button" data-action="category-up"
-            data-id="${category.id}" aria-label="Переместить выше">↑</button>
-          <button class="icon-button" type="button" data-action="category-down"
-            data-id="${category.id}" aria-label="Переместить ниже">↓</button>
-          <button class="icon-button" type="button" data-action="category-child-add"
-            data-id="${category.id}" aria-label="Добавить вложенный список">+</button>
-          <button class="icon-button" type="button" data-action="category-edit"
-            data-id="${category.id}" aria-label="Редактировать">✎</button>
-          <button class="icon-button icon-button--danger" type="button"
-            data-action="category-delete" data-id="${category.id}"
-            aria-label="Удалить">×</button>
-        </div>
-      </header>
-      ${queue.length ? `
-        <ol class="queue-list">
-          ${queue.map((item, index) => `
-            <li>
-              <span class="queue-list__number">${index + 1}</span>
-              <span>
-                ${escapeHtml(item.title)}
-                ${item.type === "franchise" ? '<small class="queue-kind">Франшиза</small>' : ""}
-              </span>
-              <span class="queue-list__actions">
-                <button class="mini-button" type="button"
-                  data-action="${item.type}-up"
-                  data-id="${item.id}" aria-label="Выше">↑</button>
-                <button class="mini-button" type="button"
-                  data-action="${item.type}-down"
-                  data-id="${item.id}" aria-label="Ниже">↓</button>
-              </span>
-            </li>
-          `).join("")}
-        </ol>
-      ` : ""}
-      ${children.length ? `
-        <div class="category-node__children">
-          ${children.map((child) => categoryNode(child, library, depth + 1)).join("")}
-        </div>
-      ` : ""}
-    </section>
-  `;
-}
-
-function emptyBlock(title, text) {
-  return `
-    <section class="empty-state empty-state--compact">
-      <div class="empty-state__icon">✦</div>
-      <h2>${escapeHtml(title)}</h2>
-      <p>${escapeHtml(text)}</p>
-    </section>
-  `;
+function initials(value) {
+  const text = String(value ?? "").trim();
+  if (!text) return "CV";
+  const words = text.split(/\s+/).slice(0, 2);
+  return words.map((word) => word[0]).join("").toLocaleUpperCase("ru-RU");
 }
 
 function sortByPosition(a, b) {
@@ -1280,11 +1858,6 @@ function formatDateTime(value) {
   }).format(new Date(value));
 }
 
-function getViewTitle(view) {
-  if (view === "dashboard") return "Моя библиотека";
-  return NAV_ITEMS.find(([id]) => id === view)?.[1] ?? "CineVault";
-}
-
 function escapeHtml(value) {
   return String(value)
     .replaceAll("&", "&amp;")
@@ -1299,17 +1872,16 @@ function escapeAttribute(value) {
 }
 
 function setupImageFallbacks(root) {
-  root.querySelectorAll(".movie-card__cover img, .watched-row__cover img, .dashboard-hero img, .recent-movie img, .dashboard-collection img")
-    .forEach((image) => {
-      image.addEventListener("error", () => {
-        image.hidden = true;
-        const parent = image.parentElement;
-        if (parent && !parent.querySelector(".image-error")) {
-          const fallback = document.createElement("span");
-          fallback.className = "image-error";
-          fallback.textContent = "Постер недоступен";
-          parent.append(fallback);
-        }
-      }, { once: true });
-    });
+  root.querySelectorAll("img").forEach((image) => {
+    image.addEventListener("error", () => {
+      image.hidden = true;
+      const parent = image.parentElement;
+      if (parent && !parent.querySelector(".poster-fallback")) {
+        const fallback = document.createElement("span");
+        fallback.className = "poster-fallback poster-fallback--error";
+        fallback.textContent = "CV";
+        parent.append(fallback);
+      }
+    }, { once: true });
+  });
 }

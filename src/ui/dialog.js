@@ -15,12 +15,13 @@ export function openDialog({
   dialog.querySelector("#dialog-title").textContent = title;
   dialog.querySelector("#dialog-body").innerHTML = body;
   dialog.querySelector("[data-dialog-submit]").textContent = submitLabel;
-  dialog.querySelector("[data-dialog-error]").textContent = "";
+  setError(dialog, "");
   activeSubmitHandler = onSubmit;
   activeSuccessHandler = onSuccess;
 
   form.onsubmit = handleSubmit;
   dialog.showModal();
+  document.body.classList.add("has-overlay");
   focusFirstControl(dialog);
 }
 
@@ -28,6 +29,7 @@ export function closeDialog() {
   const dialog = document.querySelector("#entity-dialog");
   activeSubmitHandler = null;
   activeSuccessHandler = null;
+  document.body.classList.remove("has-overlay");
   dialog?.close();
 }
 
@@ -45,15 +47,19 @@ export function setupDialog() {
       closeDialog();
     }
   });
+  dialog.addEventListener("close", () => {
+    document.body.classList.remove("has-overlay");
+  });
 }
 
 async function handleSubmit(event) {
   event.preventDefault();
   const form = event.currentTarget;
+  const dialog = form.closest("dialog");
   const submitButton = form.querySelector("[data-dialog-submit]");
-  const errorNode = form.querySelector("[data-dialog-error]");
   submitButton.disabled = true;
-  errorNode.textContent = "";
+  submitButton.classList.add("is-busy");
+  setError(dialog, "");
 
   try {
     await activeSubmitHandler?.(new FormData(form));
@@ -61,17 +67,29 @@ async function handleSubmit(event) {
     closeDialog();
     onSuccess?.();
   } catch (error) {
-    errorNode.textContent = error instanceof Error
-      ? error.message
-      : String(error);
+    setError(
+      dialog,
+      error instanceof Error ? error.message : String(error),
+    );
   } finally {
     submitButton.disabled = false;
+    submitButton.classList.remove("is-busy");
   }
+}
+
+function setError(dialog, message) {
+  const errorNode = dialog?.querySelector("[data-dialog-error]");
+  if (!errorNode) return;
+  errorNode.textContent = message;
+  errorNode.classList.toggle("is-visible", Boolean(message));
 }
 
 function focusFirstControl(dialog) {
   requestAnimationFrame(() => {
-    dialog.querySelector("input, select, button")?.focus();
+    const body = dialog.querySelector("#dialog-body");
+    const control = body?.querySelector(
+      "input:not([type=hidden]), select, textarea, button",
+    );
+    (control ?? dialog.querySelector("[data-dialog-submit]"))?.focus();
   });
 }
-
