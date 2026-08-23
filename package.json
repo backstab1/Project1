@@ -7,6 +7,13 @@
     "start": "python launch.py",
     "test": "node --test",
     "test:python": "python -m unittest discover -s tests -p \"test_*.py\"",
-    "test:all": "npm run test && npm run test:python"
+    "test:all": "npm run test && npm run test:python",
+    "db:push": "supabase db push",
+    "db:diff": "supabase db diff",
+    "check:rls": "node --env-file=.env.local scripts/check-rls.mjs"
+  },
+  "devDependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "supabase": "^1.200.3"
   }
 }
