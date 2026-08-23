@@ -9,6 +9,9 @@ $projectRoot = Split-Path -Parent $PSScriptRoot
 $releaseRoot = Join-Path $projectRoot "release"
 $shotRoot = Join-Path $releaseRoot "qa-shots"
 $profileRoot = Join-Path $releaseRoot "qa-cdp-profile-$DebugPort"
+# Launcher data (poster cache, token, backups) must never mix with the real
+# library of the person running the check.
+$dataRoot = Join-Path $releaseRoot "qa-data-root"
 $edgePath = "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
 $appBaseUrl = "http://127.0.0.1:$AppPort"
 
@@ -246,10 +249,19 @@ New-Item -ItemType Directory -Force -Path $shotRoot | Out-Null
 if (Test-Path -LiteralPath $profileRoot) {
     Remove-Item -LiteralPath $profileRoot -Recurse -Force
 }
+if (Test-Path -LiteralPath $dataRoot) {
+    Remove-Item -LiteralPath $dataRoot -Recurse -Force
+}
+New-Item -ItemType Directory -Force -Path $dataRoot | Out-Null
 
+# The launcher derives its data directory from LOCALAPPDATA, so the child
+# process gets a throwaway one.
+$previousLocalAppData = $env:LOCALAPPDATA
+$env:LOCALAPPDATA = $dataRoot
 $server = Start-Process -FilePath $Python `
     -ArgumentList "launch.py", "--port", "$AppPort", "--no-browser" `
     -WorkingDirectory $projectRoot -WindowStyle Hidden -PassThru
+$env:LOCALAPPDATA = $previousLocalAppData
 $edge = $null
 
 try {
@@ -743,6 +755,74 @@ window.fetch = async (input, init) => {
         throw "Bulk favorite action is broken: $bulkFavorite"
     }
     Write-Host "Bulk selection applies an action and closes."
+
+    # Wave 6: deletion can be undone.
+    Open-View "catalog"
+    $undo = Invoke-Eval @"
+(async () => {
+  const repository = await import('/src/data/libraryRepository.js');
+  const before = (await repository.loadLibrary()).movies.length;
+
+  const card = document.querySelector('[data-action=movie-open][data-id=qa-arrival]')
+    ?.closest('.movie-card');
+  if (!card) return 'target card is missing';
+  card.querySelector('[data-action=movie-delete]').click();
+  for (let attempt = 0; attempt < 20; attempt++) {
+    if (document.querySelector('dialog[open]')) break;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  document.querySelector('dialog[open] [data-dialog-submit]').click();
+
+  let toastAction = null;
+  for (let attempt = 0; attempt < 40; attempt++) {
+    toastAction = document.querySelector('.toast__action');
+    if (toastAction) break;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  if (!toastAction) return 'undo action did not appear in the toast';
+
+  const afterDelete = (await repository.loadLibrary()).movies.length;
+  if (afterDelete !== before - 1) return 'movie was not deleted: ' + afterDelete;
+
+  toastAction.click();
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const restored = (await repository.loadLibrary()).movies;
+    if (restored.length === before && restored.some((movie) => movie.id === 'qa-arrival')) {
+      return 'ok';
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  return 'undo did not restore the movie';
+})()
+"@
+    if ($undo -ne "ok") {
+        throw "Undo after deletion is broken: $undo"
+    }
+    Write-Host "Deletion can be undone from the toast."
+
+    # Wave 6: the launcher keeps copies on disk.
+    Open-View "settings"
+    $localBackup = Invoke-Eval @"
+(async () => {
+  const button = document.querySelector('[data-action=local-backup-now]');
+  if (!button) return 'local backup button is missing';
+  button.click();
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const response = await fetch('/api/backup/status');
+    const status = await response.json();
+    if (status.files.length > 0) {
+      return status.directory.includes('CineVault') ? 'ok' : 'unexpected directory: ' + status.directory;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  return 'no backup file appeared on disk';
+})()
+"@
+    if ($localBackup -ne "ok") {
+        throw "Local backup is broken: $localBackup"
+    }
+    Save-Screenshot "qa-settings-backup" | Out-Null
+    Write-Host "Launcher writes a library copy to disk."
 
     # Wave 4: the insights view.
     Open-View "insights"

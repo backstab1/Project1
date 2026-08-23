@@ -4069,6 +4069,22 @@ img {
 .toast__icon svg { width: 1rem; height: 1rem; }
 .toast__text { flex: 1 1 auto; }
 
+.toast__action {
+  flex: 0 0 auto;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  padding: 0.28rem 0.75rem;
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background var(--t-fast) ease, color var(--t-fast) ease;
+}
+
+.toast__action:hover { background: var(--accent); color: #fff; }
+
 .toast__bar {
   position: absolute;
   bottom: 0;
@@ -4761,6 +4777,20 @@ img {
 .taste-list__name { font-weight: 600; }
 
 .taste-list__row small { color: var(--text-dim); font-size: 0.78rem; }
+
+.backup-local {
+  display: grid;
+  gap: 0.7rem;
+  border-top: 1px solid var(--border);
+  margin-top: 0.4rem;
+  padding-top: 0.9rem;
+}
+
+.kv-list--files code,
+.backup-local code {
+  overflow-wrap: anywhere;
+  font-size: 0.75rem;
+}
 
 .enrich-progress {
   display: grid;

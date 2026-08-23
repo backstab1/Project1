@@ -6,7 +6,16 @@ const ICON_BY_TYPE = Object.freeze({
   info: "info",
 });
 
-export function showToast(message, type = "success", duration = 3600) {
+// Второй аргумент исторически был типом; объект нужен там, где у тоста есть
+// действие — например «Вернуть» после удаления.
+export function showToast(message, options = {}) {
+  const {
+    type = "success",
+    duration = typeof options.actionLabel === "string" ? 8000 : 3600,
+    actionLabel = null,
+    onAction = null,
+  } = typeof options === "string" ? { type: options } : options;
+
   let container = document.querySelector("#toast-container");
   if (!container) {
     container = document.createElement("div");
@@ -21,6 +30,7 @@ export function showToast(message, type = "success", duration = 3600) {
   toast.innerHTML = `
     <span class="toast__icon">${icon(ICON_BY_TYPE[type] ?? "info")}</span>
     <span class="toast__text"></span>
+    ${actionLabel ? '<button class="toast__action" type="button"></button>' : ""}
     <span class="toast__bar" style="--duration:${duration}ms"></span>
   `;
   toast.querySelector(".toast__text").textContent = String(message);
@@ -31,6 +41,18 @@ export function showToast(message, type = "success", duration = 3600) {
     toast.classList.remove("is-visible");
     setTimeout(() => toast.remove(), 260);
   };
+
+  const actionButton = toast.querySelector(".toast__action");
+  if (actionButton) {
+    actionButton.textContent = actionLabel;
+    actionButton.addEventListener("click", (event) => {
+      // Клик по действию не должен считаться закрытием тоста.
+      event.stopPropagation();
+      dismiss();
+      onAction?.();
+    });
+  }
+
   toast.addEventListener("click", dismiss);
   setTimeout(dismiss, duration);
 }

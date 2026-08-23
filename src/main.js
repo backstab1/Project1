@@ -2,7 +2,6 @@ import { LEGACY_STORAGE_KEYS, STORE_NAMES } from "./config.js";
 import { initializeDatabase } from "./data/database.js";
 import {
   commitLibraryChanges,
-  deleteFranchiseRecord,
   deleteParticipantRecord,
   loadLibrary,
   saveCategory,
@@ -47,6 +46,11 @@ import {
 } from "./domain/rollEngine.js";
 import { buildLibraryStatistics } from "./domain/statistics.js";
 import { buildLibraryCsv } from "./domain/csvExport.js";
+import { buildUndoCommands, describeDeletion } from "./domain/undo.js";
+import {
+  getLocalBackupStatus,
+  saveLocalBackup,
+} from "./services/backupService.js";
 import {
   DEFAULT_CATALOG_FILTERS,
   filterCatalogMovies,
@@ -159,6 +163,7 @@ const state = {
   selectedMovieIds: new Set(),
   focusControl: null,
   tmdbStatus: { configured: false, loading: true, error: null },
+  localBackup: { directory: "", files: [], lastSavedAt: null, error: null },
   error: null,
   onNavigate(view) {
     if (!VIEW_IDS.has(view)) return;
@@ -194,6 +199,11 @@ async function start() {
 
   applyMotionPreference();
   render();
+  refreshLocalBackupStatus()
+    .then(() => runScheduledBackup())
+    .catch(() => {
+      // Лаунчер может быть недоступен: приложение всё равно работает.
+    });
   // Событие error у изображений не всплывает, поэтому слушаем фазу перехвата.
   document.addEventListener("error", handleBrokenPoster, true);
   window.addEventListener("keydown", handleGlobalKeydown);
@@ -309,6 +319,7 @@ async function handleAction(action, payload) {
     "roll-filter-set": () => setRollPoolFilter(payload.filter),
     "session-repeat": () => repeatSessionPool(payload.id),
     "csv-export": () => exportLibraryCsv(),
+    "local-backup-now": () => createLocalBackup(),
     "movie-favorite-toggle": () => toggleMovieFavorite(payload.id),
     "movie-status-set": () => setMovieStatus(payload.id, payload.status),
     "selection-toggle": () => toggleSelectionMode(),
@@ -594,12 +605,15 @@ function confirmBulkDeletion() {
       </div>
     `,
     onSubmit: async () => {
-      for (const movie of movies) {
-        await commitLibraryChanges(buildMovieDeletionCommands(state.library, movie.id));
-      }
+      // Команды считаются от одного слепка, поэтому отмена возвращает всё разом.
+      const commands = movies.flatMap(
+        (movie) => buildMovieDeletionCommands(state.library, movie.id),
+      );
       state.selectedMovieIds = new Set();
-      await reloadLibrary();
-      showToast(`Удалено: ${movies.length}`);
+      await commitReversible(commands, {
+        message: `Удалено ${describeDeletion(movies.length)}`,
+        undoMessage: `Возвращено ${describeDeletion(movies.length)}`,
+      });
     },
   });
 }
@@ -798,6 +812,14 @@ async function handleControl(control, payload) {
       "backupReminderDays",
       (value) => clampNumber(value.value, 1, 365, 30),
     ],
+    "setting-auto-backup": [
+      "autoBackupDays",
+      (value) => (value.checked ? 7 : 0),
+    ],
+    "setting-auto-backup-days": [
+      "autoBackupDays",
+      (value) => clampNumber(value.value, 1, 90, 7),
+    ],
   };
   if (settingControls[control]) {
     const [key, read] = settingControls[control];
@@ -820,6 +842,49 @@ async function handleControl(control, payload) {
   if (control === "table-import" && payload.files?.[0]) {
     await importTableFile(payload.files[0]);
   }
+}
+
+async function refreshLocalBackupStatus() {
+  try {
+    const status = await getLocalBackupStatus();
+    state.localBackup = { ...status, error: null };
+  } catch (error) {
+    state.localBackup = {
+      directory: "",
+      files: [],
+      lastSavedAt: null,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+  render();
+}
+
+// Копия делается молча: пользователь узнаёт о ней в настройках, а не всплывашкой
+// при каждом запуске.
+async function runScheduledBackup() {
+  const days = Number(state.library.settings.autoBackupDays ?? 0);
+  if (!Number.isFinite(days) || days <= 0) return;
+  if (state.library.movies.length === 0) return;
+
+  const last = state.library.settings.lastAutoBackupAt
+    ?? state.localBackup.lastSavedAt;
+  if (last) {
+    const elapsedDays = (Date.now() - new Date(last).getTime()) / 86_400_000;
+    if (Number.isFinite(elapsedDays) && elapsedDays < days) return;
+  }
+
+  await createLocalBackup({ silent: true });
+}
+
+async function createLocalBackup({ silent = false } = {}) {
+  const result = await saveLocalBackup(createBackup(state.library));
+  await saveSetting("lastAutoBackupAt", result.savedAt);
+  await reloadLibrary();
+  await refreshLocalBackupStatus();
+  if (!silent) {
+    showToast("Копия сохранена на диск.");
+  }
+  return result;
 }
 
 async function exportBackup() {
@@ -1983,6 +2048,27 @@ function openFranchiseDialog(franchiseId = null) {
   });
 }
 
+// Любое удаление проходит через один путь: снимаем обратные команды до
+// применения и предлагаем вернуть всё как было.
+async function commitReversible(commands, { message, undoMessage = "Возвращено" }) {
+  const undoCommands = buildUndoCommands(state.library, commands);
+  await commitLibraryChanges(commands);
+  await reloadLibrary();
+
+  showToast(message, {
+    actionLabel: "Вернуть",
+    onAction: () => {
+      restoreFromUndo(undoCommands, undoMessage).catch(showUnexpectedError);
+    },
+  });
+}
+
+async function restoreFromUndo(undoCommands, message) {
+  await commitLibraryChanges(undoCommands);
+  await reloadLibrary();
+  showToast(message);
+}
+
 function confirmMovieDeletion(movieId) {
   const movie = state.library.movies.find((item) => item.id === movieId);
   if (!movie) return;
@@ -1991,10 +2077,10 @@ function confirmMovieDeletion(movieId) {
     "Удалить фильм?",
     `«${movie.title}» будет удалён из библиотеки и всех франшиз.`,
     async () => {
-      await commitLibraryChanges(
+      await commitReversible(
         buildMovieDeletionCommands(state.library, movieId),
+        { message: `Фильм «${movie.title}» удалён`, undoMessage: "Фильм возвращён" },
       );
-      await reloadLibrary();
     },
   );
 }
@@ -2007,10 +2093,10 @@ function confirmCategoryDeletion(categoryId) {
     "Удалить список?",
     `Фильмы из «${category.name}» перейдут в «Без списка», а вложенные списки поднимутся на уровень выше.`,
     async () => {
-      await commitLibraryChanges(
+      await commitReversible(
         buildCategoryDeletionCommands(state.library, categoryId),
+        { message: `Список «${category.name}» удалён`, undoMessage: "Список возвращён" },
       );
-      await reloadLibrary();
     },
   );
 }
@@ -2025,8 +2111,10 @@ function confirmFranchiseDeletion(franchiseId) {
     "Удалить франшизу?",
     `Франшиза «${franchise.name}» будет удалена. Входящие фильмы останутся в библиотеке.`,
     async () => {
-      await deleteFranchiseRecord(franchiseId);
-      await reloadLibrary();
+      await commitReversible(
+        [{ type: "delete", storeName: STORE_NAMES.franchises, key: franchiseId }],
+        { message: `Коллекция «${franchise.name}» удалена`, undoMessage: "Коллекция возвращена" },
+      );
     },
   );
 }

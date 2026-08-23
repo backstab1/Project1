@@ -26,6 +26,8 @@ export const DEFAULT_SETTINGS = Object.freeze({
   soundEnabled: true,
   reducedMotion: false,
   backupReminderDays: 30,
+  autoBackupDays: 7,
+  lastAutoBackupAt: null,
   lastBackupAt: null,
   backupReminderDismissedUntil: null,
 });

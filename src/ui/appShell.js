@@ -1944,6 +1944,8 @@ function renderSettings(container, state) {
   const tmdb = state.tmdbStatus;
   const settings = state.library.settings ?? {};
   const enrichmentCount = selectEnrichmentCandidates(state.library.movies).length;
+  const autoBackupDays = Number(settings.autoBackupDays ?? 0);
+  const localBackup = state.localBackup ?? { files: [], directory: "", error: null };
 
   container.innerHTML = `
     <div class="settings-grid">
@@ -2067,6 +2069,44 @@ function renderSettings(container, state) {
         </div>
         <p class="form-hint">CSV удобно открыть в таблице, но восстановить
         библиотеку целиком можно только из JSON.</p>
+
+        <div class="backup-local">
+          <label class="switch-field">
+            <input type="checkbox" data-control="setting-auto-backup"
+              ${autoBackupDays > 0 ? "checked" : ""}>
+            <span class="switch-field__box">${icon("check")}</span>
+            <span class="switch-field__text">
+              <strong>Копия на диск автоматически</strong>
+              <small>Хранится рядом с данными приложения и переживает очистку
+              браузера. CineVault держит последние пять копий.</small>
+            </span>
+          </label>
+          ${autoBackupDays > 0 ? `
+            <label class="field">
+              <span>Как часто, дней</span>
+              <input type="number" min="1" max="90" data-control="setting-auto-backup-days"
+                value="${autoBackupDays}">
+            </label>` : ""}
+          <div class="panel__actions">
+            <button class="btn btn--ghost btn--sm" type="button" data-action="local-backup-now">
+              ${icon("shield")}<span>Сохранить копию сейчас</span>
+            </button>
+          </div>
+          ${localBackup.error
+            ? `<p class="form-hint">Лаунчер недоступен, копия на диск не делается:
+               ${escapeHtml(localBackup.error)}</p>`
+            : localBackup.files.length ? `
+              <div class="kv-list kv-list--files">
+                ${localBackup.files.map((file) => `
+                  <div>
+                    <span>${escapeHtml(formatDateTime(file.savedAt))}</span>
+                    <b>${Math.max(1, Math.round(file.size / 1024))} КБ</b>
+                  </div>
+                `).join("")}
+              </div>
+              <p class="form-hint">Папка: <code>${escapeHtml(localBackup.directory)}</code></p>
+            ` : `<p class="form-hint">Копий на диске пока нет.</p>`}
+        </div>
         <p class="form-hint">Последняя копия: ${state.library.settings.lastBackupAt
           ? escapeHtml(formatDateTime(state.library.settings.lastBackupAt))
           : "не создавалась"}.</p>

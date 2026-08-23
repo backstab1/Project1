@@ -15,6 +15,7 @@ import urllib.parse
 import urllib.request
 import webbrowser
 import zipfile
+from datetime import datetime
 from pathlib import Path
 from xml.etree import ElementTree
 
@@ -27,6 +28,9 @@ TMDB_API_ROOT = "https://api.themoviedb.org/3"
 TMDB_IMAGE_ROOT = "https://image.tmdb.org/t/p/w500"
 MAX_JSON_BODY = 64 * 1024
 MAX_POSTER_BYTES = 8 * 1024 * 1024
+# Резервная копия библиотеки заметно больше обычного JSON-запроса.
+MAX_BACKUP_BYTES = 32 * 1024 * 1024
+BACKUP_KEEP_COUNT = 5
 
 
 class CineVaultHandler(http.server.SimpleHTTPRequestHandler):
@@ -45,6 +49,11 @@ class CineVaultHandler(http.server.SimpleHTTPRequestHandler):
                 tmdb_request("/configuration", token=token)
                 save_tmdb_token(token)
                 self._send_json(200, {"configured": True})
+                return
+
+            if self.path == "/api/backup":
+                payload = self._read_json_body(MAX_BACKUP_BYTES)
+                self._send_json(200, write_local_backup(payload))
                 return
 
             if self.path == "/api/tmdb/poster":
@@ -85,6 +94,10 @@ class CineVaultHandler(http.server.SimpleHTTPRequestHandler):
             if parsed.path == "/api/health":
                 self._send_json(200, {"status": "ok"})
                 return
+            if parsed.path == "/api/backup/status":
+                self._send_json(200, read_local_backup_status())
+                return
+
             if parsed.path == "/api/tmdb/status":
                 self._send_json(200, {"configured": bool(read_tmdb_token())})
                 return
@@ -134,9 +147,9 @@ class CineVaultHandler(http.server.SimpleHTTPRequestHandler):
         delete_tmdb_token()
         self._send_json(200, {"configured": False})
 
-    def _read_json_body(self) -> dict:
+    def _read_json_body(self, limit: int = MAX_JSON_BODY) -> dict:
         content_length = int(self.headers.get("Content-Length", "0"))
-        if content_length <= 0 or content_length > MAX_JSON_BODY:
+        if content_length <= 0 or content_length > limit:
             raise ValueError("Некорректный размер JSON-запроса.")
         value = json.loads(self.rfile.read(content_length).decode("utf-8"))
         if not isinstance(value, dict):
@@ -296,6 +309,82 @@ def cache_tmdb_poster(
     temporary.write_bytes(content)
     temporary.replace(target)
     return f"/media/posters/{target_name}"
+
+
+def backup_directory() -> Path:
+    return DATA_ROOT / "backups"
+
+
+def write_local_backup(payload: dict) -> dict:
+    """Сохраняет копию библиотеки рядом с данными приложения.
+
+    Имя файла задаёт сервер, а не клиент: путь не должен зависеть от того,
+    что пришло в запросе.
+    """
+    data = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(data, dict) or not isinstance(data.get("movies"), list):
+        raise ValueError("Ожидалась резервная копия библиотеки CineVault.")
+
+    directory = backup_directory()
+    directory.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    path = directory / f"cinevault-{stamp}.json"
+    path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+    removed = rotate_local_backups(directory)
+    return {
+        # Время берём у файла, чтобы оно совпадало с тем, что отдаёт статус.
+        "savedAt": file_saved_at(path),
+        "file": path.name,
+        "directory": str(directory),
+        "removed": removed,
+    }
+
+
+def file_saved_at(path: Path) -> str:
+    return datetime.fromtimestamp(path.stat().st_mtime).astimezone().isoformat()
+
+
+def rotate_local_backups(directory: Path, keep: int = BACKUP_KEEP_COUNT) -> list[str]:
+    files = sorted(
+        directory.glob("cinevault-*.json"),
+        key=lambda item: item.name,
+        reverse=True,
+    )
+    removed = []
+    for stale in files[keep:]:
+        try:
+            stale.unlink()
+            removed.append(stale.name)
+        except OSError:
+            # Занятый файл не должен ломать сохранение свежей копии.
+            continue
+    return removed
+
+
+def read_local_backup_status() -> dict:
+    directory = backup_directory()
+    if not directory.is_dir():
+        return {"directory": str(directory), "files": [], "lastSavedAt": None}
+
+    files = sorted(
+        directory.glob("cinevault-*.json"),
+        key=lambda item: item.name,
+        reverse=True,
+    )
+    entries = [
+        {
+            "name": item.name,
+            "size": item.stat().st_size,
+            "savedAt": file_saved_at(item),
+        }
+        for item in files[:BACKUP_KEEP_COUNT]
+    ]
+    return {
+        "directory": str(directory),
+        "files": entries,
+        "lastSavedAt": entries[0]["savedAt"] if entries else None,
+    }
 
 
 def find_available_port(start: int = DEFAULT_PORT, attempts: int = 20) -> int:
