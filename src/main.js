@@ -83,6 +83,7 @@ import {
 } from "./domain/spreadsheetImport.js";
 import { createReminderDismissalDate } from "./domain/backupReminder.js";
 import { renderAppShell } from "./ui/appShell.js";
+import { requireAccount } from "./ui/authFlow.js";
 import { openDialog } from "./ui/dialog.js";
 import { animateWheel } from "./ui/wheelCanvas.js";
 import { showToast } from "./ui/toast.js";
@@ -162,6 +163,7 @@ const state = {
   selectionMode: false,
   selectedMovieIds: new Set(),
   focusControl: null,
+  account: null,
   tmdbStatus: { configured: false, loading: true, error: null },
   localBackup: { directory: "", files: [], lastSavedAt: null, error: null },
   error: null,
@@ -186,6 +188,17 @@ const state = {
 start();
 
 async function start() {
+  // Шлюз входа. Пока библиотека ещё локальная, он работает только при
+  // настроенном сервере: см. комментарий в ui/authFlow.js.
+  try {
+    state.account = await requireAccount(root);
+  } catch (error) {
+    console.error(error);
+    state.error = error instanceof Error ? error : new Error(String(error));
+    render();
+    return;
+  }
+
   try {
     await initializeDatabase();
     state.library = await loadLibrary();

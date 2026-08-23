@@ -10,10 +10,12 @@
     "test:all": "npm run test && npm run test:python",
     "db:push": "supabase db push",
     "db:diff": "supabase db diff",
-    "check:rls": "node --env-file=.env.local scripts/check-rls.mjs"
+    "check:rls": "node --env-file=.env.local scripts/check-rls.mjs",
+    "vendor:supabase": "esbuild vendor/supabase-entry.js --bundle --format=esm --outfile=vendor/supabase.esm.js --legal-comments=none"
   },
   "devDependencies": {
     "@supabase/supabase-js": "^2.45.0",
+    "esbuild": "^0.23.0",
     "supabase": "^1.200.3"
   }
 }

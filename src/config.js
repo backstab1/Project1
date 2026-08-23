@@ -1,5 +1,15 @@
 export const APP_NAME = "CineVault";
 export const APP_VERSION = "0.11.0-beta.1";
+
+// Адрес проекта Supabase и анонимный ключ. Ключ публичный по назначению:
+// доступ ограничивают политики RLS, а не его скрытность. Ключ service_role
+// сюда не попадает никогда — он даёт полный доступ в обход политик.
+export const SUPABASE_URL = "";
+export const SUPABASE_ANON_KEY = "";
+
+export function isServerConfigured() {
+  return Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
+}
 export const DATABASE_NAME = "cinevault";
 export const DATABASE_VERSION = 3;
 

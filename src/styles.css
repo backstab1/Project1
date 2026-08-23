@@ -4855,3 +4855,129 @@ img {
   .tabbar,
   .app__aurora { display: none; }
 }
+
+/* --------------------------------------------------- 5.x Экран входа */
+
+.auth {
+  display: grid;
+  min-height: 100vh;
+  min-height: 100dvh;
+  place-content: center;
+  padding: 2rem 1.25rem;
+  background:
+    radial-gradient(60% 50% at 50% -10%, var(--accent-soft), transparent 70%),
+    var(--bg);
+}
+
+.auth__card {
+  display: grid;
+  gap: 1.15rem;
+  width: min(430px, 100%);
+  border: 1px solid var(--border);
+  border-radius: var(--r-xl);
+  background: var(--surface);
+  padding: 2rem 1.9rem 1.7rem;
+  box-shadow: var(--shadow-lg, 0 30px 70px rgba(20, 12, 50, 0.14));
+}
+
+.auth__brand {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 0.95rem;
+}
+
+.auth__mark {
+  display: grid;
+  width: 54px;
+  height: 54px;
+  place-content: center;
+  border-radius: 18px;
+  background: linear-gradient(140deg, var(--accent), var(--accent-strong));
+  color: #fff;
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  font-weight: 800;
+}
+
+.auth__brand h1 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.3rem;
+  letter-spacing: -0.01em;
+}
+
+.auth__brand p {
+  margin: 0.25rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.86rem;
+  line-height: 1.4;
+}
+
+.auth__form {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.auth__submit { justify-content: center; margin-top: 0.3rem; }
+
+.auth__error,
+.auth__notice {
+  margin: 0;
+  border-radius: var(--r-sm);
+  padding: 0.7rem 0.85rem;
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+.auth__error {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.auth__notice {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.auth__error code {
+  font-size: 0.82em;
+  overflow-wrap: anywhere;
+}
+
+.auth__links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.6rem;
+  border-top: 1px solid var(--border);
+  padding-top: 0.9rem;
+}
+
+.auth__links a {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  text-decoration: none;
+}
+
+.auth__links a:hover { color: var(--accent); }
+
+.field--invalid input {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.field__error,
+.field__hint {
+  font-size: 0.78rem;
+  font-style: normal;
+  line-height: 1.35;
+}
+
+.field__error { color: var(--danger); }
+.field__hint { color: var(--text-dim); }
+
+@media (max-width: 480px) {
+  .auth__card { padding: 1.6rem 1.25rem 1.4rem; }
+  .auth__brand { grid-template-columns: 1fr; }
+}
