@@ -1,61 +1,60 @@
 @echo off
-chcp 65001 >nul
-setlocal enabledelayedexpansion
+setlocal
 cd /d "%~dp0"
 set "PATH=%ProgramFiles%\nodejs;%PATH%"
 
 echo.
 echo ==========================================================
-echo   CineVault: подключение к Supabase
+echo   CineVault: Supabase setup
 echo ==========================================================
 echo.
-echo   Скрипт делает три вещи:
-echo     1) вход в Supabase CLI  - откроется браузер;
-echo     2) привязка к проекту   - спросит пароль базы;
-echo     3) накат схемы          - пять миграций.
+echo   Step 1: login       - opens browser, press Authorize
+echo   Step 2: project     - paste REFERENCE ID of the dev project
+echo   Step 3: link + push - asks for database password
 echo.
-echo   Пароль базы вводится здесь, в вашем окне, и остаётся у вас.
+echo   The password stays in this window.
 echo.
 pause
 
 echo.
-echo --- 1. Вход ----------------------------------------------
+echo --- Step 1: login ----------------------------------------
 echo.
-call npx.cmd supabase projects list >nul 2>&1
+call npx.cmd supabase projects list >nul 2>nul
 if errorlevel 1 (
   call npx.cmd supabase login
-  if errorlevel 1 goto :failed
+  if errorlevel 1 goto failed
 ) else (
-  echo Вход уже выполнен, пропускаю.
+  echo Already logged in, skipping.
 )
 
 echo.
-echo --- 2. Выбор проекта -------------------------------------
+echo --- Step 2: choose project -------------------------------
 echo.
 call npx.cmd supabase projects list
+if errorlevel 1 goto failed
 echo.
-echo Скопируйте REFERENCE ID нужного проекта ^(столбец REFERENCE ID^)
-echo и вставьте сюда правой кнопкой мыши.
+echo Copy REFERENCE ID of the DEV project from the table above,
+echo then paste it here with right mouse click.
 echo.
 set "REF="
-set /p "REF=REFERENCE ID dev-проекта: "
-if "%REF%"=="" goto :noref
+set /p "REF=REFERENCE ID: "
+if not defined REF goto noref
 
 echo.
-echo --- 3. Привязка ------------------------------------------
+echo --- Step 3: link -----------------------------------------
 echo.
 call npx.cmd supabase link --project-ref %REF%
-if errorlevel 1 goto :failed
+if errorlevel 1 goto failed
 
 echo.
-echo --- 4. Схема ---------------------------------------------
+echo --- Step 4: push schema ----------------------------------
 echo.
 call npx.cmd supabase db push
-if errorlevel 1 goto :failed
+if errorlevel 1 goto failed
 
 echo.
 echo ==========================================================
-echo   Готово. Возвращайтесь в чат — дальше я сам.
+echo   DONE. Go back to the chat.
 echo ==========================================================
 echo.
 pause
@@ -63,7 +62,7 @@ exit /b 0
 
 :noref
 echo.
-echo REFERENCE ID не введён. Запустите файл ещё раз.
+echo No REFERENCE ID entered. Run this file again.
 echo.
 pause
 exit /b 1
@@ -71,8 +70,7 @@ exit /b 1
 :failed
 echo.
 echo ==========================================================
-echo   Команда завершилась с ошибкой.
-echo   Скопируйте текст выше и пришлите мне в чат.
+echo   FAILED. Copy the text above and send it to the chat.
 echo ==========================================================
 echo.
 pause
