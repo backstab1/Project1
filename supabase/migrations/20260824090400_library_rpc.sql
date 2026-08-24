@@ -7,6 +7,35 @@
 -- Функция в Postgres выполняется в одной транзакции. Это и есть то самое
 -- «пакет либо применяется целиком, либо не применяется вовсе», на котором
 -- держатся массовые операции каталога.
+--
+-- Важная тонкость jsonb_populate_record: отсутствующее в JSON поле становится
+-- NULL, а NULL при вставке подставляется вместо default и роняет not null.
+-- Поэтому обязательные времена и статусы проходят через coalesce.
+
+-- У фильма обязательных полей со значением по умолчанию слишком много, чтобы
+-- перечислять их дважды, поэтому они собраны здесь.
+create or replace function public.movie_defaults(p_movie public.movies)
+returns public.movies
+language plpgsql
+immutable
+as $$
+begin
+  p_movie.id := coalesce(p_movie.id, gen_random_uuid());
+  p_movie.category_position := coalesce(p_movie.category_position, 0);
+  p_movie.original_title := coalesce(p_movie.original_title, '');
+  p_movie.overview := coalesce(p_movie.overview, '');
+  p_movie.genres := coalesce(p_movie.genres, '{}');
+  p_movie.tags := coalesce(p_movie.tags, '{}');
+  p_movie.notes := coalesce(p_movie.notes, '');
+  p_movie.is_favorite := coalesce(p_movie.is_favorite, false);
+  p_movie.status := coalesce(p_movie.status, 'queued');
+  p_movie.cover_url := coalesce(p_movie.cover_url, '');
+  p_movie.country := coalesce(p_movie.country, '');
+  p_movie.created_at := coalesce(p_movie.created_at, now());
+  p_movie.updated_at := coalesce(p_movie.updated_at, now());
+  return p_movie;
+end;
+$$;
 
 -- Перенос существующей библиотеки -----------------------------------------
 
@@ -44,6 +73,11 @@ begin
     v_category := jsonb_populate_record(null::public.categories, v_item);
     v_category.owner_id := v_user;
     v_category.parent_id := null;
+    v_category.id := coalesce(v_category.id, gen_random_uuid());
+    v_category.sort_order := coalesce(v_category.sort_order, 0);
+    v_category.roll_quota := coalesce(v_category.roll_quota, 0);
+    v_category.created_at := coalesce(v_category.created_at, now());
+    v_category.updated_at := coalesce(v_category.updated_at, now());
     insert into public.categories select v_category.*;
   end loop;
 
@@ -58,6 +92,7 @@ begin
   loop
     v_movie := jsonb_populate_record(null::public.movies, v_item - 'ratings');
     v_movie.owner_id := v_user;
+    v_movie := public.movie_defaults(v_movie);
     insert into public.movies select v_movie.*;
 
     for v_rating in
@@ -66,6 +101,9 @@ begin
     loop
       v_rating.owner_id := v_user;
       v_rating.movie_id := v_movie.id;
+      v_rating.id := coalesce(v_rating.id, gen_random_uuid());
+      v_rating.created_at := coalesce(v_rating.created_at, now());
+      v_rating.updated_at := coalesce(v_rating.updated_at, now());
       insert into public.ratings select v_rating.*;
     end loop;
   end loop;
@@ -74,6 +112,10 @@ begin
   loop
     v_franchise := jsonb_populate_record(null::public.franchises, v_item - 'movie_ids');
     v_franchise.owner_id := v_user;
+    v_franchise.id := coalesce(v_franchise.id, gen_random_uuid());
+    v_franchise.category_position := coalesce(v_franchise.category_position, 0);
+    v_franchise.created_at := coalesce(v_franchise.created_at, now());
+    v_franchise.updated_at := coalesce(v_franchise.updated_at, now());
     insert into public.franchises select v_franchise.*;
 
     insert into public.franchise_movies (movie_id, franchise_id, owner_id, sort_order)
@@ -86,6 +128,10 @@ begin
   loop
     v_participant := jsonb_populate_record(null::public.participants, v_item);
     v_participant.owner_id := v_user;
+    v_participant.id := coalesce(v_participant.id, gen_random_uuid());
+    v_participant.last_used_at := coalesce(v_participant.last_used_at, now());
+    v_participant.created_at := coalesce(v_participant.created_at, now());
+    v_participant.updated_at := coalesce(v_participant.updated_at, now());
     insert into public.participants select v_participant.*;
   end loop;
 
@@ -165,6 +211,7 @@ begin
     elsif v_op = 'put' and v_table = 'movies' then
       v_movie := jsonb_populate_record(null::public.movies, v_command -> 'row');
       v_movie.owner_id := v_user;
+      v_movie := public.movie_defaults(v_movie);
       insert into public.movies select v_movie.*
       on conflict (id) do update set
         category_id = excluded.category_id,
@@ -202,6 +249,9 @@ begin
       loop
         v_rating.owner_id := v_user;
         v_rating.movie_id := v_movie.id;
+        v_rating.id := coalesce(v_rating.id, gen_random_uuid());
+        v_rating.created_at := coalesce(v_rating.created_at, now());
+        v_rating.updated_at := coalesce(v_rating.updated_at, now());
         insert into public.ratings select v_rating.*
         on conflict (id) do update set
           rater_name = excluded.rater_name,
@@ -213,6 +263,10 @@ begin
     elsif v_op = 'put' and v_table = 'franchises' then
       v_franchise := jsonb_populate_record(null::public.franchises, v_command -> 'row');
       v_franchise.owner_id := v_user;
+      v_franchise.id := coalesce(v_franchise.id, gen_random_uuid());
+      v_franchise.category_position := coalesce(v_franchise.category_position, 0);
+      v_franchise.created_at := coalesce(v_franchise.created_at, now());
+      v_franchise.updated_at := coalesce(v_franchise.updated_at, now());
       insert into public.franchises select v_franchise.*
       on conflict (id) do update set
         category_id = excluded.category_id,
@@ -235,6 +289,11 @@ begin
     elsif v_op = 'put' and v_table = 'categories' then
       v_category := jsonb_populate_record(null::public.categories, v_command -> 'row');
       v_category.owner_id := v_user;
+      v_category.id := coalesce(v_category.id, gen_random_uuid());
+      v_category.sort_order := coalesce(v_category.sort_order, 0);
+      v_category.roll_quota := coalesce(v_category.roll_quota, 0);
+      v_category.created_at := coalesce(v_category.created_at, now());
+      v_category.updated_at := coalesce(v_category.updated_at, now());
       insert into public.categories select v_category.*
       on conflict (id) do update set
         parent_id = excluded.parent_id,
@@ -246,6 +305,10 @@ begin
     elsif v_op = 'put' and v_table = 'participants' then
       v_participant := jsonb_populate_record(null::public.participants, v_command -> 'row');
       v_participant.owner_id := v_user;
+      v_participant.id := coalesce(v_participant.id, gen_random_uuid());
+      v_participant.last_used_at := coalesce(v_participant.last_used_at, now());
+      v_participant.created_at := coalesce(v_participant.created_at, now());
+      v_participant.updated_at := coalesce(v_participant.updated_at, now());
       insert into public.participants select v_participant.*
       on conflict (id) do update set
         name = excluded.name,
@@ -255,6 +318,12 @@ begin
     elsif v_op = 'put' and v_table = 'roll_sessions' then
       v_session := jsonb_populate_record(null::public.roll_sessions, v_command -> 'row');
       v_session.host_id := v_user;
+      v_session.id := coalesce(v_session.id, gen_random_uuid());
+      v_session.status := coalesce(v_session.status, 'active');
+      v_session.state := coalesce(v_session.state, '{}'::jsonb);
+      v_session.save_threshold := coalesce(v_session.save_threshold, 3);
+      v_session.created_at := coalesce(v_session.created_at, now());
+      v_session.updated_at := coalesce(v_session.updated_at, now());
       insert into public.roll_sessions select v_session.*
       on conflict (id) do update set
         status = excluded.status,
