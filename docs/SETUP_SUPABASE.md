@@ -15,10 +15,21 @@ Node.js установлен, зависимости поставлены, кл�
 - `npx supabase init` — появился `supabase/config.toml`;
 - CLI обновлён до 2.115.0.
 
+## 0. Почему команды пишутся с `.cmd`
+
+В PowerShell по умолчанию запрещено выполнение сценариев, а `npm` и `npx` —
+это `.ps1`-обёртки. Отсюда ошибка «выполнение сценариев отключено в этой
+системе». Рядом лежат `npm.cmd` и `npx.cmd`, которые запрет не затрагивает,
+поэтому дальше везде они.
+
+Менять политику безопасности Windows ради этого не нужно. Если всё же хочется
+писать команды без `.cmd`, это ваше решение и делается один раз:
+`Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
+
 ## 1. Связать репозиторий с проектом
 
 ```bash
-npx supabase login
+npx.cmd supabase login
 ```
 
 Команда откроет браузер — войдите сами, я в чужие аккаунты не вхожу.
@@ -27,7 +38,7 @@ npx supabase login
 `https://<ref>.supabase.co` со страницы `Project Settings` → `General`.
 
 ```bash
-npx supabase link --project-ref ВАШ_REF_DEV
+npx.cmd supabase link --project-ref ВАШ_REF_DEV
 ```
 
 Спросит пароль базы — тот, что вы задавали при создании проекта. Он остаётся у
@@ -36,7 +47,7 @@ npx supabase link --project-ref ВАШ_REF_DEV
 ## 2. Накатить схему
 
 ```bash
-npm run db:push
+npm.cmd run db:push
 ```
 
 Команда покажет список из пяти миграций и спросит подтверждение. Если что-то
@@ -103,7 +114,7 @@ export const SUPABASE_ANON_KEY = "<anon public>";
 ## 7. Пройти сценарий целиком
 
 ```bash
-npm start
+npm.cmd start
 ```
 
 Откройте `http://localhost:8765/`. Шлюз входа включится сам, как только в
