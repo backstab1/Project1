@@ -58,11 +58,16 @@ export function shufflePool(pool, random = Math.random) {
   return result;
 }
 
+// Часы вынесены в параметр по той же причине, что и случайность: в совместной
+// сессии время события задаёт сервер, иначе у двух клиентов получится разное
+// состояние из одного и того же журнала.
+const systemClock = () => new Date().toISOString();
+
 export function createRollSession({
   pool,
   participants,
   savesEnabledAboveRemaining,
-}) {
+}, now = systemClock) {
   if (!Array.isArray(pool) || pool.length < 2) {
     throw new Error("Для запуска колеса нужно минимум два участника.");
   }
@@ -71,11 +76,11 @@ export function createRollSession({
     throw new Error("Добавьте хотя бы одного игрока.");
   }
 
-  const now = new Date().toISOString();
+  const createdAt = now();
   return {
     id: createId(),
     status: "active",
-    createdAt: now,
+    createdAt,
     completedAt: null,
     originalPool: pool.map((item) => ({ ...item })),
     pool: pool.map((item) => ({ ...item })),
@@ -97,14 +102,24 @@ export function createRollSession({
 
 export function spinSession(session, random = Math.random) {
   assertActiveSession(session);
-  if (session.pendingIndex !== null) {
-    throw new Error("Сначала подтвердите результат или перекрутите колесо.");
-  }
-
   const pendingIndex = Math.min(
     session.pool.length - 1,
     Math.floor(random() * session.pool.length),
   );
+  return applySpin(session, pendingIndex);
+}
+
+// Вход для совместной сессии: индекс уже выбран сервером, крутить нечего.
+// Одиночное колесо приходит сюда же через spinSession.
+export function applySpin(session, pendingIndex) {
+  assertActiveSession(session);
+  if (session.pendingIndex !== null) {
+    throw new Error("Сначала подтвердите результат или перекрутите колесо.");
+  }
+  if (!Number.isInteger(pendingIndex) || pendingIndex < 0 || pendingIndex >= session.pool.length) {
+    throw new RangeError("Колесо указало на участника вне состава.");
+  }
+
   const selected = session.pool[pendingIndex];
 
   return {
@@ -183,7 +198,7 @@ export function useSave(session, participantId) {
   };
 }
 
-export function confirmElimination(session) {
+export function confirmElimination(session, now = systemClock) {
   assertActiveSession(session);
   if (session.pendingIndex === null) {
     throw new Error("Нет результата для подтверждения.");
@@ -194,7 +209,7 @@ export function confirmElimination(session) {
   const eliminated = [
     {
       ...eliminatedItem,
-      eliminatedAt: new Date().toISOString(),
+      eliminatedAt: now(),
     },
     ...session.eliminated,
   ];
@@ -210,7 +225,7 @@ export function confirmElimination(session) {
 
   if (pool.length === 1) {
     const winner = pool[0];
-    const completedAt = new Date().toISOString();
+    const completedAt = now();
     return {
       ...session,
       status: "completed",
