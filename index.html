@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <meta name="color-scheme" content="light dark">
+    <meta name="color-scheme" content="dark light">
     <meta name="theme-color" content="#f6f5fc" media="(prefers-color-scheme: light)">
     <meta name="theme-color" content="#08090f" media="(prefers-color-scheme: dark)">
     <meta
@@ -15,17 +15,16 @@
       (() => {
         try {
           const saved = localStorage.getItem("cinevault-theme");
-          const theme = saved === "light" || saved === "dark"
-            ? saved
-            : matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+          const theme = saved === "light" || saved === "dark" ? saved : "dark";
           document.documentElement.dataset.theme = theme;
           document.documentElement.style.colorScheme = theme;
         } catch {
-          document.documentElement.dataset.theme = "light";
+          document.documentElement.dataset.theme = "dark";
         }
       })();
     </script>
     <link rel="stylesheet" href="./src/styles.css">
+    <link rel="stylesheet" href="./src/welcome.css">
   </head>
   <body>
     <div id="app">

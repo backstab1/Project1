@@ -26,3 +26,6 @@ Desktop.ini
 *.log
 tmp/
 temp/
+
+# служебный кэш Supabase CLI
+supabase/.temp/

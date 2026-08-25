@@ -19,6 +19,7 @@ import {
 } from "../domain/catalogQuery.js";
 import { buildInsights } from "../domain/insights.js";
 import { icon } from "./icons.js";
+import { renderWelcome } from "./welcomeScreen.js";
 
 // «Главная» намеренно отсутствует в боковом меню: на неё ведёт логотип CV.
 // Пункт остаётся только в мобильной нижней навигации, где логотипа нет.
@@ -46,6 +47,7 @@ const NAV_GROUPS = [
 const NAV_ITEMS = [DASHBOARD_ITEM, ...NAV_GROUPS.flatMap(([, items]) => items)];
 
 const VIEW_META = Object.freeze({
+  welcome: { title: "CineVault", eyebrow: "Личное кинохранилище" },
   dashboard: { title: "Моя библиотека", eyebrow: "Обзор коллекции" },
   catalog: { title: "Каталог", eyebrow: "Все фильмы" },
   franchises: { title: "Коллекции", eyebrow: "Франшизы и циклы" },
@@ -66,6 +68,13 @@ export function renderAppShell(root, state) {
   const counts = getNavCounts(state);
   const viewChanged = previousView !== state.view;
   previousView = state.view;
+
+  // Витрина занимает окно целиком: ни боковой панели, ни топбара,
+  // только плавающая пилюля навигации, как на самой витрине.
+  if (state.view === "welcome") {
+    renderWelcomeShell(root, state);
+    return;
+  }
 
   root.innerHTML = `
     <div class="app" data-collapsed="${collapsed}">
@@ -128,13 +137,13 @@ export function renderAppShell(root, state) {
               ${icon("moon")}<span>Тёмная</span>
             </button>
           </div>
-          <div class="storage-chip ${state.error ? "is-error" : ""}">
+          <button class="storage-chip ${state.error ? "is-error" : ""}" type="button" data-view="welcome">
             <span class="storage-chip__icon">${icon(state.error ? "warning" : "shield")}</span>
             <span class="storage-chip__text">
               <strong>${state.error ? "Хранилище недоступно" : "Данные на устройстве"}</strong>
               <small>CineVault ${escapeHtml(APP_VERSION)}</small>
             </span>
-          </div>
+          </button>
         </div>
       </aside>
 
@@ -144,8 +153,8 @@ export function renderAppShell(root, state) {
             <button class="icon-btn topbar__menu" type="button"
               data-action="sidebar-toggle" aria-label="Меню">${icon("more")}</button>
             <div class="topbar__titles">
-              <p class="eyebrow">${escapeHtml(getViewMeta(state.view).eyebrow)}</p>
               <h1>${escapeHtml(getViewMeta(state.view).title)}</h1>
+              <span class="topbar__hint">${escapeHtml(getViewMeta(state.view).eyebrow)}</span>
             </div>
           </div>
 
@@ -234,6 +243,62 @@ export function renderAppShell(root, state) {
   }
   setupImageFallbacks(root);
   setupScrollShadow(root);
+}
+
+const WELCOME_LINKS = [
+  ["feats", "Возможности"],
+  ["wheel", "Колесо"],
+  ["privacy", "Приватность"],
+  ["faq", "Вопросы"],
+];
+
+function renderWelcomeShell(root, state) {
+  root.innerHTML = `
+    <div class="app app--welcome">
+      <div class="app__aurora" aria-hidden="true">
+        <span class="app__aurora-blob app__aurora-blob--one"></span>
+        <span class="app__aurora-blob app__aurora-blob--two"></span>
+        <span class="app__aurora-blob app__aurora-blob--three"></span>
+      </div>
+
+      <div class="content-scroll content-scroll--welcome">
+        <header class="pillbar">
+          <nav class="pillbar__pill">
+            <span class="pillbar__brand">
+              <span class="pillbar__mark">${icon("film")}</span>
+              CineVault
+            </span>
+            <ul class="pillbar__links">
+              ${WELCOME_LINKS.map(([target, label]) => `
+                <li><button type="button" data-welcome-scroll="${target}">${escapeHtml(label)}</button></li>
+              `).join("")}
+            </ul>
+            <span class="pillbar__spacer"></span>
+            <button class="btn btn--primary" type="button" data-view="catalog">Открыть хранилище</button>
+          </nav>
+        </header>
+        <section class="content" id="view-content"></section>
+      </div>
+    </div>
+  `;
+
+  renderWelcome(root.querySelector("#view-content"), state);
+  bindEvents(root, state);
+  bindWelcomeScroll(root);
+  setupImageFallbacks(root);
+}
+
+// Якоря внутри витрины: обычный hash здесь занят маршрутизацией видов,
+// поэтому прокручиваем вручную по data-атрибуту.
+function bindWelcomeScroll(root) {
+  root.querySelectorAll("[data-welcome-scroll]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const target = root.querySelector(`#welcome-${button.dataset.welcomeScroll}`);
+      if (!target) return;
+      const reduced = document.documentElement.dataset.motion === "reduced";
+      target.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" });
+    });
+  });
 }
 
 function bindEvents(root, state) {
