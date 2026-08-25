@@ -125,18 +125,6 @@ export function renderAppShell(root, state) {
         </nav>
 
         <div class="sidebar__bottom">
-          <div class="theme-switch" role="group" aria-label="Тема оформления">
-            <button type="button" class="${state.theme === "light" ? "is-active" : ""}"
-              data-action="theme-set" data-theme="light"
-              aria-pressed="${state.theme === "light"}">
-              ${icon("sun")}<span>Светлая</span>
-            </button>
-            <button type="button" class="${state.theme === "dark" ? "is-active" : ""}"
-              data-action="theme-set" data-theme="dark"
-              aria-pressed="${state.theme === "dark"}">
-              ${icon("moon")}<span>Тёмная</span>
-            </button>
-          </div>
           <button class="storage-chip ${state.error ? "is-error" : ""}" type="button" data-view="welcome">
             <span class="storage-chip__icon">${icon(state.error ? "warning" : "shield")}</span>
             <span class="storage-chip__text">
@@ -148,6 +136,7 @@ export function renderAppShell(root, state) {
       </aside>
 
       <div class="main">
+        <div class="content-scroll">
         <header class="topbar">
           <div class="topbar__lead">
             <button class="icon-btn topbar__menu" type="button"
@@ -173,7 +162,6 @@ export function renderAppShell(root, state) {
           </div>
         </header>
 
-        <div class="content-scroll">
           <section class="content ${viewChanged ? "is-entering" : ""}" id="view-content"></section>
         </div>
       </div>

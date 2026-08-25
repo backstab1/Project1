@@ -25,14 +25,19 @@
   --w-regular: 400;
   --w-medium: 500;
 
-  /* Скругления — словарь витрины: 5 / 10 / 16 / 24 / 32 / 999.
-     Промежуточных значений в системе нет, новые заводить не нужно. */
-  --r-xs: 5px;   /* кнопки, поля ввода, чипы, мелкие контролы */
-  --r-sm: 10px;  /* превью, строки списков, миниатюры */
-  --r-md: 16px;  /* карточки */
-  --r-lg: 24px;  /* крупные панели и блоки */
-  --r-xl: 32px;  /* модалки, сцены, hero */
-  --r-pill: 999px;
+  /* Скругления — одна сдержанная лесенка от 5px: чем крупнее шейп, тем
+     чуть больше радиус, но все они остаются в одном ключе. Промежуточных
+     значений в системе нет, новые заводить не нужно. */
+  --r-xs: 5px;   /* кнопки, поля ввода, чипы, шапка, мелкие контролы */
+  --r-sm: 6px;   /* превью, строки списков, миниатюры */
+  --r-md: 8px;   /* карточки */
+  --r-lg: 10px;  /* крупные панели и блоки */
+  --r-xl: 12px;  /* модалки, сцены, hero */
+  --r-pill: 999px; /* только круглые метки: бейджи, чипы, полосы прогресса */
+
+  /* Жёлоб — общий отступ каркаса: по бокам, над шапкой и под ней.
+     Благодаря ему шапка стоит на равном расстоянии со всех сторон. */
+  --gutter: clamp(1rem, 2.4vw, 2.4rem);
 
   --sidebar-w: 268px;
   --topbar-h: 78px;
@@ -1164,8 +1169,8 @@ strong {
   min-height: 0;
   flex: 1 1 auto;
   flex-direction: column;
-  gap: 1.1rem;
-  overflow-y: auto;
+  gap: 0.9rem;
+  overflow: visible;
   padding: 0.25rem 0.1rem;
 }
 
@@ -1267,40 +1272,9 @@ strong {
   padding: 0 0.1rem;
 }
 
-.theme-switch {
-  display: grid;
-  gap: 3px;
-  grid-template-columns: 1fr 1fr;
-  border: 1px solid var(--border);
-  border-radius: var(--r-xs);
-  background: var(--surface-2);
-  padding: 3px;
-}
 
-.theme-switch button {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.35rem;
-  overflow: hidden;
-  border: 0;
-  border-radius: var(--r-xs);
-  background: transparent;
-  padding: 0.42rem 0.3rem;
-  color: var(--text-dim);
-  font-size: 0.78rem;
-  font-weight: 500;
-  transition: background var(--t-fast) ease, color var(--t-fast) ease;
-}
 
-.theme-switch button svg { width: 0.95rem; height: 0.95rem; }
-.theme-switch button:hover { color: var(--text); }
 
-.theme-switch button.is-active {
-  background: var(--surface);
-  box-shadow: var(--shadow-xs);
-  color: var(--accent);
-}
 
 .storage-chip {
   display: flex;
@@ -1355,7 +1329,6 @@ strong {
 .app[data-collapsed="true"] .nav__label,
 .app[data-collapsed="true"] .nav__badge,
 .app[data-collapsed="true"] .nav__group-label,
-.app[data-collapsed="true"] .theme-switch button span,
 .app[data-collapsed="true"] .storage-chip__text {
   display: none;
 }
@@ -1382,10 +1355,6 @@ strong {
 
 .app[data-collapsed="true"] .nav__group {
   gap: 4px;
-}
-
-.app[data-collapsed="true"] .theme-switch {
-  grid-template-columns: 1fr;
 }
 
 .app[data-collapsed="true"] .storage-chip {
@@ -1416,21 +1385,23 @@ strong {
 /* Топбар — та же плавающая пилюля, что и на витрине. */
 .topbar {
   position: sticky;
-  top: 0.85rem;
+  top: var(--gutter);
   z-index: 12;
   display: flex;
+  width: calc(100% - 2 * var(--gutter));
   min-height: 3.5rem;
+  max-width: calc(var(--content-max) - 2 * var(--gutter));
   align-items: center;
   justify-content: space-between;
   gap: 1.25rem;
-  margin: 0.85rem clamp(0.75rem, 2vw, 1.6rem) 0;
+  margin: var(--gutter) auto 0;
   border-bottom: 0;
-  border-radius: var(--r-pill);
+  border-radius: var(--r-xs);
   background: var(--surface-glass);
   box-shadow: var(--shadow-sm);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  padding: 0.5rem 0.5rem 0.5rem 1.25rem;
+  padding: 0.5rem 0.5rem 0.5rem 1rem;
   transition: box-shadow var(--t-base) ease, background var(--t-base) ease;
 }
 
@@ -1520,7 +1491,7 @@ strong {
   flex-direction: column;
   gap: clamp(1.1rem, 2vw, 1.8rem);
   margin: 0 auto;
-  padding: 0.4rem clamp(1rem, 2.4vw, 2.4rem) clamp(2.5rem, 5vw, 4rem);
+  padding: var(--gutter) var(--gutter) clamp(2.5rem, 5vw, 4rem);
 }
 
 .content.is-entering > * {
