@@ -230,7 +230,6 @@ export function renderAppShell(root, state) {
     }
   }
   setupImageFallbacks(root);
-  setupScrollShadow(root);
 }
 
 const WELCOME_LINKS = [
@@ -310,15 +309,6 @@ function bindEvents(root, state) {
       });
     });
   });
-}
-
-function setupScrollShadow(root) {
-  const scroller = root.querySelector(".content-scroll");
-  const topbar = root.querySelector(".topbar");
-  if (!scroller || !topbar) return;
-  const update = () => topbar.classList.toggle("is-stuck", scroller.scrollTop > 8);
-  scroller.addEventListener("scroll", update, { passive: true });
-  update();
 }
 
 function renderPrimaryAction(state) {

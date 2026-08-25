@@ -1384,8 +1384,7 @@ strong {
 
 /* Топбар — та же плавающая пилюля, что и на витрине. */
 .topbar {
-  position: sticky;
-  top: var(--gutter);
+  position: relative;
   z-index: 12;
   display: flex;
   width: calc(100% - 2 * var(--gutter));
@@ -1394,7 +1393,7 @@ strong {
   align-items: center;
   justify-content: space-between;
   gap: 1.25rem;
-  margin: var(--gutter) auto 0;
+  margin: clamp(0.5rem, 1.1vw, 1rem) auto 0;
   border-bottom: 0;
   border-radius: var(--r-xs);
   background: var(--surface-glass);
@@ -1405,10 +1404,6 @@ strong {
   transition: box-shadow var(--t-base) ease, background var(--t-base) ease;
 }
 
-.topbar.is-stuck {
-  box-shadow: var(--shadow-sm), var(--shadow-md);
-  backdrop-filter: blur(20px);
-}
 
 .topbar__lead {
   display: flex;
