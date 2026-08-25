@@ -1,0 +1,998 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#02000f">
+<title>CineVault — личное кинохранилище</title>
+<meta name="description" content="CineVault — локальная библиотека фильмов и колесо выбывания. Каталог, списки, франшизы, оценки и статистика. Всё хранится на вашем компьютере.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=Manrope:wght@500&display=swap" rel="stylesheet">
+<script>document.documentElement.className="js";</script>
+<style>
+:root{
+  --void:#02000f;
+  --midnight:#050214;
+  --indigo:#10093a;
+  --lilac:#f4f0ff;
+  --pearl:#ffffff;
+  --ash:#a8a6b7;
+  --fog:#918ea0;
+  --steel:#54525f;
+  --dusk:#72707b;
+  --accent:#9382ff;
+  --iris:#5046e4;
+  --cosmic:linear-gradient(90.01deg,#e59cff 0.01%,#ba9cff 50.01%,#9cb2ff 100%);
+  --aurora:linear-gradient(90deg,rgba(183,164,251,0) 0%,#b7a4fb 45%,#8562ff 72%,rgba(133,98,255,0) 100%);
+
+  --font-display:'Manrope','Inter',ui-sans-serif,system-ui,'Segoe UI',sans-serif;
+  --font-ui:'Inter',ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+
+  --s4:4px; --s8:8px; --s12:12px; --s16:16px; --s20:20px; --s24:24px;
+  --s28:28px; --s32:32px; --s36:36px; --s48:48px; --s56:56px; --s64:64px; --s72:72px;
+
+  --r-btn:5px; --r-card:16px; --r-block:24px; --r-badge:32px; --r-pill:999px;
+
+  --glow:inset 0 0 24px rgba(255,255,255,.04);
+  --glow-2:inset 0 0 24px rgba(255,255,255,.06);
+  --glow-violet:inset 0 -7px 11px rgba(164,143,255,.12);
+  --hairline:inset 0 0 0 1px rgba(145,142,160,.14);
+
+  --page:1200px;
+}
+
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;scroll-behavior:smooth}
+body{
+  margin:0;background:var(--void);color:var(--lilac);
+  font-family:var(--font-ui);font-size:16px;line-height:1.5;font-weight:400;
+  font-feature-settings:"calt" 0,"cv10","liga" 0,"ss01";
+  -webkit-font-smoothing:antialiased;overflow-x:hidden;
+}
+h1,h2,h3{font-family:var(--font-display);font-weight:500;margin:0;color:var(--lilac)}
+h1{font-size:clamp(38px,6.4vw,72px);line-height:1.11;letter-spacing:-.5px}
+h2{font-size:clamp(30px,4.4vw,48px);line-height:1.17;letter-spacing:-.3px}
+h3{font-size:20px;line-height:1.35;letter-spacing:-.1px}
+p{margin:0}
+a{color:inherit;text-decoration:none}
+ul{margin:0;padding:0;list-style:none}
+svg{display:block}
+img{max-width:100%;display:block}
+
+.wrap{width:100%;max-width:var(--page);margin:0 auto;padding-inline:var(--s24)}
+.grad{background:var(--cosmic);-webkit-background-clip:text;background-clip:text;color:transparent}
+.muted{color:var(--ash)}
+.dim{color:var(--fog)}
+
+/* ---------- Космический фон ---------- */
+.sky{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+/* Звёзды рисуются на canvas — см. скрипт в конце страницы */
+.sky__canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+
+/* Крупные размытые пятна: холодный фиолет из акцента приложения (#8b5cf6)
+   и тёплое золото из его тёмной темы (#f0a93b). Каждое пятно живёт в двух
+   движениях сразу — внешний слой уезжает по прокрутке со своей глубиной,
+   внутренний бесконечно дышит. Никаких линейных заливок и жёстких границ. */
+/* к низу страницы пятна разгораются */
+.sky__blobs{position:absolute;inset:0;opacity:calc(.86 + var(--sp,0) * .14)}
+.blob{
+  position:absolute;
+  transform:translate3d(0,calc(var(--sy,0) * var(--d) * -1px),0);
+  will-change:transform;
+}
+.blob i{
+  display:block;width:100%;height:100%;border-radius:50%;
+  animation:breathe var(--dur,34s) ease-in-out infinite alternate;
+  animation-delay:var(--delay,0s);
+  will-change:transform;
+}
+@keyframes breathe{
+  from{transform:translate3d(0,0,0) scale(1)}
+  to{transform:translate3d(var(--dx,5vmax),var(--dy,-4vmax),0) scale(var(--ds,1.18))}
+}
+
+/* фиолетовые */
+.blob--1{--d:.16;left:-26vmax;top:-20vmax;width:82vmax;height:82vmax}
+.blob--1 i{background:radial-gradient(circle at 50% 50%,rgba(139,92,246,.40),rgba(139,92,246,.14) 42%,transparent 70%);--dur:38s;--dx:6vmax;--dy:4vmax;--ds:1.14}
+.blob--3{--d:.30;left:-4vmax;top:52vmax;width:74vmax;height:74vmax}
+.blob--3 i{background:radial-gradient(circle at 50% 50%,rgba(147,130,255,.35),rgba(80,70,228,.13) 44%,transparent 70%);--dur:46s;--dx:-7vmax;--dy:-5vmax;--ds:1.2;--delay:-9s}
+.blob--5{--d:.42;right:-20vmax;top:104vmax;width:78vmax;height:78vmax}
+.blob--5 i{background:radial-gradient(circle at 50% 50%,rgba(167,139,250,.32),rgba(139,92,246,.11) 44%,transparent 70%);--dur:41s;--dx:5vmax;--dy:6vmax;--ds:1.16;--delay:-17s}
+
+/* тёпло-оранжевые */
+.blob--2{--d:.10;right:-22vmax;top:6vmax;width:66vmax;height:66vmax}
+.blob--2 i{background:radial-gradient(circle at 50% 50%,rgba(240,169,59,.28),rgba(240,169,59,.10) 42%,transparent 68%);--dur:44s;--dx:-6vmax;--dy:5vmax;--ds:1.22;--delay:-6s}
+.blob--4{--d:.24;left:-18vmax;top:88vmax;width:70vmax;height:70vmax}
+.blob--4 i{background:radial-gradient(circle at 50% 50%,rgba(240,169,59,.24),rgba(251,113,133,.09) 45%,transparent 70%);--dur:52s;--dx:8vmax;--dy:-6vmax;--ds:1.15;--delay:-24s}
+.blob--6{--d:.55;right:-10vmax;top:158vmax;width:72vmax;height:72vmax}
+.blob--6 i{background:radial-gradient(circle at 50% 50%,rgba(240,169,59,.25),rgba(139,92,246,.10) 46%,transparent 70%);--dur:49s;--dx:-5vmax;--dy:-7vmax;--ds:1.19;--delay:-31s}
+.page{position:relative;z-index:1}
+
+/* ---------- Появление блоков по прокрутке ---------- */
+.js .sec__head,
+.js .shot,
+.js .metric,
+.js .feat,
+.js .block,
+.js .frame,
+.js .card,
+.js details,
+.js .aurora,
+.js .final > *{
+  opacity:0;
+  transform:translate3d(0,20px,0);
+  transition:opacity .75s cubic-bezier(.22,.61,.36,1),transform .75s cubic-bezier(.22,.61,.36,1);
+}
+.js .aurora{transform:scaleX(.55);transform-origin:50% 50%}
+.js .is-in{opacity:1;transform:none}
+.js .aurora.is-in{transform:scaleX(1)}
+
+/* ---------- Навигация ---------- */
+.nav{position:sticky;top:16px;z-index:40;padding-inline:var(--s16);margin-top:var(--s16)}
+.nav__pill{
+  max-width:var(--page);margin:0 auto;display:flex;align-items:center;gap:var(--s20);
+  height:56px;padding:var(--s8) var(--s8) var(--s8) var(--s20);border-radius:var(--r-pill);
+  background:rgba(5,2,20,.84);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  box-shadow:var(--glow),var(--hairline);
+}
+.brand{display:flex;align-items:center;gap:10px;font-size:15px;font-weight:500;letter-spacing:-.1px;white-space:nowrap}
+.brand__mark{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;background:var(--indigo);box-shadow:var(--glow-violet);color:var(--accent)}
+.nav__links{display:flex;align-items:center;gap:var(--s24);margin-left:var(--s12)}
+.nav__links a{font-size:15px;color:var(--lilac);opacity:.8;transition:opacity .18s,color .18s}
+.nav__links a:hover{opacity:1;color:var(--accent)}
+.nav__spacer{flex:1}
+.nav__side{display:flex;align-items:center;gap:var(--s8)}
+
+/* ---------- Кнопки ---------- */
+.btn{
+  display:inline-flex;align-items:center;gap:var(--s8);font-family:var(--font-ui);
+  font-size:15px;font-weight:500;line-height:1.2;padding:11px 16px;
+  border-radius:var(--r-btn);border:0;cursor:pointer;white-space:nowrap;
+  transition:background .18s,color .18s,transform .18s;
+}
+.btn--filled{background:var(--iris);color:var(--pearl);box-shadow:var(--glow-violet)}
+.btn--filled:hover{background:#5f56ef;transform:translateY(-1px)}
+.btn--ghost{background:transparent;color:var(--fog)}
+.btn--ghost:hover{color:var(--lilac)}
+.btn--outline{background:var(--midnight);color:var(--lilac);box-shadow:var(--glow),var(--hairline)}
+.btn--outline:hover{background:var(--indigo)}
+.btn--lg{padding:14px 22px;font-size:16px}
+.link{display:inline-flex;align-items:center;gap:6px;font-size:15px;font-weight:500;color:var(--accent);border-radius:8px;transition:color .18s}
+.link:hover{color:var(--lilac)}
+.link svg{transition:transform .18s}
+.link:hover svg{transform:translateX(3px)}
+
+/* ---------- Бейдж ---------- */
+.badge{
+  display:inline-flex;align-items:center;gap:var(--s8);padding:7px 14px;
+  border-radius:var(--r-badge);background:var(--midnight);border:1px solid var(--iris);
+  box-shadow:var(--glow-violet);font-size:13px;font-weight:500;color:var(--lilac);
+}
+.badge svg{color:var(--accent)}
+
+/* ---------- Секции ---------- */
+.sec{padding-block:clamp(72px,9vw,120px)}
+.sec__head{max-width:700px;margin:0 auto var(--s56);text-align:center;display:grid;gap:var(--s16);justify-items:center}
+.sec__head p{font-size:18px;line-height:1.56;color:var(--fog)}
+.aurora{height:1px;width:100%;background:var(--aurora);opacity:.5}
+
+/* ---------- Hero ---------- */
+/* Первый экран занимает ровно остаток вьюпорта под навигацией, поэтому
+   следующая секция начинается уже за сгибом и не наползает на картинку. */
+.hero{
+  position:relative;isolation:isolate;text-align:center;
+  min-height:calc(100vh - 72px);
+  min-height:calc(100svh - 72px);
+  display:grid;align-items:center;
+  padding-top:clamp(48px,7vh,96px);
+  padding-bottom:clamp(56px,9vh,120px);
+}
+/* Слой с фото свисает ниже первого экрана: край блока и конец растворения
+   больше не совпадают, поэтому стыка на границе секций не возникает. */
+.hero__bg{
+  /* вверх — под самую шапку, чтобы за навигацией был кадр, а не голый фон;
+     вниз — за пределы первого экрана, чтобы конец растворения не совпал с краем блока */
+  position:absolute;inset:-96px 0 -260px 0;z-index:-1;overflow:hidden;pointer-events:none;
+  --fade:linear-gradient(180deg,
+      #000 0%,#000 48%,
+      rgba(0,0,0,.82) 64%,rgba(0,0,0,.5) 76%,
+      rgba(0,0,0,.22) 86%,rgba(0,0,0,.06) 94%,transparent 100%);
+}
+.hero__bg img{
+  width:100%;height:100%;object-fit:cover;object-position:50% 44%;
+  -webkit-mask-image:var(--fade);
+  mask-image:var(--fade);
+}
+/* Вуаль тонированная, а не глухая: тёмный «омут» под текстом держит контраст,
+   к краям кадра фото остаётся видимым. Гаснет по той же кривой, что и картинка. */
+.hero__bg::after{
+  content:"";position:absolute;inset:0;
+  background:
+    radial-gradient(58% 48% at 50% 42%,rgba(2,0,15,.62),rgba(2,0,15,.30) 60%,rgba(2,0,15,.04) 100%),
+    linear-gradient(180deg,rgba(2,0,15,.66) 0%,rgba(2,0,15,.16) 17%,rgba(2,0,15,0) 38%);
+  -webkit-mask-image:var(--fade);
+  mask-image:var(--fade);
+}
+.hero__inner{display:grid;justify-items:center;gap:var(--s24)}
+
+/* Мок интерфейса — уже за первым экраном. position/z-index обязательны:
+   hero позиционирован и своим свисающим слоем перекрыл бы статичную секцию. */
+.shot-sec{
+  position:relative;z-index:1;
+  padding-top:clamp(32px,5vh,64px);padding-bottom:clamp(48px,6vw,72px);
+}
+.hero h1{max-width:15ch}
+.hero__sub{max-width:58ch;font-size:18px;line-height:1.56;color:var(--ash)}
+.hero__cta{display:flex;flex-wrap:wrap;gap:var(--s12);justify-content:center;margin-top:var(--s4)}
+.hero__meta{display:flex;flex-wrap:wrap;gap:var(--s16);justify-content:center;font-size:12px;line-height:1.33;color:var(--steel)}
+.hero__meta span{display:inline-flex;align-items:center;gap:6px}
+.dot{width:3px;height:3px;border-radius:50%;background:var(--accent);flex:none}
+
+/* ---------- Мок приложения ---------- */
+.shot{
+  border-radius:var(--r-card);overflow:hidden;
+  background:var(--midnight);box-shadow:var(--glow-2),var(--hairline);
+  text-align:left;
+}
+.shot__bar{display:flex;align-items:center;gap:var(--s12);padding:12px var(--s16);box-shadow:inset 0 -1px 0 rgba(145,142,160,.12)}
+.shot__dots{display:flex;gap:6px}
+.shot__dots i{width:9px;height:9px;border-radius:50%;background:#241a4d;display:block}
+.shot__title{font-size:12px;color:var(--steel);letter-spacing:.02em}
+.shot__body{display:grid;grid-template-columns:200px 1fr 236px;min-height:420px}
+
+.side{padding:var(--s20) var(--s16);display:grid;align-content:start;gap:var(--s4);box-shadow:inset -1px 0 0 rgba(145,142,160,.1)}
+.side__label{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--steel);padding:0 10px;margin-bottom:var(--s8)}
+.side__item{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:var(--r-btn);font-size:14px;color:var(--fog)}
+.side__item svg{width:16px;height:16px;flex:none;opacity:.85}
+.side__item b{margin-left:auto;font-weight:400;font-size:12px;color:var(--steel)}
+.side__item--on{background:var(--indigo);color:var(--lilac);box-shadow:var(--glow-violet)}
+.side__item--on b{color:var(--accent)}
+
+.main{padding:var(--s20);display:grid;align-content:start;gap:var(--s16)}
+.search{display:flex;align-items:center;gap:10px;height:36px;padding:0 12px;border-radius:var(--r-btn);background:var(--void);box-shadow:var(--hairline);font-size:13px;color:var(--steel)}
+.search svg{width:14px;height:14px;color:var(--dusk)}
+.search kbd{margin-left:auto;font:inherit;font-size:11px;color:var(--dusk);background:var(--midnight);padding:2px 6px;border-radius:4px;box-shadow:var(--hairline)}
+.chips{display:flex;flex-wrap:wrap;gap:var(--s8)}
+.chip{font-size:12px;padding:5px 11px;border-radius:var(--r-badge);color:var(--fog);background:var(--void);box-shadow:var(--hairline)}
+.chip--on{color:var(--lilac);background:var(--indigo);box-shadow:var(--glow-violet)}
+.grid-p{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--s12)}
+.poster{border-radius:10px;overflow:hidden;background:var(--void);box-shadow:var(--hairline)}
+.poster__art{aspect-ratio:2/3;position:relative}
+.poster__art::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,transparent 45%,rgba(3,0,20,.85))}
+.poster__meta{padding:8px 9px 10px}
+.poster__meta b{display:block;font-size:12px;font-weight:500;color:var(--lilac);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.poster__meta span{font-size:11px;color:var(--steel)}
+.a1{background:linear-gradient(150deg,#2a1c5c,#0d0730)}
+.a2{background:linear-gradient(150deg,#3a2470,#120a38)}
+.a3{background:linear-gradient(150deg,#1c1750,#0a0628)}
+.a4{background:linear-gradient(150deg,#432a7a,#160c3c)}
+.a5{background:linear-gradient(150deg,#231a55,#0b0630)}
+.a6{background:linear-gradient(150deg,#332063,#100934)}
+.a7{background:linear-gradient(150deg,#1a1348,#080524)}
+.a8{background:linear-gradient(150deg,#3d2a6e,#130b36)}
+
+.rail{padding:var(--s20) var(--s16);display:grid;align-content:start;gap:var(--s16);box-shadow:inset 1px 0 0 rgba(145,142,160,.1)}
+.rail__h{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--steel)}
+.queue{display:grid;gap:var(--s8)}
+.queue li{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:10px;background:var(--void);box-shadow:var(--hairline);font-size:13px;color:var(--lilac)}
+.queue i{width:20px;height:28px;border-radius:3px;flex:none}
+.queue small{margin-left:auto;color:var(--steel);font-size:11px}
+.rail__wheel{display:grid;justify-items:center;gap:10px;padding:var(--s16) 0 var(--s8)}
+.rail__note{font-size:12px;color:var(--steel);text-align:center}
+
+/* ---------- Метрики ---------- */
+.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--s16)}
+.metric{padding:var(--s24);border-radius:var(--r-card);background:var(--midnight);box-shadow:var(--glow),var(--hairline);display:grid;gap:6px}
+.metric b{font-family:var(--font-display);font-weight:500;font-size:32px;line-height:1.25;letter-spacing:-.2px}
+.metric span{font-size:14px;line-height:1.43;color:var(--fog)}
+
+/* ---------- Возможности ---------- */
+.feats{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--s28) var(--s24)}
+.feat{padding:var(--s16);display:grid;gap:10px;align-content:start}
+.feat__ic{color:var(--lilac);opacity:.9}
+.feat h3{font-size:19px}
+.feat p{font-size:15px;line-height:1.53;color:var(--fog)}
+
+/* ---------- Блок «Колесо» ---------- */
+.block{
+  border-radius:var(--r-block);background:var(--midnight);
+  box-shadow:var(--glow-2),var(--hairline);overflow:hidden;
+  display:grid;grid-template-columns:1.05fr .95fr;
+}
+.block__text{padding:clamp(28px,4vw,56px);display:grid;align-content:center;gap:var(--s20)}
+.block__text h2{font-size:clamp(28px,3.2vw,40px)}
+.block__text p{font-size:16px;line-height:1.56;color:var(--ash)}
+.steps{display:grid;gap:14px;margin-top:var(--s4)}
+.steps li{display:flex;gap:12px;font-size:15px;line-height:1.5;color:var(--fog)}
+.steps b{
+  flex:none;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;
+  background:var(--indigo);color:var(--accent);font-size:11px;font-weight:500;
+  box-shadow:var(--glow-violet);margin-top:2px;
+}
+.block__vis{position:relative;display:grid;place-items:center;padding:clamp(24px,3vw,40px);background:radial-gradient(70% 70% at 50% 40%,rgba(80,70,228,.18),transparent 70%)}
+
+/* ---------- Кадры ---------- */
+.frames{display:grid;grid-template-columns:1fr 1fr;gap:var(--s24)}
+.frame{border-radius:var(--r-card);overflow:hidden;background:var(--midnight);box-shadow:var(--glow),var(--hairline);display:grid}
+.frame img{width:100%;height:100%;object-fit:cover;aspect-ratio:16/9}
+.frame figcaption{padding:var(--s16) var(--s20);font-size:14px;line-height:1.43;color:var(--fog)}
+.frame--empty{aspect-ratio:16/9;place-items:center;background:radial-gradient(60% 60% at 50% 45%,rgba(80,70,228,.14),transparent 70%);color:var(--steel);font-size:13px;text-align:center;padding:var(--s24)}
+
+/* ---------- Приватность ---------- */
+.priv{display:grid;grid-template-columns:1fr 1fr;gap:var(--s24)}
+.card{padding:var(--s28);border-radius:var(--r-card);background:var(--midnight);box-shadow:var(--glow),var(--hairline);display:grid;gap:var(--s12);align-content:start}
+.card h3{font-size:18px}
+.card p{font-size:15px;line-height:1.53;color:var(--fog)}
+.plist{display:grid;gap:10px;margin-top:var(--s4)}
+.plist li{display:flex;gap:10px;font-size:14px;line-height:1.45;color:var(--ash)}
+.plist svg{flex:none;margin-top:3px;color:var(--accent)}
+
+/* ---------- FAQ ---------- */
+.faq{display:grid;grid-template-columns:1fr 1fr;gap:var(--s16)}
+details{padding:var(--s20) var(--s24);border-radius:var(--r-card);background:var(--midnight);box-shadow:var(--glow),var(--hairline)}
+summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:var(--s12);font-size:16px;font-weight:500;color:var(--lilac)}
+summary::-webkit-details-marker{display:none}
+summary::after{content:"";margin-left:auto;width:9px;height:9px;flex:none;border-right:1.5px solid var(--fog);border-bottom:1.5px solid var(--fog);transform:rotate(45deg) translateY(-2px);transition:transform .2s}
+details[open] summary::after{transform:rotate(225deg) translateY(-2px)}
+details p{margin-top:var(--s12);font-size:15px;line-height:1.55;color:var(--fog)}
+
+/* ---------- Финал ---------- */
+.final{text-align:center;display:grid;justify-items:center;gap:var(--s24);padding-block:clamp(80px,10vw,120px)}
+.final h2{max-width:16ch}
+.final p{max-width:52ch;font-size:18px;line-height:1.56;color:var(--ash)}
+
+/* ---------- Подвал ---------- */
+footer{padding-block:var(--s48) var(--s56)}
+.foot{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s24);padding-top:var(--s32);box-shadow:inset 0 1px 0 rgba(145,142,160,.12)}
+.foot__links{display:flex;flex-wrap:wrap;gap:var(--s24);margin-left:auto;font-size:14px;color:var(--fog)}
+.foot__links a:hover{color:var(--accent)}
+.foot__note{width:100%;font-size:12px;line-height:1.5;color:var(--steel)}
+
+/* ---------- Адаптив ---------- */
+@media (max-width:1080px){
+  .shot__body{grid-template-columns:172px 1fr}
+  .rail{display:none}
+  .feats{grid-template-columns:repeat(2,1fr)}
+  .metrics{grid-template-columns:repeat(2,1fr)}
+  .block{grid-template-columns:1fr}
+  .block__vis{order:-1;padding-top:var(--s36)}
+  .nav__links{display:none}
+}
+@media (max-width:760px){
+  .wrap{padding-inline:var(--s16)}
+  .shot__body{grid-template-columns:1fr}
+  .side{display:none}
+  .grid-p{grid-template-columns:repeat(3,1fr)}
+  .feats{grid-template-columns:1fr}
+  .frames,.priv,.faq{grid-template-columns:1fr}
+  .nav__pill{padding-left:var(--s16)}
+  .nav__side .btn--ghost{display:none}
+}
+/* На узком экране широкий кадр обрезался бы до тонкой полосы —
+   уводим его глубже в тень, работать продолжают пятна и звёзды. */
+@media (max-width:760px){
+  .hero__bg img{object-position:52% 44%}
+  .hero__bg::after{
+    background:
+      radial-gradient(80% 52% at 50% 42%,rgba(2,0,15,.42),rgba(2,0,15,.84) 74%),
+      linear-gradient(180deg,rgba(2,0,15,.84) 0%,rgba(2,0,15,.58) 28%,rgba(2,0,15,.44) 58%,rgba(2,0,15,.16) 84%,transparent 100%);
+  }
+}
+@media (max-width:400px){
+  .nav__pill{gap:var(--s12);padding-left:var(--s12)}
+  .nav__side .btn--filled{padding:10px 12px;font-size:14px}
+  .brand{font-size:14px}
+}
+@media (prefers-reduced-motion:reduce){
+  *{animation:none!important;transition:none!important}
+  html{scroll-behavior:auto}
+  .blob{transform:none!important}
+  .blob i{animation:none!important;transform:none!important}
+}
+</style>
+</head>
+<body>
+
+<div class="sky" aria-hidden="true">
+  <div class="sky__blobs">
+    <div class="blob blob--1"><i></i></div>
+    <div class="blob blob--2"><i></i></div>
+    <div class="blob blob--3"><i></i></div>
+    <div class="blob blob--4"><i></i></div>
+    <div class="blob blob--5"><i></i></div>
+    <div class="blob blob--6"><i></i></div>
+  </div>
+  <canvas class="sky__canvas"></canvas>
+</div>
+
+<div class="page">
+
+<!-- ================= Навигация ================= -->
+<header class="nav">
+  <nav class="nav__pill">
+    <a class="brand" href="#top">
+      <span class="brand__mark" aria-hidden="true">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 4v5M16 4v5"/>
+        </svg>
+      </span>
+      CineVault
+    </a>
+    <ul class="nav__links">
+      <li><a href="#feats">Возможности</a></li>
+      <li><a href="#wheel">Колесо</a></li>
+      <li><a href="#privacy">Приватность</a></li>
+      <li><a href="#faq">Вопросы</a></li>
+    </ul>
+    <span class="nav__spacer"></span>
+    <div class="nav__side">
+      <a class="btn btn--ghost" href="#faq">Документация</a>
+      <a class="btn btn--filled" href="#get">Скачать для Windows</a>
+    </div>
+  </nav>
+</header>
+
+<!-- ================= Hero ================= -->
+<section class="hero" id="top">
+  <div class="hero__bg" aria-hidden="true">
+    <img src="assets/hero-night.jpg" width="1920" height="1081" alt="" fetchpriority="high" decoding="async">
+  </div>
+  <div class="wrap hero__inner">
+    <span class="badge">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/>
+      </svg>
+      Локально. Без облака и подписок
+    </span>
+
+    <h1>Хранилище фильмов, которое <span class="grad">выбирает за вас</span></h1>
+
+    <p class="hero__sub">
+      CineVault собирает вашу библиотеку, списки и франшизы в одном тёмном зале —
+      и превращает вечный вопрос «что смотрим?» в один поворот колеса.
+      Всё живёт на вашем компьютере.
+    </p>
+
+    <div class="hero__cta">
+      <a class="btn btn--filled btn--lg" href="#get">Скачать для Windows</a>
+      <a class="btn btn--outline btn--lg" href="#wheel">Как работает колесо</a>
+    </div>
+
+    <div class="hero__meta">
+      <span><i class="dot"></i>Windows · портативная сборка</span>
+      <span><i class="dot"></i>Версия 0.11.0-beta.1</span>
+      <span><i class="dot"></i>Интерфейс полностью на русском</span>
+    </div>
+  </div>
+</section>
+
+<!-- ================= Мок интерфейса ================= -->
+<section class="wrap shot-sec">
+  <div class="shot">
+    <div class="shot__bar">
+      <span class="shot__dots" aria-hidden="true"><i></i><i></i><i></i></span>
+      <span class="shot__title">CineVault — Каталог</span>
+    </div>
+    <div class="shot__body">
+
+      <aside class="side">
+        <p class="side__label">Хранилище</p>
+        <div class="side__item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10l9-6 9 6v10a1 1 0 01-1 1H4a1 1 0 01-1-1z"/></svg>
+          Главная
+        </div>
+        <div class="side__item side__item--on">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+          Каталог <b>412</b>
+        </div>
+        <div class="side__item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/></svg>
+          Списки <b>17</b>
+        </div>
+        <div class="side__item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18"/></svg>
+          Колесо
+        </div>
+        <div class="side__item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+          Просмотрено <b>168</b>
+        </div>
+        <div class="side__item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
+          Статистика
+        </div>
+      </aside>
+
+      <div class="main">
+        <div class="search">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+          Поиск по хранилищу
+          <kbd>Ctrl K</kbd>
+        </div>
+        <div class="chips">
+          <span class="chip chip--on">Все</span>
+          <span class="chip">Не смотрели</span>
+          <span class="chip">Вечер пятницы</span>
+          <span class="chip">Фантастика</span>
+          <span class="chip">Нуар</span>
+          <span class="chip">Франшизы</span>
+        </div>
+        <div class="grid-p">
+          <div class="poster"><div class="poster__art a1"></div><div class="poster__meta"><b>Сталкер</b><span>1979 · 162 мин</span></div></div>
+          <div class="poster"><div class="poster__art a2"></div><div class="poster__meta"><b>Бегущий по лезвию</b><span>1982 · 117 мин</span></div></div>
+          <div class="poster"><div class="poster__art a3"></div><div class="poster__meta"><b>Прибытие</b><span>2016 · 116 мин</span></div></div>
+          <div class="poster"><div class="poster__art a4"></div><div class="poster__meta"><b>Помни</b><span>2000 · 113 мин</span></div></div>
+          <div class="poster"><div class="poster__art a5"></div><div class="poster__meta"><b>Солярис</b><span>1972 · 167 мин</span></div></div>
+          <div class="poster"><div class="poster__art a6"></div><div class="poster__meta"><b>Двойная жизнь</b><span>1991 · 98 мин</span></div></div>
+          <div class="poster"><div class="poster__art a7"></div><div class="poster__meta"><b>Расёмон</b><span>1950 · 88 мин</span></div></div>
+          <div class="poster"><div class="poster__art a8"></div><div class="poster__meta"><b>Персона</b><span>1966 · 85 мин</span></div></div>
+        </div>
+      </div>
+
+      <aside class="rail">
+        <p class="rail__h">Следующий вечер</p>
+        <ul class="queue">
+          <li><i class="a2"></i>Бегущий по лезвию<small>1 / 6</small></li>
+          <li><i class="a5"></i>Солярис<small>2 / 6</small></li>
+          <li><i class="a7"></i>Расёмон<small>3 / 6</small></li>
+        </ul>
+        <div class="rail__wheel">
+          <svg width="132" height="132" viewBox="0 0 132 132" role="img" aria-label="Колесо выбора фильма">
+            <defs>
+              <linearGradient id="rim" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stop-color="#e59cff"/><stop offset="50%" stop-color="#ba9cff"/><stop offset="100%" stop-color="#9cb2ff"/>
+              </linearGradient>
+            </defs>
+            <circle cx="66" cy="66" r="52" fill="#10093a" opacity=".55"/>
+            <circle cx="66" cy="66" r="52" fill="none" stroke="url(#rim)" stroke-width="1.5" opacity=".85"/>
+            <g stroke="#9382ff" stroke-width="1" opacity=".35">
+              <path d="M66 14v104M14 66h104"/>
+              <path d="M29.2 29.2l73.6 73.6M102.8 29.2L29.2 102.8"/>
+            </g>
+            <circle cx="66" cy="66" r="30" fill="none" stroke="#918ea0" stroke-width="1" opacity=".3"/>
+            <circle cx="66" cy="66" r="7" fill="#10093a" stroke="#9382ff" stroke-width="1.5"/>
+            <path d="M66 6l5 9H61z" fill="#9382ff"/>
+          </svg>
+          <p class="rail__note">6 участников · 2 сейва</p>
+        </div>
+      </aside>
+
+    </div>
+  </div>
+</section>
+
+<!-- ================= Метрики ================= -->
+<section class="wrap" style="padding-block:clamp(48px,6vw,72px)">
+  <div class="metrics">
+    <div class="metric"><b>0</b><span>запросов в облако — библиотека лежит в браузерном хранилище на вашей машине</span></div>
+    <div class="metric"><b>0,5</b><span>шаг оценки — половинки звёзд, без округлений в чужую пользу</span></div>
+    <div class="metric"><b>3</b><span>формата импорта — CSV, TSV и XLSX из вашей старой таблицы</span></div>
+    <div class="metric"><b>Ctrl K</b><span>палитра команд — переходы, действия и поиск по фильмам</span></div>
+  </div>
+</section>
+
+<!-- ================= Возможности ================= -->
+<section class="sec wrap" id="feats">
+  <div class="sec__head">
+    <span class="badge">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>
+      Что внутри хранилища
+    </span>
+    <h2>Каталог, который знает ваш вкус</h2>
+    <p>Восемь инструментов вместо одной бесконечной таблицы. Всё сделано под один сценарий — вечер, когда надо выбрать фильм и не поссориться.</p>
+  </div>
+
+  <div class="feats">
+    <article class="feat">
+      <span class="feat__ic"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></span>
+      <h3>Каталог в двух режимах</h3>
+      <p>Плитка с постерами или плотный список. Чипы-фильтры по спискам и жанрам, выдвижная карточка с описанием и метаданными.</p>
+    </article>
+
+    <article class="feat">
+      <span class="feat__ic"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 12l9 5 9-5"/><path d="M3 16.5l9 5 9-5"/></svg></span>
+      <h3>Списки и франшизы</h3>
+      <p>Вложенные пользовательские списки, франшизы одним объектом и ручная очередь просмотра внутри каждого списка.</p>
+    </article>
+
+    <article class="feat">
+      <span class="feat__ic"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5"/><path d="M12 3v5.5M12 15.5V21M3 12h5.5M15.5 12H21"/></svg></span>
+      <h3>Колесо выбывания</h3>
+      <p>Не лотерея на один тык, а батл-рояль: участники вылетают круг за кругом, пока в хранилище не останется один фильм.</p>
+    </article>
+
+    <article class="feat">
+      <span class="feat__ic"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 4.2-2.9 7.6-7 9-4.1-1.4-7-4.8-7-9V6z"/><path d="M9.5 12l1.8 1.8L15 10"/></svg></span>
+      <h3>Персональные сейвы</h3>
+      <p>У каждого участника вечера есть право спасти свой фильм от вылета. Ровно столько раз, сколько вы договорились.</p>
+    </article>
+
+    <article class="feat">
+      <span class="feat__ic"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4l2.4 5 5.6.8-4 3.9 1 5.5-5-2.6-5 2.6 1-5.5-4-3.9 5.6-.8z"/></svg></span>
+      <h3>Просмотрено и оценки</h3>
+      <p>Шаг в половину звезды, дата просмотра и история завершённых сессий — чем закончился каждый вечер.</p>
+    </article>
+
+    <article class="feat">
+      <span class="feat__ic"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></span>
+      <h3>Статистика вкуса</h3>
+      <p>Жанры, страны, годы и часы у экрана. Картина того, что вы на самом деле смотрите, а не что собирались.</p>
+    </article>
+
+    <article class="feat">
+      <span class="feat__ic"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 000 18 14 14 0 000-18z"/></svg></span>
+      <h3>Данные из TMDB</h3>
+      <p>Один поиск заполняет название, год, длительность, страну, жанры, описание и постер. Постеры кэшируются и работают офлайн.</p>
+    </article>
+
+    <article class="feat">
+      <span class="feat__ic"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="5" rx="1.5"/><path d="M5 9v10a1 1 0 001 1h12a1 1 0 001-1V9"/><path d="M10 13h4"/></svg></span>
+      <h3>Импорт и резервные копии</h3>
+      <p>CSV, TSV и XLSX на входе, копия библиотеки на диск на выходе. Обратимое удаление — на случай неверного клика.</p>
+    </article>
+  </div>
+</section>
+
+<div class="wrap"><div class="aurora"></div></div>
+
+<!-- ================= Колесо ================= -->
+<section class="sec wrap" id="wheel">
+  <div class="block">
+    <div class="block__text">
+      <span class="badge" style="justify-self:start">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v4M12 17v4M3 12h4M17 12h4"/><circle cx="12" cy="12" r="4"/></svg>
+        Механика вечера
+      </span>
+      <h2>Вечер начинается с поворота</h2>
+      <p>
+        Обычный рандомайзер выдаёт ответ мгновенно — и его тут же хочется перекрутить.
+        Колесо CineVault растягивает выбор в короткий ритуал: каждый круг убирает
+        одного претендента, напряжение растёт, и финальный фильм ощущается решением,
+        а не случайностью.
+      </p>
+      <ul class="steps">
+        <li><b>1</b><span>Соберите пул: списки, квоты участников, фильтры по жанрам и годам.</span></li>
+        <li><b>2</b><span>Раздайте сейвы — каждый может один раз вытащить свой фильм из-под вылета.</span></li>
+        <li><b>3</b><span>Жмите пробел. Круг за кругом, пока не останется единственный.</span></li>
+      </ul>
+      <a class="link" href="#get">
+        Собрать своё хранилище
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg>
+      </a>
+    </div>
+
+    <div class="block__vis">
+      <svg viewBox="0 0 320 320" style="width:100%;height:auto;max-width:340px" role="img" aria-label="Колесо выбывания с шестью фильмами">
+        <defs>
+          <linearGradient id="rim2" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#e59cff"/><stop offset="50%" stop-color="#ba9cff"/><stop offset="100%" stop-color="#9cb2ff"/>
+          </linearGradient>
+          <radialGradient id="hub" cx="50%" cy="40%">
+            <stop offset="0%" stop-color="#241a5c"/><stop offset="100%" stop-color="#0a0530"/>
+          </radialGradient>
+        </defs>
+
+        <circle cx="160" cy="168" r="128" fill="#9382ff" opacity=".07"/>
+        <circle cx="160" cy="168" r="120" fill="url(#hub)"/>
+        <circle cx="160" cy="168" r="120" fill="none" stroke="url(#rim2)" stroke-width="1.5" opacity=".9"/>
+
+        <!-- сектора -->
+        <g stroke="#9382ff" stroke-width="1" opacity=".32">
+          <path d="M160 48v240"/>
+          <path d="M56 108l208 120"/>
+          <path d="M264 108L56 228"/>
+        </g>
+
+        <!-- выбывшие -->
+        <g fill="none" stroke="#54525f" stroke-width="1.2" opacity=".55">
+          <circle cx="160" cy="168" r="86"/>
+        </g>
+        <g font-family="Inter, sans-serif" font-size="12" fill="#918ea0">
+          <text x="160" y="86"  text-anchor="middle">Прибытие</text>
+          <text x="256" y="140" text-anchor="middle">Помни</text>
+          <text x="248" y="228" text-anchor="middle">Персона</text>
+          <text x="160" y="266" text-anchor="middle">Расёмон</text>
+          <text x="70"  y="228" text-anchor="middle">Солярис</text>
+        </g>
+        <g font-family="Inter, sans-serif" font-size="12.5" font-weight="500" fill="#f4f0ff">
+          <text x="68" y="140" text-anchor="middle">Сталкер</text>
+        </g>
+
+        <!-- центр -->
+        <circle cx="160" cy="168" r="40" fill="#060317" stroke="#5046e4" stroke-width="1.5"/>
+        <text x="160" y="163" text-anchor="middle" font-family="Manrope, Inter, sans-serif" font-size="11" fill="#918ea0" letter-spacing="1.2">КРУГ</text>
+        <text x="160" y="184" text-anchor="middle" font-family="Manrope, Inter, sans-serif" font-size="19" font-weight="500" fill="#f4f0ff">4 / 6</text>
+
+        <!-- указатель -->
+        <path d="M160 34l9 17h-18z" fill="#9382ff"/>
+      </svg>
+    </div>
+  </div>
+</section>
+
+<!-- ================= Кадры вечера ================= -->
+<section class="sec wrap" id="nights">
+  <div class="sec__head">
+    <h2>Как это выглядит дома</h2>
+    <p>Не витрина и не постановочный рендер — обычный вечер, ноутбук на журнальном столике и договорённость, что решает колесо.</p>
+  </div>
+  <div class="frames">
+    <figure class="frame" style="margin:0">
+      <img src="assets/night-in.jpg" width="1600" height="893" loading="lazy" decoding="async" alt="Ноутбук с библиотекой CineVault на журнальном столике в тёмной гостиной">
+      <figcaption>Библиотека под рукой: постеры, фильтры и очередь на вечер — в одном тёмном окне.</figcaption>
+    </figure>
+    <figure class="frame" style="margin:0">
+      <img src="assets/wheel-night.jpg" width="1600" height="893" loading="lazy" decoding="async" alt="Киновечер с друзьями: на экране ноутбука крутится колесо выбора фильма">
+      <figcaption>Колесо в момент прокрутки — тот самый круг, когда вылетает чей-то фаворит.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<div class="wrap"><div class="aurora"></div></div>
+
+<!-- ================= Приватность ================= -->
+<section class="sec wrap" id="privacy">
+  <div class="sec__head">
+    <span class="badge">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 018 0v3"/></svg>
+      Хранилище действительно ваше
+    </span>
+    <h2>Ни одного фильма наружу</h2>
+    <p>CineVault — не сервис с аккаунтом. Это приложение, которое открывается локально и хранит библиотеку у вас на диске.</p>
+  </div>
+
+  <div class="priv">
+    <div class="card">
+      <h3>Где что лежит</h3>
+      <p>Никакой синхронизации по умолчанию — вы сами решаете, когда сделать копию.</p>
+      <ul class="plist">
+        <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg><span>Библиотека — в локальном хранилище браузерного движка приложения.</span></li>
+        <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg><span>Постеры — в кэше на диске, остаются доступны без интернета.</span></li>
+        <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg><span>Токен TMDB — в отдельном файле, не показывается в интерфейсе и не попадает в резервные копии.</span></li>
+        <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg><span>Резервная копия — обычный файл, который вы кладёте куда захотите.</span></li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h3>Что нужно для запуска</h3>
+      <p>Портативная сборка распаковывается в папку и запускается двойным кликом — установщик и права администратора не требуются.</p>
+      <ul class="plist">
+        <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg><span>Windows 10 или 11.</span></li>
+        <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg><span>Автономная сборка — без Python на целевой машине.</span></li>
+        <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg><span>Интернет — только для поиска в TMDB, и то по желанию.</span></li>
+        <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg><span>Светлая и тёмная темы, адаптивная навигация на узких экранах.</span></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ================= FAQ ================= -->
+<section class="sec wrap" id="faq">
+  <div class="sec__head">
+    <h2>Короткие ответы</h2>
+    <p>Если чего-то не хватает — остальное разложено по документации в репозитории.</p>
+  </div>
+
+  <div class="faq">
+    <details open>
+      <summary>Нужен ли аккаунт?</summary>
+      <p>Нет. CineVault запускается локально и не просит регистрацию. Библиотека принадлежит машине, на которой вы работаете.</p>
+    </details>
+    <details>
+      <summary>Как перенести старую таблицу?</summary>
+      <p>Импортом CSV, TSV или XLSX. Формат колонок описан в документации: минимально нужны название и год, остальное CineVault дозаполнит из TMDB.</p>
+    </details>
+    <details>
+      <summary>Обязательно ли подключать TMDB?</summary>
+      <p>Нет, но с ним быстрее: один поиск заполняет год, длительность, страну, жанры, описание и постер. Токен создаётся в настройках аккаунта TMDB и хранится только у вас.</p>
+    </details>
+    <details>
+      <summary>Что будет с библиотекой при переустановке?</summary>
+      <p>Сделайте резервную копию перед переносом — она выгружается одним файлом и так же одним файлом возвращается обратно.</p>
+    </details>
+    <details>
+      <summary>Можно ли крутить колесо на несколько человек?</summary>
+      <p>Так и задумано. Для каждого списка задаётся квота участников, у каждого есть свои сейвы, а история сессий помнит, чем закончился вечер.</p>
+    </details>
+    <details>
+      <summary>Это готовый релиз?</summary>
+      <p>Текущая версия — 0.11.0-beta.1: основной цикл собран полностью, но статус пока бета. История изменений ведётся в репозитории.</p>
+    </details>
+  </div>
+</section>
+
+<!-- ================= Финал ================= -->
+<section class="wrap final" id="get">
+  <span class="badge">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"/></svg>
+    Портативная сборка · Windows
+  </span>
+  <h2>Заберите свой вечер у алгоритмов</h2>
+  <p>Распакуйте папку, запустите двойным кликом и перенесите библиотеку. Дальше решает колесо.</p>
+  <div class="hero__cta">
+    <a class="btn btn--filled btn--lg" href="#get">Скачать CineVault</a>
+    <a class="btn btn--outline btn--lg" href="#feats">Посмотреть возможности</a>
+  </div>
+  <p class="hero__meta"><span><i class="dot"></i>Без установщика</span><span><i class="dot"></i>Без аккаунта</span><span><i class="dot"></i>Без подписки</span></p>
+</section>
+
+<!-- ================= Подвал ================= -->
+<footer class="wrap">
+  <div class="foot">
+    <a class="brand" href="#top">
+      <span class="brand__mark" aria-hidden="true">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 4v5M16 4v5"/></svg>
+      </span>
+      CineVault
+    </a>
+    <nav class="foot__links">
+      <a href="#feats">Возможности</a>
+      <a href="#wheel">Колесо</a>
+      <a href="#privacy">Приватность</a>
+      <a href="#faq">Вопросы</a>
+    </nav>
+    <p class="foot__note">
+      Данные о фильмах предоставлены TMDB. Проект не связан с TMDB и не одобрен ими.
+      Использование API бесплатно для некоммерческих проектов при соблюдении атрибуции.
+    </p>
+  </div>
+</footer>
+
+</div>
+
+<script>
+/* ============================================================
+   Фон: звёздное поле. Звёзды уходят вверх по прокрутке
+   с разной скоростью — ближние слои быстрее дальних.
+   ============================================================ */
+(() => {
+  "use strict";
+  const canvas = document.querySelector(".sky__canvas");
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  const calm = matchMedia("(prefers-reduced-motion: reduce)");
+
+  const LAVENDER = "147,130,255";
+
+  let W = 0, H = 0, span = 0, dpr = 1;
+  let stars = [];
+
+  const rnd = (a, b) => a + Math.random() * (b - a);
+
+  function build() {
+    dpr = Math.min(devicePixelRatio || 1, 2);
+    W = innerWidth;
+    H = innerHeight;
+    span = H * 2;                     // высота виртуального поля, по нему всё зациклено
+    canvas.width = Math.round(W * dpr);
+    canvas.height = Math.round(H * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    const density = Math.round((W * H) / 5200);
+    stars = Array.from({ length: Math.min(340, Math.max(120, density)) }, () => ({
+      x: rnd(0, W),
+      y: rnd(0, span),
+      r: rnd(0.5, 1.8),
+      a: rnd(0.14, 0.66),
+      d: rnd(0.08, 0.55),             // глубина: чем больше, тем быстрее уезжает
+      tw: rnd(0.4, 1.5),              // скорость мерцания
+      ph: rnd(0, Math.PI * 2),
+      // звёзды только белые и чуть сиреневые — тёплый цвет живёт в пятнах
+      hue: Math.random() < 0.2 ? LAVENDER : "255,255,255"
+    }));
+  }
+
+  const wrap = v => ((v % span) + span) % span;
+
+  function draw(scroll, t) {
+    ctx.clearRect(0, 0, W, H);
+    for (const s of stars) {
+      const y = wrap(s.y - scroll * s.d) - H * 0.5;
+      if (y < -8 || y > H + 8) continue;
+      const a = calm.matches ? s.a : s.a * (0.72 + 0.28 * Math.sin(t * s.tw + s.ph));
+      ctx.beginPath();
+      ctx.fillStyle = "rgba(" + s.hue + "," + a.toFixed(3) + ")";
+      ctx.arc(s.x, y, s.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  let raf = 0;
+  const loop = now => {
+    draw(scrollY || 0, now / 1000);
+    raf = requestAnimationFrame(loop);
+  };
+
+  const start = () => {
+    if (calm.matches) { draw(scrollY || 0, 0); return; }
+    cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(loop);
+  };
+
+  let resizeTimer = 0;
+  addEventListener("resize", () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => { build(); draw(scrollY || 0, 0); }, 150);
+  }, { passive: true });
+
+  // если кадры не композитятся (свёрнутая вкладка), хотя бы один статичный проход
+  addEventListener("scroll", () => { if (calm.matches) draw(scrollY || 0, 0); }, { passive: true });
+
+  build();
+  draw(scrollY || 0, 0);
+  start();
+
+  calm.addEventListener("change", () => { cancelAnimationFrame(raf); build(); start(); });
+})();
+
+(() => {
+  "use strict";
+  const root = document.documentElement;
+  const calm = matchMedia("(prefers-reduced-motion: reduce)");
+
+  /* --- Фон, привязанный к прокрутке ---
+     Пишем в CSS-переменные, всю геометрию считает CSS.
+     --sy — смещение в пикселях, --sp — прогресс страницы 0…1. */
+  // Пишем синхронно: если вкладка не отрисовывает кадры, requestAnimationFrame
+  // не вызывается — и фон замирал бы в исходном положении.
+  const sync = () => {
+    const y = window.scrollY || 0;
+    const max = Math.max(1, document.body.scrollHeight - window.innerHeight);
+    root.style.setProperty("--sy", y.toFixed(1));
+    root.style.setProperty("--sp", Math.min(1, y / max).toFixed(4));
+  };
+
+  /* --- Появление блоков --- */
+  const groups = [
+    ".sec__head", ".shot", ".metric", ".feat", ".block",
+    ".frame", ".card", "details", ".aurora", ".final > *"
+  ];
+  const targets = [];
+  groups.forEach(sel => {
+    const found = [...document.querySelectorAll(sel)];
+    // соседи внутри одной группы въезжают лесенкой
+    found.forEach((el, i) => {
+      el.style.transitionDelay = Math.min(i, 5) * 60 + "ms";
+      targets.push(el);
+    });
+  });
+
+  const showAll = () => targets.forEach(el => {
+    el.style.transitionDelay = "0ms";
+    el.classList.add("is-in");
+  });
+
+  if (calm.matches || !("IntersectionObserver" in window)) {
+    showAll();
+    return;
+  }
+
+  addEventListener("scroll", sync, { passive: true });
+  addEventListener("resize", sync, { passive: true });
+  sync();
+
+  const io = new IntersectionObserver((entries, obs) => {
+    entries.forEach(entry => {
+      if (!entry.isIntersecting) return;
+      entry.target.classList.add("is-in");
+      obs.unobserve(entry.target);
+    });
+  }, { rootMargin: "0px 0px -10% 0px", threshold: 0.06 });
+
+  targets.forEach(el => io.observe(el));
+
+  // Страховка: контент спрятан стилями, поэтому он обязан проявиться
+  // даже если наблюдатель почему-то не сработал.
+  setTimeout(() => {
+    if (!document.querySelector(".is-in")) showAll();
+  }, 1500);
+
+  // если системная настройка сменится на «меньше движения» — показываем всё разом
+  calm.addEventListener("change", e => { if (e.matches) showAll(); });
+})();
+</script>
+
+</body>
+</html>
