@@ -1300,70 +1300,12 @@ strong {
   color: var(--accent);
 }
 
-.sidebar__bottom {
-  display: grid;
-  gap: 0.6rem;
-  padding: 0 0.1rem;
-}
-
-
-
-
-
-.storage-chip {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  border: 1px solid var(--border);
-  border-radius: var(--r-sm);
-  background: var(--surface);
-  padding: 0.6rem 0.7rem;
-}
-
-.storage-chip__icon {
-  display: grid;
-  width: 2rem;
-  height: 2rem;
-  flex: 0 0 auto;
-  place-content: center;
-  border-radius: var(--r-xs);
-  background: var(--success-soft);
-  color: var(--success);
-}
-
-.storage-chip__icon svg { width: 1.05rem; height: 1.05rem; }
-
-.storage-chip__text {
-  display: grid;
-  min-width: 0;
-  gap: 0.05rem;
-}
-
-.storage-chip__text strong {
-  overflow: hidden;
-  font-size: 0.79rem;
-  font-weight: 500;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.storage-chip__text small {
-  color: var(--text-dim);
-  font-size: 0.7rem;
-}
-
-.storage-chip.is-error .storage-chip__icon {
-  background: var(--danger-soft);
-  color: var(--danger);
-}
-
 /* Свёрнутая панель */
 
 .app[data-collapsed="true"] .brand__text,
 .app[data-collapsed="true"] .nav__label,
 .app[data-collapsed="true"] .nav__badge,
-.app[data-collapsed="true"] .nav__group-label,
-.app[data-collapsed="true"] .storage-chip__text {
+.app[data-collapsed="true"] .nav__group-label {
   display: none;
 }
 
@@ -1389,11 +1331,6 @@ strong {
 
 .app[data-collapsed="true"] .nav__group {
   gap: 4px;
-}
-
-.app[data-collapsed="true"] .storage-chip {
-  justify-content: center;
-  padding: 0.45rem;
 }
 
 /* Верхняя панель */
@@ -2634,137 +2571,191 @@ strong {
 
 /* Панель фильма */
 
-.drawer {
-  position: fixed;
-  z-index: 60;
-  inset: 0;
-  display: flex;
-  justify-content: flex-end;
-}
+/* Карточка фильма */
 
-.drawer__scrim {
-  position: absolute;
-  inset: 0;
-  border: 0;
-  background: rgba(6, 6, 14, 0.55);
-  backdrop-filter: blur(6px);
-  animation: fade-in var(--t-base) ease;
-}
-
-.drawer__panel {
-  position: relative;
-  display: flex;
-  width: min(30rem, 100%);
-  flex-direction: column;
-  overflow-y: auto;
-  border-left: 1px solid var(--border);
-  background: var(--surface);
-  box-shadow: var(--shadow-lg);
-  animation: slide-in var(--t-base) var(--ease-out);
-}
-
-@keyframes slide-in {
-  from { transform: translateX(3rem); opacity: 0; }
-  to { transform: none; opacity: 1; }
-}
-
-.drawer__hero {
+/* Окно то же, что у настроек и друзей: по центру, фон размыт. Отличается
+   только содержимым — постер слева, текст справа. */
+.movie-modal {
   position: relative;
   display: grid;
-  min-height: 13rem;
-  align-items: end;
-  justify-items: center;
-  padding: 1.4rem;
-  isolation: isolate;
-}
-
-.drawer__hero-bg {
-  position: absolute;
-  z-index: -1;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  filter: blur(28px) saturate(1.4);
-  object-fit: cover;
-  opacity: 0.5;
-  transform: scale(1.2);
-}
-
-.drawer__hero::after {
-  position: absolute;
-  z-index: -1;
-  inset: 0;
-  background: linear-gradient(to bottom,
-    color-mix(in srgb, var(--surface) 30%, transparent),
-    var(--surface) 92%);
-  content: "";
-}
-
-.drawer__close {
-  position: absolute;
-  top: 1rem;
-  right: 1rem;
-}
-
-.drawer__hero-poster {
-  overflow: hidden;
-  width: 8.5rem;
-  aspect-ratio: 2 / 3;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--r-md);
-  background: var(--surface-2);
+  width: min(760px, 100%);
+  min-height: 0;
+  max-height: 100%;
+  grid-template-rows: minmax(0, 1fr) auto;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
   box-shadow: var(--shadow-lg);
 }
 
-.drawer__hero-poster img {
+.movie-modal__close {
+  position: absolute;
+  z-index: 2;
+  top: 0.75rem;
+  right: 0.75rem;
+}
+
+.movie-modal__scroll {
+  display: grid;
+  gap: 1rem;
+  overflow-y: auto;
+  padding: 1.4rem 1.4rem 1.1rem;
+  align-content: start;
+}
+
+.movie-modal__top {
+  display: grid;
+  gap: 1.2rem;
+  grid-template-columns: 9.5rem minmax(0, 1fr);
+}
+
+.movie-modal__poster {
+  display: grid;
+  overflow: hidden;
+  aspect-ratio: 2 / 3;
+  place-content: center;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+
+.movie-modal__poster img {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
 
-.drawer__body {
-  display: flex;
-  flex: 1 1 auto;
-  flex-direction: column;
-  padding: 0 1.5rem 1.75rem;
+.movie-modal__head {
+  display: grid;
+  align-content: start;
+  gap: 0.35rem;
+  /* Кнопка закрытия стоит в правом верхнем углу: заголовок не должен
+     заезжать под неё. */
+  padding-right: 2.5rem;
 }
 
-.drawer__body h2 { margin-bottom: 0.15rem; }
+.movie-modal__head h2 {
+  font-family: var(--font-display);
+  font-size: clamp(1.25rem, 1.05rem + 0.7vw, 1.6rem);
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: -0.015em;
+}
 
-.drawer__original {
-  margin-bottom: 0.9rem;
+.movie-modal__original {
   color: var(--text-dim);
-  font-size: 0.9rem;
+  font-size: 0.88rem;
   font-style: italic;
 }
 
-.drawer__overview {
-  margin-bottom: 1.1rem;
+/* Год, длительность и страна — одна строка через точку. Тремя рамками они
+   занимали половину карточки и спорили со статусом. */
+.movie-modal__meta {
   color: var(--text-muted);
-  font-size: 0.92rem;
-  line-height: 1.65;
+  font-size: 0.85rem;
 }
 
-.drawer__ratings {
+.movie-modal__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.35rem;
+}
+
+.status-dot {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.32rem;
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  padding: 0.2rem 0.6rem 0.2rem 0.45rem;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+
+.status-dot svg { width: 0.85rem; height: 0.85rem; }
+
+.status-dot--watched { background: var(--success-soft); color: var(--success); }
+.status-dot--watching { background: var(--accent-soft); color: var(--accent); }
+.status-dot--dropped { background: var(--danger-soft); color: var(--danger); }
+.status-dot--score,
+.status-dot--fav { background: var(--gold-soft); color: var(--gold); }
+
+.movie-modal__overview {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.movie-modal__overview.is-empty { color: var(--text-dim); font-style: italic; }
+
+/* Внутри карточки расстояния держит сетка окна, поэтому свой отступ у ряда
+   чипов лишний. */
+.movie-modal__scroll .chip-row { margin-bottom: 0; }
+
+.movie-modal__block {
+  display: grid;
+  gap: 0.55rem;
   border-top: 1px solid var(--border);
-  padding-top: 1rem;
+  padding-top: 0.9rem;
 }
 
-.drawer__ratings header {
+.movie-modal__block h3 {
   display: flex;
   align-items: center;
+  gap: 0.4rem;
+  color: var(--text-dim);
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.movie-modal__block h3 svg { width: 0.9rem; height: 0.9rem; }
+
+.movie-modal__block p {
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  line-height: 1.55;
+}
+
+/* Подвал: слева переключатель статуса, справа действия. Пять кнопок во всю
+   ширину столбиком превращали карточку в список команд. */
+.movie-modal__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   justify-content: space-between;
-  margin-bottom: 0.65rem;
+  gap: 0.6rem;
+  border-top: 1px solid var(--border);
+  background: var(--surface-2);
+  border-radius: 0 0 var(--r-lg) var(--r-lg);
+  padding: 0.7rem 0.9rem;
 }
 
-.drawer__actions {
-  display: grid;
-  gap: 0.5rem;
-  margin-top: auto;
-  padding-top: 1.4rem;
+.movie-modal__foot .status-switch { background: var(--surface); }
+
+.movie-modal__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-left: auto;
 }
 
-.drawer__actions .btn { justify-content: flex-start; }
+.movie-modal__actions .icon-btn.is-favorite { color: var(--gold); }
+
+@media (max-width: 640px) {
+  .movie-modal__top {
+    gap: 0.9rem;
+    grid-template-columns: 6.5rem minmax(0, 1fr);
+  }
+
+  .movie-modal__scroll { padding: 1.1rem 1rem 0.9rem; }
+  .movie-modal__foot { justify-content: stretch; }
+  .movie-modal__foot .status-switch { flex: 1 1 100%; }
+  .movie-modal__actions { margin-left: 0; width: 100%; justify-content: space-between; }
+}
 
 .rating-list {
   display: flex;
@@ -3034,13 +3025,13 @@ strong {
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: var(--r-xl);
-  background:
-    radial-gradient(80% 70% at 50% 0%, var(--accent-soft), transparent 65%),
-    var(--surface);
+  background: var(--surface);
   padding: clamp(1.4rem, 3vw, 2.4rem);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-xs);
 }
 
+/* Свечение почти незаметно в покое и проступает только на вращении: иначе
+   оно подсвечивало кольцо и съедало разницу между секторами. */
 .wheel-stage__glow {
   position: absolute;
   top: -30%;
@@ -3048,13 +3039,13 @@ strong {
   width: 34rem;
   height: 34rem;
   background: radial-gradient(circle, var(--accent-glow), transparent 65%);
-  filter: blur(60px);
-  opacity: 0.55;
+  filter: blur(70px);
+  opacity: 0.18;
   transform: translateX(-50%);
   transition: opacity var(--t-slow) ease;
 }
 
-.wheel-stage.is-spinning .wheel-stage__glow { opacity: 1; }
+.wheel-stage.is-spinning .wheel-stage__glow { opacity: 0.5; }
 
 .wheel-frame {
   position: relative;
@@ -3071,16 +3062,18 @@ strong {
   border-radius: 50%;
 }
 
+/* Указатель — тонкий клин в акцентном цвете: золотая стрелка спорила
+   с фиолетовым кольцом и тянула на себя всё внимание. */
 .wheel-pointer {
   position: absolute;
   z-index: 2;
-  top: -0.35rem;
+  top: -0.5rem;
   left: 50%;
-  width: 1.5rem;
-  height: 2.1rem;
-  background: var(--gold);
+  width: 0.85rem;
+  height: 1.15rem;
+  background: var(--accent-strong);
   clip-path: polygon(50% 100%, 0 0, 100% 0);
-  filter: drop-shadow(0 6px 12px rgba(0, 0, 0, 0.35));
+  filter: drop-shadow(0 3px 8px rgba(0, 0, 0, 0.35));
   transform: translateX(-50%);
 }
 
@@ -3318,60 +3311,113 @@ strong {
 
 /* Списки */
 
-.category-tree { display: grid; gap: 0.85rem; }
-
-.category-node {
-  display: grid;
-  gap: 0.7rem;
+/* Дерево списков: одна строка — один список, вложенность передаётся
+   отступом и направляющей, а не рамкой внутри рамки. */
+.tree {
+  overflow: hidden;
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
   background: var(--surface);
-  padding: 1.1rem 1.2rem;
-  box-shadow: var(--shadow-xs);
 }
 
-.category-node .category-node {
-  border-style: dashed;
-  background: var(--surface-2);
-  box-shadow: none;
-}
-
-.category-node__head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
-}
-
-.category-node__title {
-  display: flex;
-  min-width: 0;
-  align-items: flex-start;
-  gap: 0.7rem;
-}
-
-.category-node__icon {
+.tree__row {
+  position: relative;
   display: grid;
-  width: 2.2rem;
-  height: 2.2rem;
-  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.7rem;
+  grid-template-columns: 1.5rem minmax(0, 1fr) auto auto;
+  padding: 0.42rem 0.7rem 0.42rem calc(0.7rem + var(--depth, 0) * 1.35rem);
+  transition: background var(--t-fast) ease;
+}
+
+.tree__row + .tree__row { border-top: 1px solid var(--border); }
+.tree__row:hover { background: var(--surface-2); }
+
+/* Направляющая вложенности: тонкая линия вместо рамки дочерней карточки. */
+.tree__row::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(0.7rem + (var(--depth, 0) - 0.5) * 1.35rem);
+  border-left: 1px solid var(--border-strong);
+  content: "";
+}
+
+.tree__row[style*="--depth:0"]::before { content: none; }
+
+.tree__mark {
+  display: grid;
+  width: 1.5rem;
+  height: 1.5rem;
   place-content: center;
   border-radius: var(--r-xs);
   background: var(--accent-soft);
   color: var(--accent);
 }
 
-.category-node__meta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.45rem;
-  margin: 0.3rem 0 0;
+.tree__mark svg { width: 0.92rem; height: 0.92rem; }
+
+.tree__index {
   color: var(--text-dim);
-  font-size: 0.82rem;
+  font-size: 0.74rem;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
 }
 
-.category-node__empty { font-size: 0.85rem; }
+.tree__name {
+  overflow: hidden;
+  font-size: 0.88rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tree__row--list .tree__name { font-weight: 500; }
+.tree__row--movie .tree__name { color: var(--text-muted); font-size: 0.85rem; }
+
+.tree__meta {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: var(--text-dim);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.tree__quota {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--text-muted);
+}
+
+.tree__quota svg { width: 0.85rem; height: 0.85rem; }
+
+.tree__tools {
+  display: flex;
+  gap: 0.15rem;
+  opacity: 0;
+  transition: opacity var(--t-fast) ease;
+}
+
+.tree__row:hover .tree__tools,
+.tree__row:focus-within .tree__tools { opacity: 1; }
+
+.row-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 0.25rem;
+}
+
+/* На узком экране наведения нет, поэтому кнопки видны сразу. Стрелки
+   порядка при этом убираются: пять целей размером с ноготь в одной строке
+   не нажимаются, а название списка от них не остаётся ничего. */
+@media (max-width: 720px) {
+  .tree__meta { display: none; }
+  .tree__tools { opacity: 1; }
+  .tree__tools [data-action$="-up"],
+  .tree__tools [data-action$="-down"],
+  .tree__tools [data-action="category-child-add"] { display: none; }
+}
 
 .meter {
   display: inline-flex;
@@ -3400,18 +3446,6 @@ strong {
   color: var(--text-muted);
   font-size: 0.76rem;
   font-weight: 500;
-}
-
-.category-node__children {
-  display: grid;
-  gap: 0.7rem;
-  padding-left: clamp(0.5rem, 1.5vw, 1.2rem);
-}
-
-.row-actions {
-  display: flex;
-  flex: 0 0 auto;
-  gap: 0.25rem;
 }
 
 .queue-list {
@@ -4221,148 +4255,199 @@ strong {
 
 /* Личный кабинет */
 
-/* Кабинет висит над содержимым, но ниже тостов и палитры: он не забирает
-   внимание, пока на него не нажали. */
-.account-dock {
-  position: fixed;
-  z-index: 80;
-  right: 1.25rem;
-  bottom: 1.25rem;
-  display: grid;
-  justify-items: end;
-  gap: 0.6rem;
-  width: min(348px, calc(100vw - 2.5rem));
+/* Кабинет закреплён справа в шапке. Панель раскрывается под кнопкой и
+   привязана к её правому краю, поэтому не зависит от ширины окна. */
+.account-menu {
+  position: relative;
+  display: flex;
+  align-items: center;
 }
 
-.account-dock__toggle {
+.account-menu__trigger {
   display: flex;
-  max-width: 100%;
+  max-width: 13rem;
+  height: 2.25rem;
   align-items: center;
-  gap: 0.6rem;
+  gap: 0.5rem;
   border: 1px solid var(--border);
-  border-radius: var(--r-sm);
-  background: var(--surface);
-  box-shadow: var(--shadow-md);
-  padding: 0.55rem 0.7rem;
+  border-radius: var(--r-xs);
+  background: var(--surface-2);
+  padding: 0 0.5rem 0 0.35rem;
   color: var(--text);
   text-align: left;
-  transition:
-    transform var(--t-fast) var(--ease-out),
-    border-color var(--t-fast) ease,
-    background var(--t-fast) ease;
+  transition: border-color var(--t-fast) ease, background var(--t-fast) ease;
 }
 
-.account-dock__toggle:hover {
-  transform: translateY(-1px);
+.account-menu__trigger:hover,
+.account-menu[data-open="true"] .account-menu__trigger {
   border-color: var(--border-strong);
-  background: var(--surface-2);
+  background: var(--surface-3);
 }
 
-.account-dock__avatar {
+.account-menu__avatar {
   display: grid;
-  width: 2rem;
-  height: 2rem;
+  width: 1.65rem;
+  height: 1.65rem;
   flex: 0 0 auto;
   place-content: center;
   border-radius: var(--r-xs);
   background: var(--accent-soft);
   color: var(--accent);
   font-family: var(--font-display);
-  font-size: 0.78rem;
+  font-size: 0.7rem;
   font-weight: 500;
 }
 
-.account-dock__avatar svg { width: 1.05rem; height: 1.05rem; }
+.account-menu__avatar svg { width: 0.95rem; height: 0.95rem; }
 
-.account-dock__avatar--lg {
-  width: 2.6rem;
-  height: 2.6rem;
-  font-size: 0.95rem;
+.account-menu__avatar--lg {
+  width: 2.4rem;
+  height: 2.4rem;
+  font-size: 0.9rem;
 }
 
-.account-dock__avatar--lg svg { width: 1.2rem; height: 1.2rem; }
+.account-menu__avatar--lg svg { width: 1.15rem; height: 1.15rem; }
 
-.account-dock__toggle-text {
+.account-menu__text {
   display: grid;
   min-width: 0;
-  gap: 0.05rem;
+  gap: 0.02rem;
 }
 
-.account-dock__toggle-text strong {
+.account-menu__text strong {
   overflow: hidden;
   font-size: 0.79rem;
   font-weight: 500;
+  line-height: 1.15;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.account-dock__toggle-text small {
+.account-menu__text small {
   overflow: hidden;
   color: var(--text-dim);
-  font-size: 0.7rem;
+  font-size: 0.68rem;
+  line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.account-dock__chevron {
-  display: grid;
-  place-content: center;
+.account-menu__caret {
+  width: 0.9rem;
+  height: 0.9rem;
+  flex: none;
   color: var(--text-dim);
 }
 
-.account-dock__chevron svg { width: 1rem; height: 1rem; }
+.account-menu[data-open="true"] .account-menu__caret { transform: rotate(180deg); }
 
-.account-dock__panel {
+.account-menu__panel {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 0.5rem);
+  right: 0;
   display: grid;
-  width: 100%;
+  width: min(20rem, calc(100vw - 3rem));
   max-height: min(70vh, 640px);
-  gap: 0.85rem;
+  gap: 0.8rem;
   overflow-y: auto;
   border: 1px solid var(--border);
-  border-radius: var(--r-lg);
+  border-radius: var(--r-sm);
   background: var(--surface);
   box-shadow: var(--shadow-lg);
-  padding: 1.05rem 1rem;
-  animation: account-dock-in var(--t-base) var(--ease-out);
+  padding: 0.9rem;
+  animation: account-menu-in var(--t-fast) var(--ease-out);
 }
 
-@keyframes account-dock-in {
-  from { opacity: 0; transform: translateY(8px); }
+@keyframes account-menu-in {
+  from { opacity: 0; transform: translateY(-6px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
-.account-dock__head {
+.account-menu__head {
   display: grid;
   align-items: center;
-  gap: 0.7rem;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0.65rem;
+  grid-template-columns: auto minmax(0, 1fr);
 }
 
-.account-dock__who {
+.account-menu__who {
   display: grid;
   min-width: 0;
   gap: 0.1rem;
 }
 
-.account-dock__who strong {
+.account-menu__who strong {
   overflow: hidden;
   font-family: var(--font-display);
-  font-size: 0.98rem;
+  font-size: 0.95rem;
   font-weight: 500;
   letter-spacing: -0.01em;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.account-dock__who small {
+.account-menu__who small {
   color: var(--text-muted);
-  font-size: 0.76rem;
+  font-size: 0.75rem;
   line-height: 1.35;
 }
 
-.account-dock__close { align-self: start; }
+.account-menu__links {
+  display: grid;
+  gap: 2px;
+  border-top: 1px solid var(--border);
+  padding-top: 0.7rem;
+}
 
-.account-dock__tabs {
+.account-menu__links button {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  border: 0;
+  border-radius: var(--r-xs);
+  background: none;
+  padding: 0.5rem 0.55rem;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  text-align: left;
+  transition: background var(--t-fast) ease, color var(--t-fast) ease;
+}
+
+.account-menu__links button svg { width: 1.05rem; height: 1.05rem; flex: none; }
+.account-menu__links button:hover { background: var(--surface-2); color: var(--text); }
+
+.account-menu__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  border-top: 1px solid var(--border);
+  padding-top: 0.7rem;
+}
+
+.account-menu__foot small {
+  color: var(--text-dim);
+  font-size: 0.72rem;
+}
+
+.account-menu__signout {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  border: 0;
+  border-radius: var(--r-xs);
+  background: none;
+  padding: 0.4rem 0.5rem;
+  color: var(--danger);
+  font-size: 0.85rem;
+  transition: background var(--t-fast) ease;
+}
+
+.account-menu__signout svg { width: 1.05rem; height: 1.05rem; }
+.account-menu__signout:hover { background: var(--danger-soft); }
+
+.account-menu__tabs {
   display: grid;
   gap: 0.25rem;
   grid-auto-columns: 1fr;
@@ -4373,7 +4458,7 @@ strong {
   padding: 0.2rem;
 }
 
-.account-dock__tabs button {
+.account-menu__tabs button {
   border: 0;
   border-radius: var(--r-xs);
   background: none;
@@ -4384,40 +4469,23 @@ strong {
   transition: background var(--t-fast) ease, color var(--t-fast) ease;
 }
 
-.account-dock__tabs button:hover { color: var(--text); }
+.account-menu__tabs button:hover { color: var(--text); }
 
-.account-dock__tabs button.is-active {
+.account-menu__tabs button.is-active {
   background: var(--surface);
   box-shadow: var(--shadow-xs);
   color: var(--text);
 }
 
-.account-dock__form {
+.account-menu__form {
   display: grid;
   gap: 0.7rem;
 }
 
-.account-dock__submit { justify-content: center; margin-top: 0.15rem; }
+.account-menu__submit { justify-content: center; margin-top: 0.15rem; }
 
-.account-dock__actions {
-  display: grid;
-  gap: 0.45rem;
-}
-
-.account-dock__actions .btn { justify-content: flex-start; }
-
-.account-dock__signout {
-  color: var(--danger);
-}
-
-.account-dock__signout:hover {
-  border-color: var(--danger);
-  background: var(--danger-soft);
-  color: var(--danger);
-}
-
-.account-dock__notice,
-.account-dock__error {
+.account-menu__notice,
+.account-menu__error {
   margin: 0;
   border-radius: var(--r-xs);
   padding: 0.6rem 0.7rem;
@@ -4425,27 +4493,27 @@ strong {
   line-height: 1.4;
 }
 
-.account-dock__notice {
+.account-menu__notice {
   background: var(--success-soft);
   color: var(--success);
 }
 
-.account-dock__error {
+.account-menu__error {
   background: var(--danger-soft);
   color: var(--danger);
 }
 
-.account-dock__links {
+.account-menu__hints {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 0.4rem;
   border-top: 1px solid var(--border);
-  padding-top: 0.75rem;
+  padding-top: 0.7rem;
 }
 
-.account-dock__links button {
+.account-menu__hints button {
   border: 0;
   background: none;
   color: var(--text-muted);
@@ -4453,21 +4521,95 @@ strong {
   transition: color var(--t-fast) ease;
 }
 
-.account-dock__links button:hover { color: var(--accent); }
+.account-menu__hints button:hover { color: var(--accent); }
 
-.account-dock__links small {
+.account-menu__hints small {
   color: var(--text-dim);
   font-size: 0.74rem;
   line-height: 1.35;
 }
 
-.account-dock__foot {
-  margin: 0;
-  border-top: 1px solid var(--border);
-  padding-top: 0.7rem;
-  color: var(--text-dim);
-  font-size: 0.74rem;
+/* Окно поверх библиотеки: настройки и друзья */
+
+/* Фон под окном размывается, но остаётся виден: человек не уходит из
+   раздела, а открывает поверх него служебный экран. */
+.overlay {
+  position: fixed;
+  z-index: 85;
+  inset: 0;
+  display: grid;
+  /* Строка фиксированной высоты: без неё max-height окна считался бы от
+     собственного содержимого и длинные настройки уезжали за экран. */
+  grid-template-rows: minmax(0, 1fr);
+  padding: clamp(0.75rem, 4vh, 3rem) clamp(0.75rem, 3vw, 2rem);
+  place-items: center;
 }
+
+.overlay__scrim {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: color-mix(in srgb, var(--canvas) 62%, transparent);
+  backdrop-filter: blur(14px) saturate(120%);
+}
+
+/* Появление проигрывается только при открытии: перерисовка из-за звезды или
+   смены статуса не должна снова затемнять фон и подбрасывать окно. */
+.overlay.is-entering .overlay__scrim {
+  animation: overlay-scrim-in var(--t-fast) ease;
+}
+
+.overlay.is-entering .overlay__panel,
+.overlay.is-entering .movie-modal {
+  animation: overlay-panel-in var(--t-base) var(--ease-out);
+}
+
+@keyframes overlay-scrim-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.overlay__panel {
+  position: relative;
+  display: grid;
+  width: min(840px, 100%);
+  min-height: 0;
+  max-height: 100%;
+  grid-template-rows: auto minmax(0, 1fr);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+}
+
+@keyframes overlay-panel-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.overlay__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid var(--border);
+  padding: 0.9rem 1.1rem;
+}
+
+.overlay__head h2 {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.overlay__body {
+  overflow-y: auto;
+  padding: 1.1rem;
+}
+
+/* Внутри окна колонка уже не узкая: ширину задаёт само окно. */
+.overlay__body .settings { max-width: none; }
 
 /* Тосты */
 
@@ -4761,9 +4903,6 @@ strong {
     padding-bottom: 6.5rem;
   }
 
-  .topbar__cta span { display: none; }
-  .topbar__cta { width: 2.75rem; padding: 0.6rem; }
-
   .search-trigger {
     width: 2.75rem;
     min-width: 0;
@@ -4773,16 +4912,11 @@ strong {
 
   .search-trigger kbd { display: none; }
 
-  .account-dock {
-    right: 0.9rem;
-    bottom: 0.9rem;
-    width: min(348px, calc(100vw - 1.8rem));
-  }
-
-  /* В библиотеке снизу стоит мобильная навигация, на витрине её нет. */
-  .app:not(.app--welcome) .account-dock {
-    bottom: calc(4.6rem + env(safe-area-inset-bottom, 0px));
-  }
+  /* На узком экране от кабинета остаётся аватар: имя и @handle видны
+     внутри самой панели. */
+  .account-menu__text,
+  .account-menu__caret { display: none; }
+  .account-menu__trigger { padding: 0 0.28rem; }
 
   .to-top {
     right: 0.9rem;
@@ -4909,7 +5043,6 @@ strong {
   .mini-stats { grid-template-columns: 1fr; }
   .bar-list li { grid-template-columns: 6rem 1fr 1.8rem; }
 
-  .drawer__panel { width: 100%; }
   .toast-container { right: 0.75rem; left: 0.75rem; justify-items: stretch; }
   .toast { max-width: none; }
 
@@ -4928,30 +5061,9 @@ strong {
 .icon-btn.is-favorite,
 .btn.is-favorite { color: var(--gold); }
 
-.drawer__notes {
-  border-radius: var(--r-md);
-  background: var(--surface-2);
-  padding: 0.9rem 1rem;
-}
-
-.drawer__notes h3 {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  margin-bottom: 0.35rem;
-  color: var(--text-muted);
-  font-size: 0.82rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
-.drawer__notes h3 svg { width: 1rem; height: 1rem; }
-
-.drawer__notes p {
-  margin: 0;
-  color: var(--text);
-  white-space: pre-line;
-}
+/* Заметка пишется многострочно, и переносы в ней значат ровно то, что
+   человек набрал. */
+.movie-modal__block p { white-space: pre-line; }
 
 .switch-field {
   display: grid;
@@ -5033,6 +5145,7 @@ strong {
 
 .set-group__head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;

@@ -81,7 +81,7 @@ import {
   tableRowsToLibrary,
 } from "./domain/spreadsheetImport.js";
 import { createReminderDismissalDate } from "./domain/backupReminder.js";
-import { renderAppShell } from "./ui/appShell.js";
+import { isModalView, renderAppShell } from "./ui/appShell.js";
 import {
   isAuthPreview,
   openAuthScreen,
@@ -201,7 +201,10 @@ const state = {
     error: "",
     search: { query: "", profile: null, error: "", notice: "", busy: false },
   },
-  // Кабинет внизу справа: гостю показывает вход, вошедшему — профиль.
+  // Настройки и друзья не разделы библиотеки: они открываются окном поверх
+  // текущего раздела. Здесь лежит имя открытого окна или null.
+  modalView: null,
+  // Кабинет в шапке: гостю показывает вход, вошедшему — профиль и разделы.
   accountPanel: {
     open: false,
     mode: "signin",
@@ -223,7 +226,18 @@ const state = {
         .catch(showUnexpectedError);
       return;
     }
+    // Настройки и друзья открываются окном поверх текущего раздела: адрес и
+    // прокрутка библиотеки при этом не меняются.
+    if (isModalView(view)) {
+      state.modalView = view;
+      state.accountPanel = { ...state.accountPanel, open: false };
+      state.focusControl = null;
+      render();
+      return;
+    }
     state.view = view;
+    state.modalView = null;
+    state.accountPanel = { ...state.accountPanel, open: false };
     state.focusControl = null;
     state.detailMovieId = null;
     if (location.hash !== `#${view}`) {
@@ -513,6 +527,7 @@ async function handleAction(action, payload) {
     "catalog-lucky": () => openLuckyMovie(),
     "shortcuts-open": () => setShortcutsOpen(true),
     "shortcuts-close": () => setShortcutsOpen(false),
+    "modal-close": () => closeModalView(),
   };
 
   await handlers[action]?.();
@@ -683,6 +698,7 @@ async function signOutAccount() {
 // После выхода в памяти не должно остаться ни записей, ни начатой сессии:
 // следующий вход соберёт всё заново.
 function closeWorkspace() {
+  state.modalView = null;
   state.library = {
     movies: [],
     categories: [],
@@ -1267,6 +1283,13 @@ function openLuckyMovie() {
 function setShortcutsOpen(open) {
   if (state.shortcutsOpen === open) return;
   state.shortcutsOpen = open;
+  render();
+}
+
+function closeModalView() {
+  if (!state.modalView) return;
+  state.modalView = null;
+  state.focusControl = null;
   render();
 }
 
@@ -2020,6 +2043,12 @@ function handleGlobalKeydown(event) {
     return;
   }
 
+  if (event.key === "Escape" && state.modalView && !isPaletteOpen()) {
+    event.preventDefault();
+    closeModalView();
+    return;
+  }
+
   if (event.key === "Escape" && state.accountPanel.open && !isPaletteOpen()) {
     event.preventDefault();
     closeAccountPanel();
@@ -2029,7 +2058,7 @@ function handleGlobalKeydown(event) {
   // Одиночные клавиши работают только в библиотеке и только когда человек
   // ничего не набирает. Разбор идёт по event.code, поэтому раскладка
   // клавиатуры значения не имеет.
-  if (isShortcutContext(event)) {
+  if (isShortcutContext(event) && !state.modalView) {
     if (event.code === "Slash" && event.shiftKey) {
       event.preventDefault();
       setShortcutsOpen(!state.shortcutsOpen);

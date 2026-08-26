@@ -1,18 +1,19 @@
-// Личный кабинет — плавающая карточка в правом нижнем углу библиотеки.
+// Личный кабинет — закреплённая кнопка справа в шапке.
 //
 // На витрине его нет: гостя туда ведут кнопки «Создать аккаунт», а форма
-// открывается следующей страницей. Внутри библиотеки кабинет показывает
-// профиль и выход, а если сессия оборвалась — вход прямо на месте. Формы
-// собраны из тех же описаний полей, что и полноэкранный экран входа
-// (authScreen.js), поэтому подписи и порядок полей нигде не расходятся.
+// открывается следующей страницей. Внутри библиотеки кнопка показывает, кто
+// вошёл, и раскрывает меню: разделы, тема профиля и выход. Если сессия
+// оборвалась, в том же меню появляется форма входа — она собрана из тех же
+// описаний полей, что и полноэкранный экран (authScreen.js), поэтому подписи
+// и порядок полей нигде не расходятся.
 
 import { APP_VERSION } from "../config.js";
 import { AUTH_MODES, renderAuthField } from "./authScreen.js";
 import { icon } from "./icons.js";
 
-// Заголовки кабинета короче, чем на полноэкранном экране: карточка узкая,
+// Заголовки меню короче, чем на полноэкранном экране: панель узкая,
 // а человек уже видит, куда нажал.
-const DOCK_TITLES = Object.freeze({
+const MENU_TITLES = Object.freeze({
   signin: ["Вход", "Почта и пароль — и библиотека на месте."],
   signup: ["Регистрация", "Нужен код приглашения от того, кто уже здесь."],
   reset: ["Пароль", "Пришлём ссылку для смены пароля на почту."],
@@ -25,39 +26,37 @@ const TABS = [
   ["signup", "Регистрация"],
 ];
 
-export function renderAccountDock(state) {
+export function renderAccountMenu(state) {
   const panel = state.accountPanel ?? {};
   const open = Boolean(panel.open);
   const account = state.account;
 
   return `
-    <div class="account-dock" data-open="${open}">
+    <div class="account-menu" data-open="${open}">
+      ${renderTrigger(account, open)}
       ${open ? (account ? renderProfilePanel(state, panel) : renderFormPanel(panel)) : ""}
-      ${renderToggle(state, open)}
     </div>
   `;
 }
 
-function renderToggle(state, open) {
-  const account = state.account;
-  const label = account
+function renderTrigger(account, open) {
+  const name = account
     ? escapeHtml(account.display_name ?? account.handle ?? "Аккаунт")
-    : "Личный кабинет";
-  const hint = account
-    ? `@${escapeHtml(account.handle ?? "")}`
-    : "Вход и регистрация";
+    : "Войти";
+  const hint = account ? `@${escapeHtml(account.handle ?? "")}` : "Нет аккаунта";
 
   return `
-    <button class="account-dock__toggle" type="button" data-action="account-toggle"
-      aria-expanded="${open}" aria-label="${account ? "Профиль" : "Личный кабинет"}">
-      <span class="account-dock__avatar">${
+    <button class="account-menu__trigger" type="button" data-action="account-toggle"
+      aria-expanded="${open}" aria-haspopup="dialog"
+      aria-label="${account ? "Личный кабинет" : "Вход в аккаунт"}">
+      <span class="account-menu__avatar">${
         account ? escapeHtml(initials(account.display_name ?? account.handle)) : icon("user")
       }</span>
-      <span class="account-dock__toggle-text">
-        <strong>${label}</strong>
+      <span class="account-menu__text">
+        <strong>${name}</strong>
         <small>${hint}</small>
       </span>
-      <span class="account-dock__chevron">${icon(open ? "close" : "chevronDown")}</span>
+      ${icon("chevronDown", "account-menu__caret")}
     </button>
   `;
 }
@@ -67,36 +66,33 @@ function renderProfilePanel(state, panel) {
   const name = escapeHtml(account.display_name ?? account.handle ?? "Аккаунт");
 
   return `
-    <section class="account-dock__panel" role="dialog" aria-label="Личный кабинет">
-      <header class="account-dock__head">
-        <span class="account-dock__avatar account-dock__avatar--lg">${
+    <section class="account-menu__panel" role="dialog" aria-label="Личный кабинет">
+      <header class="account-menu__head">
+        <span class="account-menu__avatar account-menu__avatar--lg">${
           escapeHtml(initials(account.display_name ?? account.handle))
         }</span>
-        <div class="account-dock__who">
+        <div class="account-menu__who">
           <strong>${name}</strong>
           <small>@${escapeHtml(account.handle ?? "")}</small>
         </div>
-        <button class="icon-btn account-dock__close" type="button"
-          data-action="account-close" aria-label="Свернуть кабинет">${icon("close")}</button>
       </header>
 
-      ${panel.notice ? `<p class="account-dock__notice" role="status">${escapeHtml(panel.notice)}</p>` : ""}
-      ${panel.errors?.general ? `<p class="account-dock__error" role="alert">${escapeHtml(panel.errors.general)}</p>` : ""}
+      ${panel.notice ? `<p class="account-menu__notice" role="status">${escapeHtml(panel.notice)}</p>` : ""}
+      ${panel.errors?.general ? `<p class="account-menu__error" role="alert">${escapeHtml(panel.errors.general)}</p>` : ""}
 
-      <div class="account-dock__actions">
-        <button class="btn btn--primary" type="button" data-view="dashboard">
-          ${icon("home")}<span>Открыть хранилище</span>
-        </button>
-        <button class="btn btn--ghost" type="button" data-view="settings">
-          ${icon("settings")}<span>Настройки</span>
-        </button>
-        <button class="btn btn--ghost account-dock__signout" type="button"
+      <div class="account-menu__links">
+        <button type="button" data-view="friends">${icon("users")}<span>Друзья</span></button>
+        <button type="button" data-view="settings">${icon("settings")}<span>Настройки</span></button>
+        <button type="button" data-view="welcome">${icon("film")}<span>Витрина CineVault</span></button>
+      </div>
+
+      <div class="account-menu__foot">
+        <button class="account-menu__signout" type="button"
           data-action="account-signout" ${panel.busy ? "disabled" : ""}>
           ${icon("logout")}<span>${panel.busy ? "Выходим…" : "Выйти"}</span>
         </button>
+        <small>CineVault ${escapeHtml(APP_VERSION)}</small>
       </div>
-
-      <p class="account-dock__foot">CineVault ${escapeHtml(APP_VERSION)}</p>
     </section>
   `;
 }
@@ -104,25 +100,23 @@ function renderProfilePanel(state, panel) {
 function renderFormPanel(panel) {
   const mode = AUTH_MODES[panel.mode] ? panel.mode : "signin";
   const config = AUTH_MODES[mode];
-  const [title, lead] = DOCK_TITLES[mode] ?? DOCK_TITLES.signin;
+  const [title, lead] = MENU_TITLES[mode] ?? MENU_TITLES.signin;
   const values = panel.values ?? {};
   const errors = panel.errors ?? {};
   const showTabs = mode === "signin" || mode === "signup";
 
   return `
-    <section class="account-dock__panel" role="dialog" aria-label="Личный кабинет">
-      <header class="account-dock__head">
-        <span class="account-dock__avatar account-dock__avatar--lg">${icon("user")}</span>
-        <div class="account-dock__who">
+    <section class="account-menu__panel" role="dialog" aria-label="Вход в аккаунт">
+      <header class="account-menu__head">
+        <span class="account-menu__avatar account-menu__avatar--lg">${icon("user")}</span>
+        <div class="account-menu__who">
           <strong>${title}</strong>
           <small>${lead}</small>
         </div>
-        <button class="icon-btn account-dock__close" type="button"
-          data-action="account-close" aria-label="Свернуть кабинет">${icon("close")}</button>
       </header>
 
       ${showTabs ? `
-        <div class="account-dock__tabs" role="tablist">
+        <div class="account-menu__tabs" role="tablist">
           ${TABS.map(([id, label]) => `
             <button class="${mode === id ? "is-active" : ""}" type="button"
               role="tab" aria-selected="${mode === id}"
@@ -130,16 +124,16 @@ function renderFormPanel(panel) {
           `).join("")}
         </div>` : ""}
 
-      ${panel.notice ? `<p class="account-dock__notice" role="status">${escapeHtml(panel.notice)}</p>` : ""}
-      ${errors.general ? `<p class="account-dock__error" role="alert">${escapeHtml(errors.general)}</p>` : ""}
+      ${panel.notice ? `<p class="account-menu__notice" role="status">${escapeHtml(panel.notice)}</p>` : ""}
+      ${errors.general ? `<p class="account-menu__error" role="alert">${escapeHtml(errors.general)}</p>` : ""}
 
-      <form class="account-dock__form" novalidate data-account-form>
+      <form class="account-menu__form" novalidate data-account-form>
         ${config.fields.map((name) => renderAuthField(name, values[name], errors[name])).join("")}
-        <button class="btn btn--primary account-dock__submit" type="submit"
+        <button class="btn btn--primary account-menu__submit" type="submit"
           ${panel.busy ? "disabled" : ""}>${panel.busy ? "Подождите…" : config.submit}</button>
       </form>
 
-      <div class="account-dock__links">${renderLinks(mode)}</div>
+      <div class="account-menu__hints">${renderLinks(mode)}</div>
     </section>
   `;
 }
@@ -165,10 +159,33 @@ function renderLinks(mode) {
   return items + hint;
 }
 
+// Клик мимо меню закрывает его так же, как повторное нажатие на кнопку.
+// Ссылка на слушатель хранится здесь: перерисовка при открытом меню не
+// должна оставлять после себя ещё один такой же.
+let outsideClickListener = null;
+
 // Форма отправляется целиком: значения полей не поднимаются в состояние на
 // каждое нажатие, иначе перерисовка забирала бы фокус из поля.
-export function bindAccountDock(root, state) {
+export function bindAccountMenu(root, state) {
   const panel = state.accountPanel ?? {};
+
+  if (outsideClickListener) {
+    document.removeEventListener("pointerdown", outsideClickListener, true);
+    outsideClickListener = null;
+  }
+  if (!panel.open) return;
+
+  const menu = root.querySelector(".account-menu");
+  if (menu) {
+    outsideClickListener = (event) => {
+      if (menu.contains(event.target)) return;
+      document.removeEventListener("pointerdown", outsideClickListener, true);
+      outsideClickListener = null;
+      state.onAction("account-close", {});
+    };
+    document.addEventListener("pointerdown", outsideClickListener, true);
+  }
+
   const form = root.querySelector("[data-account-form]");
   if (!form) return;
 

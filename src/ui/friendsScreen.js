@@ -5,7 +5,7 @@
 // мелкое управление справа. Имена людей приходят из профилей — руками здесь
 // не вводится ничего, кроме имени пользователя при поиске.
 
-import { initials } from "./accountDock.js";
+import { initials } from "./accountMenu.js";
 import { groupFriendships } from "../domain/friends.js";
 import {
   escapeAttribute,

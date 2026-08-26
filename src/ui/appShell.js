@@ -21,7 +21,7 @@ import {
 import { buildInsights } from "../domain/insights.js";
 import { icon } from "./icons.js";
 import { renderWelcome } from "./welcomeScreen.js";
-import { bindAccountDock, initials, renderAccountDock } from "./accountDock.js";
+import { bindAccountMenu, initials, renderAccountMenu } from "./accountMenu.js";
 import { renderFriends } from "./friendsScreen.js";
 import { buildViewers, countIncoming } from "../domain/friends.js";
 import { setScrollLock } from "./scrollLock.js";
@@ -55,12 +55,17 @@ const NAV_GROUPS = [
   ["Люди", [
     ["friends", "Друзья", "users"],
   ]],
-  ["Система", [
-    ["settings", "Настройки", "settings"],
-  ]],
 ];
 
-const NAV_ITEMS = [DASHBOARD_ITEM, ...NAV_GROUPS.flatMap(([, items]) => items)];
+// Настройки живут значком в шапке, а не пунктом меню: это не раздел
+// библиотеки. В мобильном листе «Ещё» им место есть — там шапка узкая.
+const SETTINGS_ITEM = ["settings", "Настройки", "settings"];
+
+const NAV_ITEMS = [
+  DASHBOARD_ITEM,
+  ...NAV_GROUPS.flatMap(([, items]) => items),
+  SETTINGS_ITEM,
+];
 
 const VIEW_META = Object.freeze({
   welcome: { title: "CineVault", eyebrow: "Личное кинохранилище" },
@@ -91,16 +96,32 @@ const SHORTCUTS = [
 ];
 
 let previousView = null;
+// Оверлеи переживают перерисовку: звезда и статус в карточке фильма меняют
+// библиотеку, а разметка собирается заново. Если появление проигрывать
+// каждый раз, окно моргает на каждое нажатие, поэтому анимация включается
+// только когда оверлей действительно открылся.
+let previousDetailId = null;
+let previousModalView = null;
 
 export function renderAppShell(root, state) {
   const collapsed = Boolean(state.sidebarCollapsed);
   const counts = getNavCounts(state);
   const viewChanged = previousView !== state.view;
   previousView = state.view;
+  const detailOpening = previousDetailId !== state.detailMovieId;
+  const modalOpening = previousModalView !== state.modalView;
+  previousDetailId = state.detailMovieId;
+  previousModalView = state.modalView;
   // Перерисовка заменяет разметку целиком, поэтому позицию прокрутки нужно
   // запомнить до неё: иначе любое действие — звезда, фильтр, открытие
   // карточки — отбрасывало бы человека в начало длинного каталога.
   const keptScroll = viewChanged ? 0 : readScrollTop(root);
+  const keptMovieScroll = detailOpening
+    ? 0
+    : root.querySelector(".movie-modal__scroll")?.scrollTop ?? 0;
+  const keptOverlayScroll = modalOpening
+    ? 0
+    : root.querySelector(".overlay__body")?.scrollTop ?? 0;
 
   // Витрина занимает окно целиком: ни боковой панели, ни топбара,
   // только плавающая пилюля навигации, как на самой витрине.
@@ -157,15 +178,6 @@ export function renderAppShell(root, state) {
           `).join("")}
         </nav>
 
-        <div class="sidebar__bottom">
-          <button class="storage-chip ${state.error ? "is-error" : ""}" type="button" data-view="welcome">
-            <span class="storage-chip__icon">${icon(state.error ? "warning" : "film")}</span>
-            <span class="storage-chip__text">
-              <strong>${state.error ? "Хранилище недоступно" : "Витрина CineVault"}</strong>
-              <small>CineVault ${escapeHtml(APP_VERSION)}</small>
-            </span>
-          </button>
-        </div>
       </aside>
 
       <div class="main">
@@ -186,16 +198,15 @@ export function renderAppShell(root, state) {
               <span>Поиск и команды</span>
               <kbd>Ctrl</kbd><kbd>K</kbd>
             </button>
-            <button class="icon-btn" type="button" data-action="shortcuts-open"
-              aria-label="Горячие клавиши" title="Горячие клавиши (?)">
-              ${icon("keyboard")}
-            </button>
             <button class="icon-btn" type="button" data-action="theme-toggle"
               aria-label="${state.theme === "dark" ? "Включить светлую тему" : "Включить тёмную тему"}"
               title="${state.theme === "dark" ? "Светлая тема" : "Тёмная тема"}">
               ${state.theme === "dark" ? icon("sun") : icon("moon")}
             </button>
-            ${renderPrimaryAction(state)}
+            <button class="icon-btn ${state.modalView === "settings" ? "is-active" : ""}"
+              type="button" data-view="settings"
+              aria-label="Настройки" title="Настройки">${icon("settings")}</button>
+            ${renderAccountMenu(state)}
           </div>
         </header>
 
@@ -228,7 +239,8 @@ export function renderAppShell(root, state) {
         </details>
       </nav>
 
-      ${renderMovieDetail(state)}
+      ${renderMovieDetail(state, detailOpening)}
+      ${renderModalView(state, modalOpening)}
       ${renderShortcuts(state)}
 
       <dialog class="modal" id="entity-dialog">
@@ -250,18 +262,21 @@ export function renderAppShell(root, state) {
         </form>
       </dialog>
 
-      ${renderAccountDock(state)}
     </div>
   `;
 
   renderCurrentView(root.querySelector("#view-content"), state);
+  renderModalContent(root, state);
+  restoreOverlayScroll(root, ".movie-modal__scroll", keptMovieScroll);
+  restoreOverlayScroll(root, ".overlay__body", keptOverlayScroll);
   restoreScrollTop(root, keptScroll);
   // Шторка фильма — такой же оверлей, как модалка и палитра: фон под ней
   // ездить не должен.
-  setScrollLock("drawer", Boolean(state.detailMovieId));
+  setScrollLock("movie", Boolean(state.detailMovieId));
   setScrollLock("shortcuts", Boolean(state.shortcutsOpen));
+  setScrollLock("modal-view", Boolean(state.modalView));
   bindEvents(root, state);
-  bindAccountDock(root, state);
+  bindAccountMenu(root, state);
 
   setupDialog();
   const wheelCanvas = root.querySelector("#wheel-canvas");
@@ -349,6 +364,14 @@ function readScrollTop(root) {
 function restoreScrollTop(root, value) {
   if (!value) return;
   const scroller = root.querySelector(".content-scroll");
+  if (scroller) scroller.scrollTop = value;
+}
+
+// У оверлеев своя прокрутка, и она тоже не должна прыгать в начало из-за
+// нажатия на звезду или смены статуса.
+function restoreOverlayScroll(root, selector, value) {
+  if (!value) return;
+  const scroller = root.querySelector(selector);
   if (scroller) scroller.scrollTop = value;
 }
 
@@ -463,18 +486,11 @@ function bindScrollBehaviour(root) {
   sync();
 }
 
-function renderPrimaryAction(state) {
-  const actions = {
-    dashboard: ["movie-add", "Добавить фильм", "plus"],
-    catalog: ["movie-add", "Добавить фильм", "plus"],
-    watched: ["movie-add", "Добавить фильм", "plus"],
-    sessions: ["roll-configure", "Новый ролл", "wheel"],
-  };
-  const action = actions[state.view];
-  if (!action) return "";
-  const [id, label, iconName] = action;
+// Кнопка раздела: в шапке её место занял личный кабинет, поэтому главное
+// действие стоит в панели самого раздела, рядом со счётчиком.
+function primaryAction(action, label, iconName) {
   return `
-    <button class="btn btn--primary topbar__cta" type="button" data-action="${id}">
+    <button class="btn btn--primary btn--sm" type="button" data-action="${action}">
       ${icon(iconName)}<span>${escapeHtml(label)}</span>
     </button>`;
 }
@@ -527,11 +543,52 @@ function renderCurrentView(container, state) {
     watched: (node, appState) => renderWatched(node, appState.library),
     sessions: (node, appState) => renderSessions(node, appState.library.rollSessions),
     insights: (node, appState) => renderInsights(node, appState.library),
-    friends: renderFriends,
-    settings: renderSettings,
   };
 
   (views[state.view] ?? renderDashboard)(container, state);
+}
+
+/* ------------------------------------------------- Настройки и друзья */
+
+// Оба экрана технические и не относятся к библиотеке, поэтому открываются
+// поверх неё окном по центру, а фон под ними размывается. Раздел, в котором
+// человек был, при этом никуда не уезжает.
+const MODAL_VIEWS = Object.freeze({
+  settings: { title: "Настройки", eyebrow: "Данные и интеграции", render: renderSettings },
+  friends: { title: "Друзья", eyebrow: "Заявки и доступ к библиотеке", render: renderFriends },
+});
+
+export function isModalView(view) {
+  return Object.hasOwn(MODAL_VIEWS, view);
+}
+
+function renderModalView(state, opening = true) {
+  const modal = MODAL_VIEWS[state.modalView];
+  if (!modal) return "";
+
+  return `
+    <div class="overlay ${opening ? "is-entering" : ""}">
+      <div class="overlay__scrim" data-action="modal-close"></div>
+      <section class="overlay__panel" role="dialog" aria-modal="true"
+        aria-label="${escapeAttribute(modal.title)}">
+        <header class="overlay__head">
+          <div>
+            <p class="eyebrow">${escapeHtml(modal.eyebrow)}</p>
+            <h2>${escapeHtml(modal.title)}</h2>
+          </div>
+          <button class="icon-btn" type="button" data-action="modal-close"
+            aria-label="Закрыть">${icon("close")}</button>
+        </header>
+        <div class="overlay__body" id="modal-content"></div>
+      </section>
+    </div>`;
+}
+
+function renderModalContent(root, state) {
+  const modal = MODAL_VIEWS[state.modalView];
+  const container = root.querySelector("#modal-content");
+  if (!modal || !container) return;
+  modal.render(container, state);
 }
 
 /* ---------------------------------------------------------------- Главная */
@@ -592,8 +649,8 @@ function renderDashboard(container, state) {
         </p>
         <div class="hero__actions">
           ${statistics.movieCount ? `
-            <button class="btn btn--primary btn--lg" type="button" data-view="wheel">
-              ${icon("wheel")}<span>Запустить колесо</span>
+            <button class="btn btn--primary btn--lg" type="button" data-action="movie-add">
+              ${icon("plus")}<span>Добавить фильм</span>
             </button>
             <button class="btn btn--glass btn--lg" type="button" data-view="catalog">
               ${icon("film")}<span>Открыть каталог</span>
@@ -939,92 +996,99 @@ function collectionCard(franchise, movieById) {
     </article>`;
 }
 
-/* -------------------------------------------------- Карточка фильма (drawer) */
+/* ----------------------------------------------------- Карточка фильма */
 
-function renderMovieDetail(state) {
+// Карточка фильма — окно по центру с размытым фоном, как настройки и друзья.
+//
+// Раньше это была выдвижная шторка, а метаданные лежали россыпью бордюрных
+// чипов: год, длительность и страна занимали три рамки на всю ширину. Теперь
+// постер стоит слева, справа — заголовок, одна строка метаданных через точку,
+// описание и жанры; действия собраны внизу одной строкой.
+function renderMovieDetail(state, opening = true) {
   const movie = state.library?.movies?.find((item) => item.id === state.detailMovieId);
   if (!movie) return "";
 
   const category = state.library.categories.find((item) => item.id === movie.categoryId);
   const franchise = getMovieFranchiseMap(state.library.franchises).get(movie.id);
   const rating = calculateAverageRating(movie.ratings);
+  const status = getMovieStatus(movie);
+  const meta = [
+    movie.releaseYear,
+    movie.durationMinutes ? `${movie.durationMinutes} мин` : "",
+    movie.country,
+  ].filter(Boolean);
 
   return `
-    <div class="drawer">
-      <div class="drawer__scrim" data-action="detail-close"></div>
-      <aside class="drawer__panel" role="dialog" aria-modal="true"
+    <div class="overlay overlay--movie ${opening ? "is-entering" : ""}">
+      <div class="overlay__scrim" data-action="detail-close"></div>
+      <article class="movie-modal" role="dialog" aria-modal="true"
         aria-label="${escapeAttribute(movie.title)}">
-        <div class="drawer__hero">
-          ${movie.coverUrl
-            ? `<img class="drawer__hero-bg" src="${escapeAttribute(movie.coverUrl)}" alt=""
-                referrerpolicy="no-referrer"
-                data-poster-fallback="">`
-            : ""}
-          <button class="icon-btn drawer__close" type="button" data-action="detail-close"
-            aria-label="Закрыть">${icon("close")}</button>
-          <div class="drawer__hero-poster">
-            ${movie.coverUrl
-              ? `<img src="${escapeAttribute(movie.coverUrl)}"
-                  alt="Постер: ${escapeAttribute(movie.title)}" referrerpolicy="no-referrer"
-                  data-poster-fallback="${escapeAttribute(initials(movie.title))}">`
-              : `<span class="poster-fallback">${escapeHtml(initials(movie.title))}</span>`}
-          </div>
-        </div>
+        <button class="icon-btn movie-modal__close" type="button" data-action="detail-close"
+          aria-label="Закрыть">${icon("close")}</button>
 
-        <div class="drawer__body">
-          <p class="eyebrow">${escapeHtml(category?.name ?? "Без списка")}</p>
-          <h2>${escapeHtml(movie.title)}</h2>
-          ${movie.originalTitle
-            ? `<p class="drawer__original">${escapeHtml(movie.originalTitle)}</p>`
-            : ""}
-
-          <div class="chip-row">
-            ${movie.releaseYear ? `<span class="chip">${icon("calendar")}${movie.releaseYear}</span>` : ""}
-            ${movie.durationMinutes ? `<span class="chip">${icon("clock")}${movie.durationMinutes} мин</span>` : ""}
-            ${movie.country ? `<span class="chip">${icon("globe")}${escapeHtml(movie.country)}</span>` : ""}
-            ${franchise ? `<span class="chip chip--accent">${icon("collection")}${escapeHtml(franchise.name)}</span>` : ""}
-            <span class="chip ${movie.watchedAt ? "chip--success" : ""}">
-              ${icon(STATUS_ICONS[getMovieStatus(movie)])}
-              ${movie.watchedAt
-                ? `Просмотрен ${formatDate(movie.watchedAt)}`
-                : escapeHtml(MOVIE_STATUS_LABELS[getMovieStatus(movie)])}
-            </span>
-          </div>
-
-          ${(movie.genres ?? []).length ? `
-            <div class="chip-row chip-row--soft">
-              ${movie.genres.map((genre) => `<span class="chip chip--soft">${escapeHtml(genre)}</span>`).join("")}
+        <div class="movie-modal__scroll">
+          <div class="movie-modal__top">
+            <div class="movie-modal__poster">
+              ${movie.coverUrl
+                ? `<img src="${escapeAttribute(movie.coverUrl)}"
+                    alt="Постер: ${escapeAttribute(movie.title)}" referrerpolicy="no-referrer"
+                    data-poster-fallback="${escapeAttribute(initials(movie.title))}">`
+                : `<span class="poster-fallback">${escapeHtml(initials(movie.title))}</span>`}
             </div>
-          ` : ""}
 
-          ${movie.overview
-            ? `<p class="drawer__overview">${escapeHtml(movie.overview)}</p>`
-            : `<p class="muted">Описание не заполнено.</p>`}
+            <div class="movie-modal__head">
+              <p class="eyebrow">${escapeHtml(category?.name ?? "Без списка")}</p>
+              <h2>${escapeHtml(movie.title)}</h2>
+              ${movie.originalTitle
+                ? `<p class="movie-modal__original">${escapeHtml(movie.originalTitle)}</p>`
+                : ""}
 
-          ${(movie.tags ?? []).length ? `
+              ${meta.length
+                ? `<p class="movie-modal__meta">${meta.map(escapeHtml).join(" · ")}</p>`
+                : ""}
+
+              <div class="movie-modal__badges">
+                <span class="status-dot status-dot--${status}">
+                  ${icon(STATUS_ICONS[status])}
+                  ${movie.watchedAt
+                    ? `Просмотрен ${escapeHtml(formatDate(movie.watchedAt))}`
+                    : escapeHtml(MOVIE_STATUS_LABELS[status])}
+                </span>
+                ${rating === null ? "" : `
+                  <span class="status-dot status-dot--score">${icon("starFilled")}${rating}</span>`}
+                ${movie.isFavorite
+                  ? `<span class="status-dot status-dot--fav">${icon("starFilled")}Избранное</span>`
+                  : ""}
+                ${franchise ? `
+                  <span class="status-dot">${icon("collection")}${escapeHtml(franchise.name)}</span>`
+                  : ""}
+              </div>
+            </div>
+          </div>
+
+          <p class="movie-modal__overview ${movie.overview ? "" : "is-empty"}">
+            ${movie.overview ? escapeHtml(movie.overview) : "Описание не заполнено."}
+          </p>
+
+          ${(movie.genres ?? []).length || (movie.tags ?? []).length ? `
             <div class="chip-row chip-row--soft">
-              ${movie.tags.map((tag) => `
+              ${(movie.genres ?? []).map((genre) =>
+                `<span class="chip chip--soft">${escapeHtml(genre)}</span>`).join("")}
+              ${(movie.tags ?? []).map((tag) => `
                 <button class="chip chip--tag" type="button"
                   data-action="catalog-tag-open" data-tag="${escapeAttribute(tag)}"
                   title="Показать все фильмы с тегом">${icon("tag")}${escapeHtml(tag)}</button>
               `).join("")}
-            </div>
-          ` : ""}
+            </div>` : ""}
 
           ${movie.notes ? `
-            <section class="drawer__notes">
+            <section class="movie-modal__block">
               <h3>${icon("note")}Заметка</h3>
               <p>${escapeHtml(movie.notes)}</p>
-            </section>
-          ` : ""}
+            </section>` : ""}
 
-          <section class="drawer__ratings">
-            <header>
-              <h3>Оценки</h3>
-              <strong class="score ${rating === null ? "is-empty" : ""}">
-                ${rating === null ? "—" : `${icon("star")}${rating}`}
-              </strong>
-            </header>
+          <section class="movie-modal__block">
+            <h3>${icon("star")}Оценки</h3>
             <div class="rating-list">
               ${(movie.ratings ?? []).map((item) => `
                 <span class="rating-chip">
@@ -1036,44 +1100,44 @@ function renderMovieDetail(state) {
               `).join("") || '<span class="muted">Оценок пока нет</span>'}
             </div>
           </section>
+        </div>
 
+        <footer class="movie-modal__foot">
           ${movie.watchedAt ? "" : `
             <div class="status-switch" role="group" aria-label="Статус фильма">
-              ${[MOVIE_STATUS.queued, MOVIE_STATUS.watching, MOVIE_STATUS.dropped].map((status) => `
-                <button type="button" class="${getMovieStatus(movie) === status ? "is-active" : ""}"
-                  data-action="movie-status-set" data-id="${movie.id}" data-status="${status}"
-                  aria-pressed="${getMovieStatus(movie) === status}">
-                  ${icon(STATUS_ICONS[status])}<span>${escapeHtml(MOVIE_STATUS_LABELS[status])}</span>
+              ${[MOVIE_STATUS.queued, MOVIE_STATUS.watching, MOVIE_STATUS.dropped].map((value) => `
+                <button type="button" class="${status === value ? "is-active" : ""}"
+                  data-action="movie-status-set" data-id="${movie.id}" data-status="${value}"
+                  aria-pressed="${status === value}" title="${escapeAttribute(MOVIE_STATUS_LABELS[value])}">
+                  ${icon(STATUS_ICONS[value])}<span>${escapeHtml(MOVIE_STATUS_LABELS[value])}</span>
                 </button>
               `).join("")}
             </div>`}
 
-          <div class="drawer__actions">
-            <button class="btn btn--primary" type="button"
+          <div class="movie-modal__actions">
+            <button class="icon-btn ${movie.isFavorite ? "is-favorite" : ""}" type="button"
+              data-action="movie-favorite-toggle" data-id="${movie.id}"
+              aria-pressed="${Boolean(movie.isFavorite)}"
+              title="${movie.isFavorite ? "Убрать из избранного" : "В избранное"}"
+              aria-label="${movie.isFavorite ? "Убрать из избранного" : "В избранное"}">
+              ${icon(movie.isFavorite ? "starFilled" : "star")}
+            </button>
+            <button class="icon-btn" type="button" data-action="movie-edit" data-id="${movie.id}"
+              title="Редактировать" aria-label="Редактировать">${icon("edit")}</button>
+            ${movie.watchedAt ? `
+              <button class="icon-btn" type="button" data-action="watch-remove" data-id="${movie.id}"
+                title="Вернуть в очередь" aria-label="Вернуть в очередь">${icon("refresh")}</button>` : ""}
+            <button class="icon-btn icon-btn--danger" type="button"
+              data-action="movie-delete" data-id="${movie.id}"
+              title="Удалить" aria-label="Удалить">${icon("trash")}</button>
+            <button class="btn btn--primary btn--sm" type="button"
               data-action="${movie.watchedAt ? "rating-add" : "watch-add"}" data-id="${movie.id}">
               ${icon(movie.watchedAt ? "star" : "check")}
               <span>${movie.watchedAt ? "Поставить оценку" : "Отметить просмотренным"}</span>
             </button>
-            <button class="btn btn--ghost ${movie.isFavorite ? "is-favorite" : ""}" type="button"
-              data-action="movie-favorite-toggle" data-id="${movie.id}"
-              aria-pressed="${Boolean(movie.isFavorite)}">
-              ${icon(movie.isFavorite ? "starFilled" : "star")}
-              <span>${movie.isFavorite ? "В избранном" : "В избранное"}</span>
-            </button>
-            <button class="btn btn--ghost" type="button" data-action="movie-edit" data-id="${movie.id}">
-              ${icon("edit")}<span>Редактировать</span>
-            </button>
-            ${movie.watchedAt ? `
-              <button class="btn btn--ghost" type="button" data-action="watch-remove" data-id="${movie.id}">
-                ${icon("refresh")}<span>Вернуть в очередь</span>
-              </button>
-            ` : ""}
-            <button class="btn btn--danger-ghost" type="button" data-action="movie-delete" data-id="${movie.id}">
-              ${icon("trash")}<span>Удалить</span>
-            </button>
           </div>
-        </div>
-      </aside>
+        </footer>
+      </article>
     </div>`;
 }
 
@@ -1155,6 +1219,7 @@ function renderCatalog(container, state) {
               aria-pressed="${viewMode === mode}">${icon(iconName)}</button>
           `).join("")}
         </div>
+        ${primaryAction("movie-add", "Добавить фильм", "plus")}
       </div>
     </div>
 
@@ -1468,6 +1533,7 @@ function renderWatched(container, library) {
       <div class="summary-pills">
         <span class="pill">${icon("clock")}${formatWatchedHours(totalMinutes)} ч</span>
         <span class="pill">${icon("star")}${average === null ? "—" : average}</span>
+        ${primaryAction("movie-add", "Добавить фильм", "plus")}
       </div>
     </div>
 
@@ -1546,6 +1612,9 @@ function renderSessions(container, sessions) {
         <h2>${completed.length}
           <small>${pluralize(completed.length, ["сессия", "сессии", "сессий"])}</small>
         </h2>
+      </div>
+      <div class="toolbar__actions">
+        ${primaryAction("roll-configure", "Новый ролл", "wheel")}
       </div>
     </div>
 
@@ -1846,9 +1915,7 @@ function renderCategories(container, library) {
       </div>
       <div class="toolbar__actions">
         <span class="pill">${icon("folder")}Без списка: <b>${uncategorized}</b></span>
-        <button class="btn btn--primary" type="button" data-action="category-add">
-          ${icon("plus")}<span>Новый список</span>
-        </button>
+        ${primaryAction("category-add", "Новый список", "plus")}
       </div>
     </div>
 
@@ -1857,14 +1924,17 @@ function renderCategories(container, library) {
       "Списки задают структуру библиотеки и квоты для колеса. Жанры TMDB хранятся отдельно и на списки не влияют.",
       { action: "category-add", label: "Создать список", icon: "plus" },
     ) : `
-      <div class="category-tree">
-        ${roots.map((category) => categoryNode(category, library, 0)).join("")}
+      <div class="tree">
+        ${roots.map((category) => categoryRows(category, library, 0)).join("")}
       </div>
     `}
   `;
 }
 
-function categoryNode(category, library, depth) {
+// Дерево списков — плоский набор строк с отступом по глубине. Вложенные
+// карточки внутри карточек читались хуже: рамка в рамке съедала ширину и
+// прятала сам список за оформлением.
+function categoryRows(category, library, depth) {
   const children = library.categories
     .filter((item) => item.parentId === category.id)
     .sort(sortByPosition);
@@ -1881,65 +1951,54 @@ function categoryNode(category, library, depth) {
     : 0;
 
   return `
-    <section class="category-node" style="--depth:${depth}">
-      <header class="category-node__head">
-        <div class="category-node__title">
-          <span class="category-node__icon">${icon(depth ? "chevronRight" : "layers")}</span>
-          <div>
-            <h3>${escapeHtml(category.name)}</h3>
-            <p class="category-node__meta">
-              <span class="pill pill--soft">${icon("wheel")}Квота: <b>${category.rollQuota}</b></span>
-              <span>${subtreeMovies.length} ${pluralize(subtreeMovies.length, ["фильм", "фильма", "фильмов"])}</span>
-              ${subtreeMovies.length ? `
-                <span class="meter" title="Просмотрено ${watchedCount} из ${subtreeMovies.length}">
-                  <span class="meter__track"><span style="--value:${progress}%"></span></span>
-                  <b>${progress}%</b>
-                </span>` : ""}
-            </p>
-          </div>
-        </div>
-        <div class="row-actions">
-          <button class="icon-btn icon-btn--sm" type="button" data-action="category-up"
-            data-id="${category.id}" aria-label="Выше">${icon("arrowUp")}</button>
-          <button class="icon-btn icon-btn--sm" type="button" data-action="category-down"
-            data-id="${category.id}" aria-label="Ниже">${icon("arrowDown")}</button>
-          <button class="icon-btn icon-btn--sm" type="button" data-action="category-child-add"
-            data-id="${category.id}" aria-label="Вложенный список">${icon("plus")}</button>
-          <button class="icon-btn icon-btn--sm" type="button" data-action="category-edit"
-            data-id="${category.id}" aria-label="Редактировать">${icon("edit")}</button>
-          <button class="icon-btn icon-btn--sm icon-btn--danger" type="button"
-            data-action="category-delete" data-id="${category.id}"
-            aria-label="Удалить">${icon("trash")}</button>
-        </div>
-      </header>
+    <div class="tree__row tree__row--list" style="--depth:${depth}">
+      <span class="tree__mark">${icon(children.length ? "layers" : "folder")}</span>
+      <span class="tree__name">${escapeHtml(category.name)}</span>
+      <span class="tree__meta">
+        ${category.rollQuota > 0
+          ? `<span class="tree__quota" title="Квота колеса">${icon("wheel")}${category.rollQuota}</span>`
+          : ""}
+        ${subtreeMovies.length
+          ? `<span>${subtreeMovies.length} ${pluralize(subtreeMovies.length, ["фильм", "фильма", "фильмов"])}</span>
+             <span class="meter" title="Просмотрено ${watchedCount} из ${subtreeMovies.length}">
+               <span class="meter__track"><span style="--value:${progress}%"></span></span>
+             </span>`
+          : `<span class="muted">пусто</span>`}
+      </span>
+      <span class="tree__tools">
+        <button class="icon-btn icon-btn--sm" type="button" data-action="category-up"
+          data-id="${category.id}" aria-label="Выше">${icon("arrowUp")}</button>
+        <button class="icon-btn icon-btn--sm" type="button" data-action="category-down"
+          data-id="${category.id}" aria-label="Ниже">${icon("arrowDown")}</button>
+        <button class="icon-btn icon-btn--sm" type="button" data-action="category-child-add"
+          data-id="${category.id}" aria-label="Вложенный список">${icon("plus")}</button>
+        <button class="icon-btn icon-btn--sm" type="button" data-action="category-edit"
+          data-id="${category.id}" aria-label="Редактировать">${icon("edit")}</button>
+        <button class="icon-btn icon-btn--sm icon-btn--danger" type="button"
+          data-action="category-delete" data-id="${category.id}"
+          aria-label="Удалить">${icon("trash")}</button>
+      </span>
+    </div>
 
-      ${queue.length ? `
-        <ol class="queue-list">
-          ${queue.map((item, index) => `
-            <li>
-              <span class="queue-list__index">${index + 1}</span>
-              <span class="queue-list__title">
-                ${escapeHtml(item.title)}
-                ${item.type === "franchise"
-                  ? `<span class="pill pill--accent">${icon("collection")}Коллекция</span>`
-                  : ""}
-              </span>
-              <span class="queue-list__tools">
-                <button class="icon-btn icon-btn--sm" type="button" data-action="${item.type}-up"
-                  data-id="${item.id}" aria-label="Выше">${icon("arrowUp")}</button>
-                <button class="icon-btn icon-btn--sm" type="button" data-action="${item.type}-down"
-                  data-id="${item.id}" aria-label="Ниже">${icon("arrowDown")}</button>
-              </span>
-            </li>
-          `).join("")}
-        </ol>
-      ` : '<p class="muted category-node__empty">В списке пока нет непросмотренных фильмов.</p>'}
+    ${queue.map((item, index) => `
+      <div class="tree__row tree__row--movie" style="--depth:${depth + 1}">
+        <span class="tree__index">${index + 1}</span>
+        <span class="tree__name">${escapeHtml(item.title)}</span>
+        <span class="tree__meta">
+          ${item.type === "franchise"
+            ? `<span class="tree__quota">${icon("collection")}коллекция</span>`
+            : ""}
+        </span>
+        <span class="tree__tools">
+          <button class="icon-btn icon-btn--sm" type="button" data-action="${item.type}-up"
+            data-id="${item.id}" aria-label="Выше">${icon("arrowUp")}</button>
+          <button class="icon-btn icon-btn--sm" type="button" data-action="${item.type}-down"
+            data-id="${item.id}" aria-label="Ниже">${icon("arrowDown")}</button>
+        </span>
+      </div>
+    `).join("")}
 
-      ${children.length ? `
-        <div class="category-node__children">
-          ${children.map((child) => categoryNode(child, library, depth + 1)).join("")}
-        </div>` : ""}
-    </section>`;
+    ${children.map((child) => categoryRows(child, library, depth + 1)).join("")}`;
 }
 
 /* ------------------------------------------------------------ Коллекции */

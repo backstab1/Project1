@@ -1,41 +1,57 @@
 /**
  * Отрисовка колеса кинорулетки.
- * Учитывает плотность пикселей экрана, текущую тему и рисует сегменты
- * градиентами, чтобы колесо выглядело одинаково хорошо в обеих темах.
+ *
+ * Колесо — не игрушечная рулетка из четырёх цветов, а часть той же системы,
+ * что и остальной интерфейс: кольцо сегментов в двух тонах темы, тонкие
+ * зазоры между ними и пустая середина, где стоит втулка. Цвета берутся из
+ * токенов CSS, поэтому обе темы получаются сами собой и не расходятся с
+ * карточками рядом.
  */
 
-const PALETTES = Object.freeze({
+const FALLBACK_TOKENS = Object.freeze({
   dark: {
-    segments: [
-      ["#8b5cf6", "#6d3bf0"],
-      ["#1f2233", "#171a29"],
-      ["#f0a93b", "#d9832b"],
-      ["#242840", "#1b1e30"],
-    ],
-    segmentText: ["#ffffff", "#e7e5f4", "#231604", "#e7e5f4"],
-    rim: "rgba(255, 255, 255, 0.14)",
-    divider: "rgba(255, 255, 255, 0.12)",
-    hub: "#12131f",
-    hubRing: "#f0a93b",
-    hubText: "#f6f4ff",
-    glow: "rgba(139, 92, 246, 0.45)",
+    surface: "#100c28",
+    surfaceAlt: "#181236",
+    accent: "#5046e4",
+    accentSoft: "#2a2166",
+    border: "rgba(163, 158, 186, 0.18)",
+    text: "#f4f0ff",
+    textMuted: "#a8a6b7",
+    canvas: "#05031a",
   },
   light: {
-    segments: [
-      ["#7c5cff", "#5f3fe0"],
-      ["#ffffff", "#eceaf7"],
-      ["#f5a524", "#e08a12"],
-      ["#f3f1fb", "#e2ddf3"],
-    ],
-    segmentText: ["#ffffff", "#3b3552", "#2a1a02", "#3b3552"],
-    rim: "rgba(38, 30, 66, 0.14)",
-    divider: "rgba(38, 30, 66, 0.12)",
-    hub: "#ffffff",
-    hubRing: "#7c5cff",
-    hubText: "#2b2545",
-    glow: "rgba(124, 92, 255, 0.35)",
+    surface: "#ffffff",
+    surfaceAlt: "#f7f5fd",
+    accent: "#5046e4",
+    accentSoft: "#e6e1fb",
+    border: "rgba(28, 20, 62, 0.16)",
+    text: "#1c143e",
+    textMuted: "#58527a",
+    canvas: "#f4f2fb",
   },
 });
+
+// Токены читаются с корня документа: тема уже проставлена там атрибутом, и
+// второй список цветов в JS разошёлся бы с CSS при первой же правке палитры.
+function readTokens(theme) {
+  const fallback = FALLBACK_TOKENS[theme] ?? FALLBACK_TOKENS.dark;
+  const root = globalThis.document?.documentElement;
+  if (!root || !globalThis.getComputedStyle) return fallback;
+
+  const styles = globalThis.getComputedStyle(root);
+  const read = (name, value) => styles.getPropertyValue(name).trim() || value;
+
+  return {
+    surface: read("--surface", fallback.surface),
+    surfaceAlt: read("--surface-3", fallback.surfaceAlt),
+    accent: read("--accent-fill", fallback.accent),
+    accentSoft: read("--accent-soft", fallback.accentSoft),
+    border: read("--border-strong", fallback.border),
+    text: read("--text", fallback.text),
+    textMuted: read("--text-muted", fallback.textMuted),
+    canvas: read("--bg", fallback.canvas),
+  };
+}
 
 export function drawWheel(canvas, pool, rotation = 0, options = {}) {
   if (!canvas || !Array.isArray(pool) || pool.length === 0) return;
@@ -45,106 +61,72 @@ export function drawWheel(canvas, pool, rotation = 0, options = {}) {
     ?? globalThis.document?.documentElement?.dataset?.theme
     ?? "dark";
   canvas.dataset.theme = theme;
-  const palette = PALETTES[theme] ?? PALETTES.dark;
+  const tokens = readTokens(theme);
 
   const context = canvas.getContext("2d");
   const size = prepareCanvas(canvas, context);
   const center = size / 2;
-  const radius = center - size * 0.035;
+  const outer = center - size * 0.02;
+  const inner = outer * 0.3;
   const arc = (Math.PI * 2) / pool.length;
+  // Зазор считается в пикселях и переводится в радианы по внешнему радиусу:
+  // на многолюдном колесе постоянный угол съедал бы сами сектора. Щель между
+  // секторами важнее чередования цветов: при нечётном числе участников два
+  // одинаковых сектора всё равно читаются как разные.
+  const gap = Math.min(arc * 0.14, (size * 0.014) / outer);
 
   context.clearRect(0, 0, size, size);
 
-  // Внешнее свечение колеса.
-  context.save();
-  context.shadowColor = palette.glow;
-  context.shadowBlur = size * 0.06;
-  context.beginPath();
-  context.arc(center, center, radius, 0, Math.PI * 2);
-  context.fillStyle = palette.hub;
-  context.fill();
-  context.restore();
-
   pool.forEach((item, index) => {
-    const start = index * arc + rotation - Math.PI / 2;
-    const end = start + arc;
-    const paletteIndex = pool.length === 2
-      ? index * 2
-      : index % palette.segments.length;
-    const [from, to] = palette.segments[paletteIndex % palette.segments.length];
-
-    const gradient = context.createRadialGradient(
-      center, center, radius * 0.16, center, center, radius,
-    );
-    gradient.addColorStop(0, to);
-    gradient.addColorStop(1, from);
+    const start = index * arc + rotation - Math.PI / 2 + gap / 2;
+    const end = start + arc - gap;
+    const accented = index % 2 === 0;
 
     context.beginPath();
-    context.moveTo(center, center);
-    context.arc(center, center, radius, start, end);
+    context.arc(center, center, outer, start, end);
+    context.arc(center, center, inner, end, start, true);
     context.closePath();
-    context.fillStyle = gradient;
+    context.fillStyle = accented ? tokens.accent : tokens.surfaceAlt;
     context.fill();
-    context.strokeStyle = palette.divider;
-    context.lineWidth = Math.max(1, size * 0.002);
-    context.stroke();
 
-    const middle = start + arc / 2;
+    const middle = start + (end - start) / 2;
     const flipped = Math.cos(middle) < 0;
     context.save();
     context.translate(center, center);
     context.rotate(flipped ? middle + Math.PI : middle);
-    context.fillStyle = palette.segmentText[
-      paletteIndex % palette.segmentText.length
-    ];
-    const fontSize = getFontSize(pool.length, size);
-    context.font = `700 ${fontSize}px "Segoe UI", system-ui, sans-serif`;
+    context.fillStyle = accented ? "#ffffff" : tokens.text;
+    context.font = `500 ${getFontSize(pool.length, size)}px "Segoe UI", system-ui, sans-serif`;
     context.textAlign = flipped ? "left" : "right";
     context.textBaseline = "middle";
-    context.fillText(
-      shorten(item.title, pool.length),
-      flipped ? -(radius - size * 0.045) : radius - size * 0.045,
-      0,
-    );
+    // Подпись живёт в кольце между втулкой и ободом. Ширину считаем по факту,
+    // а не по числу символов: иначе длинное название заезжало на втулку.
+    const padding = size * 0.022;
+    const band = outer - inner - padding * 2;
+    const label = fitText(context, item.title, band);
+    context.fillText(label, flipped ? -(outer - padding) : outer - padding, 0);
     context.restore();
   });
 
-  // Ободок.
+  // Тонкие обводки: внешняя очерчивает круг, внутренняя отделяет втулку.
+  context.strokeStyle = tokens.border;
+  context.lineWidth = 1;
   context.beginPath();
-  context.arc(center, center, radius, 0, Math.PI * 2);
-  context.strokeStyle = palette.rim;
-  context.lineWidth = Math.max(2, size * 0.012);
+  context.arc(center, center, outer, 0, Math.PI * 2);
   context.stroke();
 
-  // Насечки по ободу.
-  context.save();
-  context.translate(center, center);
-  context.fillStyle = palette.rim;
-  for (let index = 0; index < pool.length; index += 1) {
-    context.save();
-    context.rotate(index * arc + rotation - Math.PI / 2);
-    context.beginPath();
-    context.arc(radius - size * 0.012, 0, Math.max(1.5, size * 0.005), 0, Math.PI * 2);
-    context.fill();
-    context.restore();
-  }
-  context.restore();
-
-  // Центральная втулка.
-  const hubRadius = size * 0.085;
+  // Втулка: та же поверхность, что у карточек, с волоском по краю.
   context.beginPath();
-  context.arc(center, center, hubRadius, 0, Math.PI * 2);
-  context.fillStyle = palette.hub;
+  context.arc(center, center, inner, 0, Math.PI * 2);
+  context.fillStyle = tokens.surface;
   context.fill();
-  context.lineWidth = Math.max(2, size * 0.008);
-  context.strokeStyle = palette.hubRing;
+  context.strokeStyle = tokens.border;
+  context.lineWidth = 1;
   context.stroke();
 
-  context.fillStyle = palette.hubText;
-  context.font = `800 ${Math.round(size * 0.045)}px "Segoe UI", system-ui, sans-serif`;
-  context.textAlign = "center";
-  context.textBaseline = "middle";
-  context.fillText("CV", center, center + size * 0.002);
+  context.beginPath();
+  context.arc(center, center, size * 0.018, 0, Math.PI * 2);
+  context.fillStyle = tokens.accent;
+  context.fill();
 }
 
 export function animateWheel(canvas, pool, selectedIndex, options = {}) {
@@ -267,13 +249,26 @@ function normalizeAngle(value) {
 function getFontSize(count, size) {
   const base = size / 620;
   if (count > 30) return Math.max(8, 10 * base);
-  if (count > 20) return Math.max(9, 12 * base);
-  if (count > 12) return Math.max(10, 14 * base);
-  return Math.max(12, 17 * base);
+  if (count > 20) return Math.max(9, 11 * base);
+  if (count > 12) return Math.max(10, 13 * base);
+  return Math.max(11, 15 * base);
 }
 
-function shorten(value, count) {
-  const limit = count > 20 ? 14 : count > 12 ? 18 : 24;
-  const text = String(value);
-  return text.length > limit ? `${text.slice(0, limit - 1)}…` : text;
+// Обрезка по фактической ширине: у кириллицы и латиницы разная плотность,
+// и лимит в символах давал то дыру, то наезд на втулку.
+function fitText(context, value, maxWidth) {
+  const text = String(value ?? "");
+  if (maxWidth <= 0) return "";
+  if (context.measureText(text).width <= maxWidth) return text;
+
+  let low = 0;
+  let high = text.length;
+  while (low < high) {
+    const middle = Math.ceil((low + high) / 2);
+    const candidate = `${text.slice(0, middle).trimEnd()}…`;
+    if (context.measureText(candidate).width <= maxWidth) low = middle;
+    else high = middle - 1;
+  }
+
+  return low > 0 ? `${text.slice(0, low).trimEnd()}…` : "";
 }
