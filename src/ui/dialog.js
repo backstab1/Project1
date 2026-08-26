@@ -1,3 +1,5 @@
+import { lockScroll, unlockScroll } from "./scrollLock.js";
+
 let activeSubmitHandler = null;
 let activeSuccessHandler = null;
 
@@ -21,7 +23,7 @@ export function openDialog({
 
   form.onsubmit = handleSubmit;
   dialog.showModal();
-  document.body.classList.add("has-overlay");
+  lockScroll("dialog");
   focusFirstControl(dialog);
 }
 
@@ -29,7 +31,7 @@ export function closeDialog() {
   const dialog = document.querySelector("#entity-dialog");
   activeSubmitHandler = null;
   activeSuccessHandler = null;
-  document.body.classList.remove("has-overlay");
+  unlockScroll("dialog");
   dialog?.close();
 }
 
@@ -48,7 +50,7 @@ export function setupDialog() {
     }
   });
   dialog.addEventListener("close", () => {
-    document.body.classList.remove("has-overlay");
+    unlockScroll("dialog");
   });
 }
 

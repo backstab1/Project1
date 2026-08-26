@@ -54,6 +54,7 @@ import {
 import {
   DEFAULT_CATALOG_FILTERS,
   filterCatalogMovies,
+  pickRandomMovie,
 } from "./domain/catalogQuery.js";
 import {
   MATCH_CONFIDENCE,
@@ -92,7 +93,7 @@ import {
 import { describeAuthError } from "./domain/authRules.js";
 import { signOut } from "./services/authService.js";
 import { openDialog } from "./ui/dialog.js";
-import { animateWheel } from "./ui/wheelCanvas.js";
+import { animateWheel, drawWheel } from "./ui/wheelCanvas.js";
 import { showToast } from "./ui/toast.js";
 import {
   closePalette,
@@ -168,6 +169,7 @@ const state = {
   isSpinning: false,
   catalogFilters: { ...DEFAULT_CATALOG_FILTERS },
   catalogView: readStoredPreference(CATALOG_VIEW_KEY, "grid"),
+  shortcutsOpen: false,
   sidebarCollapsed: readStoredPreference(SIDEBAR_KEY, "0") === "1",
   detailMovieId: null,
   selectionMode: false,
@@ -258,6 +260,17 @@ function bindGlobalListeners() {
   // Событие error у изображений не всплывает, поэтому слушаем фазу перехвата.
   document.addEventListener("error", handleBrokenPoster, true);
   window.addEventListener("keydown", handleGlobalKeydown);
+  // Холст колеса рисуется под конкретный размер окна: после его изменения
+  // картинку нужно нарисовать заново, иначе она растянется и замылится.
+  let resizeQueued = false;
+  window.addEventListener("resize", () => {
+    if (resizeQueued) return;
+    resizeQueued = true;
+    requestAnimationFrame(() => {
+      resizeQueued = false;
+      redrawWheelCanvas();
+    });
+  }, { passive: true });
   window.addEventListener("popstate", () => {
     const view = readViewFromHash();
     state.view = state.libraryLocked && view !== "welcome" ? "welcome" : view;
@@ -294,6 +307,15 @@ function startBackupRoutines() {
 
 function render() {
   renderAppShell(root, state);
+}
+
+function redrawWheelCanvas() {
+  if (state.view !== "wheel" || state.isSpinning) return;
+  const canvas = document.querySelector("#wheel-canvas");
+  if (!canvas) return;
+  drawWheel(canvas, state.activeSession?.pool ?? state.rollDraftPool, 0, {
+    theme: state.theme,
+  });
 }
 
 // Настройка «меньше движения» действует поверх системной, поэтому её нужно
@@ -419,6 +441,9 @@ async function handleAction(action, payload) {
     "account-mode": () => setAccountMode(payload.mode),
     "account-submit": () => submitAccountForm(payload.mode, payload.values),
     "account-signout": () => signOutAccount(),
+    "catalog-lucky": () => openLuckyMovie(),
+    "shortcuts-open": () => setShortcutsOpen(true),
+    "shortcuts-close": () => setShortcutsOpen(false),
   };
 
   await handlers[action]?.();
@@ -620,7 +645,22 @@ function resetCatalogFilters() {
 function setCatalogFilter(field, value) {
   state.catalogFilters[field] = value;
   state.focusControl = null;
+  pruneSelectionToVisible();
   render();
+}
+
+// Массовые операции работают по списку выделенных, а фильтр меняет то, что
+// человек видит. Без этой чистки «удалить выделенное» задело бы и фильмы,
+// ушедшие из выборки минуту назад.
+function pruneSelectionToVisible() {
+  if (!state.selectionMode || state.selectedMovieIds.size === 0) return;
+  const visible = new Set(getVisibleCatalogMovies().map((movie) => movie.id));
+  const kept = new Set(
+    [...state.selectedMovieIds].filter((id) => visible.has(id)),
+  );
+  if (kept.size !== state.selectedMovieIds.size) {
+    state.selectedMovieIds = kept;
+  }
 }
 
 function clearCatalogFilter(field) {
@@ -918,7 +958,7 @@ async function toggleMovieFavorite(movieId) {
 }
 
 function setCatalogView(mode) {
-  state.catalogView = mode === "list" ? "list" : "grid";
+  state.catalogView = ["list", "dense"].includes(mode) ? mode : "grid";
   writeStoredPreference(CATALOG_VIEW_KEY, state.catalogView);
   render();
 }
@@ -926,6 +966,40 @@ function setCatalogView(mode) {
 function toggleSidebar() {
   state.sidebarCollapsed = !state.sidebarCollapsed;
   writeStoredPreference(SIDEBAR_KEY, state.sidebarCollapsed ? "1" : "0");
+  render();
+}
+
+// «Мне повезёт»: случайный фильм ровно из того, что человек сейчас видит —
+// фильтры, поиск и статус учтены, потому что выборка та же, что в каталоге.
+function openLuckyMovie() {
+  const movies = filterCatalogMovies(state.library, state.catalogFilters);
+  const movie = pickRandomMovie(movies);
+  if (!movie) {
+    showToast("В текущей выборке нет фильмов.", "info");
+    return;
+  }
+  state.detailMovieId = movie.id;
+  render();
+  showToast(`Выпало: ${movie.title}`, "info");
+}
+
+function setShortcutsOpen(open) {
+  if (state.shortcutsOpen === open) return;
+  state.shortcutsOpen = open;
+  render();
+}
+
+// Каталог с курсором в поиске — по «/». Если раздел уже открыт, переход не
+// нужен, достаточно вернуть фокус в поле.
+function focusCatalogSearch() {
+  if (state.view !== "catalog") {
+    state.view = "catalog";
+    state.detailMovieId = null;
+    if (location.hash !== "#catalog") {
+      history.pushState(null, "", "#catalog");
+    }
+  }
+  state.focusControl = "catalog-query";
   render();
 }
 
@@ -980,6 +1054,24 @@ function buildCommands() {
       icon: "plus",
       keywords: "новый фильм создать add",
       run: () => state.onAction("movie-add", {}),
+    },
+    {
+      id: "action-lucky",
+      group: "Действия",
+      label: "Мне повезёт",
+      hint: "Случайный фильм из текущей выборки каталога",
+      icon: "dice",
+      keywords: "случайный рандом выбрать повезёт lucky random",
+      run: () => openLuckyMovie(),
+    },
+    {
+      id: "action-shortcuts",
+      group: "Действия",
+      label: "Горячие клавиши",
+      hint: "Шпаргалка по управлению с клавиатуры",
+      icon: "keyboard",
+      keywords: "клавиши хоткеи shortcuts помощь",
+      run: () => setShortcutsOpen(true),
     },
     {
       id: "action-add-category",
@@ -1067,6 +1159,7 @@ async function handleControl(control, payload) {
   if (catalogControls[control]) {
     state.catalogFilters[catalogControls[control]] = payload.value;
     state.focusControl = control === "catalog-query" ? control : null;
+    pruneSelectionToVisible();
     render();
     return;
   }
@@ -1664,10 +1757,45 @@ function handleGlobalKeydown(event) {
     return;
   }
 
+  if (event.key === "Escape" && state.shortcutsOpen) {
+    event.preventDefault();
+    setShortcutsOpen(false);
+    return;
+  }
+
   if (event.key === "Escape" && state.accountPanel.open && !isPaletteOpen()) {
     event.preventDefault();
     closeAccountPanel();
     return;
+  }
+
+  // Одиночные клавиши работают только в библиотеке и только когда человек
+  // ничего не набирает. Разбор идёт по event.code, поэтому раскладка
+  // клавиатуры значения не имеет.
+  if (isShortcutContext(event)) {
+    if (event.code === "Slash" && event.shiftKey) {
+      event.preventDefault();
+      setShortcutsOpen(!state.shortcutsOpen);
+      return;
+    }
+    // Дальше — команды, которые меняют экран: при открытой шпаргалке они
+    // сработали бы вслепую.
+    if (state.shortcutsOpen) return;
+    if (event.code === "Slash") {
+      event.preventDefault();
+      focusCatalogSearch();
+      return;
+    }
+    if (event.code === "KeyN") {
+      event.preventDefault();
+      openMovieDialog();
+      return;
+    }
+    if (event.code === "KeyR") {
+      event.preventDefault();
+      openLuckyMovie();
+      return;
+    }
   }
 
   if (event.key === "Escape" && state.detailMovieId && !isPaletteOpen()) {
@@ -1692,6 +1820,16 @@ function handleGlobalKeydown(event) {
   }
   event.preventDefault();
   spinActiveSession().catch(showUnexpectedError);
+}
+
+// Условия, при которых одиночная клавиша означает команду, а не ввод текста.
+function isShortcutContext(event) {
+  if (event.ctrlKey || event.metaKey || event.altKey) return false;
+  if (state.libraryLocked) return false;
+  if (isPaletteOpen() || document.querySelector("dialog[open]")) return false;
+  const active = document.activeElement;
+  if (active?.isContentEditable) return false;
+  return !["INPUT", "SELECT", "TEXTAREA"].includes(active?.tagName);
 }
 
 function openMovieDialog(movieId = null) {

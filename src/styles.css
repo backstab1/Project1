@@ -2314,6 +2314,19 @@ strong {
   grid-template-columns: repeat(auto-fill, minmax(206px, 1fr));
 }
 
+/* Плотная плитка для большой библиотеки: те же карточки, но мельче шаг сетки
+   и без второстепенных строк — на экран помещается вдвое больше. */
+.movie-grid[data-density="dense"] {
+  gap: clamp(0.6rem, 1vw, 0.9rem);
+  grid-template-columns: repeat(auto-fill, minmax(146px, 1fr));
+}
+
+.movie-grid[data-density="dense"] .movie-card__body { padding: 0.6rem 0.65rem 0.7rem; }
+.movie-grid[data-density="dense"] .movie-card__body h3 { font-size: 0.92rem; }
+.movie-grid[data-density="dense"] .movie-card__genres,
+.movie-grid[data-density="dense"] .movie-card__list { display: none; }
+.movie-grid[data-density="dense"] .movie-card__quick { display: none; }
+
 .movie-card {
   position: relative;
   display: flex;
@@ -4057,6 +4070,142 @@ strong {
   100% { transform: translateY(560%) rotate(520deg); opacity: 0; }
 }
 
+/* Кнопка «наверх» */
+
+/* Живёт над кабинетом в том же углу: оба слоя фиксированные, поэтому кнопка
+   поднята ровно на его высоту. */
+.to-top {
+  position: fixed;
+  z-index: 70;
+  right: 1.25rem;
+  bottom: calc(1.25rem + 4rem);
+  display: grid;
+  width: 2.6rem;
+  height: 2.6rem;
+  place-content: center;
+  border: 1px solid var(--border);
+  border-radius: var(--r-xs);
+  background: var(--surface);
+  box-shadow: var(--shadow-md);
+  color: var(--text-muted);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(10px);
+  transition:
+    opacity var(--t-fast) ease,
+    transform var(--t-fast) var(--ease-out),
+    color var(--t-fast) ease,
+    border-color var(--t-fast) ease;
+}
+
+.to-top.is-visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: none;
+}
+
+.to-top:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.to-top:active { transform: scale(0.94); }
+
+.to-top svg { width: 1.15rem; height: 1.15rem; }
+
+/* Шпаргалка по клавишам */
+
+.sheet {
+  position: fixed;
+  z-index: 95;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 1.25rem;
+}
+
+.sheet__scrim {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgba(6, 6, 14, 0.55);
+}
+
+.sheet__panel {
+  position: relative;
+  display: grid;
+  width: min(540px, 100%);
+  max-height: calc(100dvh - 3rem);
+  gap: 1rem;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+  padding: 1.25rem;
+  animation: sheet-in var(--t-base) var(--ease-out);
+}
+
+@keyframes sheet-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: none; }
+}
+
+.sheet__head {
+  display: grid;
+  align-items: center;
+  gap: 0.8rem;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.sheet__glyph {
+  display: grid;
+  width: 2.4rem;
+  height: 2.4rem;
+  place-content: center;
+  border-radius: var(--r-xs);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.sheet__list {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sheet__list li {
+  display: grid;
+  align-items: center;
+  gap: 0.75rem;
+  grid-template-columns: 8.5rem minmax(0, 1fr);
+  border-radius: var(--r-xs);
+  background: var(--surface-2);
+  padding: 0.5rem 0.7rem;
+  color: var(--text-muted);
+  font-size: 0.87rem;
+}
+
+.sheet__keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.sheet__foot {
+  margin: 0;
+  border-top: 1px solid var(--border);
+  padding-top: 0.8rem;
+  color: var(--text-dim);
+  font-size: 0.78rem;
+}
+
+@media (max-width: 480px) {
+  .sheet__list li { grid-template-columns: minmax(0, 1fr); gap: 0.3rem; }
+}
+
 /* Личный кабинет */
 
 /* Кабинет висит над содержимым, но ниже тостов и палитры: он не забирает
@@ -4620,6 +4769,11 @@ strong {
   /* В библиотеке снизу стоит мобильная навигация, на витрине её нет. */
   .app:not(.app--welcome) .account-dock {
     bottom: calc(4.6rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  .to-top {
+    right: 0.9rem;
+    bottom: calc(4.6rem + env(safe-area-inset-bottom, 0px) + 4rem);
   }
 
   .tabbar {

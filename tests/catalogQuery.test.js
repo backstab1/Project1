@@ -3,9 +3,11 @@ import assert from "node:assert/strict";
 
 import { MOVIE_STATUS, createMovie, createCategory } from "../src/domain/entities.js";
 import {
+  CATALOG_SORTS,
   DEFAULT_CATALOG_FILTERS,
   filterCatalogMovies,
   getMovieStatus,
+  pickRandomMovie,
 } from "../src/domain/catalogQuery.js";
 
 function buildLibrary() {
@@ -101,4 +103,53 @@ test("статус вычисляется из даты просмотра", () 
   assert.equal(getMovieStatus({ watchedAt: "2026-01-01T00:00:00.000Z" }), MOVIE_STATUS.watched);
   assert.equal(getMovieStatus({ status: MOVIE_STATUS.dropped }), MOVIE_STATUS.dropped);
   assert.equal(getMovieStatus({}), MOVIE_STATUS.queued);
+});
+
+test("сортировка «сначала короткие» уводит фильмы без длительности в конец", () => {
+  const library = {
+    categories: [],
+    franchises: [],
+    movies: [
+      createMovie({ id: "m-long", title: "Долгий", durationMinutes: 180 }),
+      createMovie({ id: "m-none", title: "Без длительности" }),
+      createMovie({ id: "m-short", title: "Короткий", durationMinutes: 82 }),
+    ],
+  };
+  const movies = filterCatalogMovies(library, {
+    ...DEFAULT_CATALOG_FILTERS,
+    sort: "duration",
+  });
+  assert.deepEqual(ids(movies), ["m-short", "m-long", "m-none"]);
+});
+
+test("сортировка «сначала новые» идёт по дате добавления", () => {
+  const library = {
+    categories: [],
+    franchises: [],
+    movies: [
+      createMovie({ id: "m-old", title: "Старый", createdAt: "2026-01-01T00:00:00.000Z" }),
+      createMovie({ id: "m-new", title: "Новый", createdAt: "2026-08-01T00:00:00.000Z" }),
+      createMovie({ id: "m-mid", title: "Средний", createdAt: "2026-04-01T00:00:00.000Z" }),
+    ],
+  };
+  const movies = filterCatalogMovies(library, {
+    ...DEFAULT_CATALOG_FILTERS,
+    sort: "recent",
+  });
+  assert.deepEqual(ids(movies), ["m-new", "m-mid", "m-old"]);
+});
+
+test("порядок каталога описан одним списком и содержит значение по умолчанию", () => {
+  const values = CATALOG_SORTS.map(([value]) => value);
+  assert.ok(values.includes(DEFAULT_CATALOG_FILTERS.sort));
+  assert.equal(new Set(values).size, values.length);
+});
+
+test("случайный фильм берётся из переданной выборки", () => {
+  const movies = [{ id: "a" }, { id: "b" }, { id: "c" }];
+  assert.equal(pickRandomMovie(movies, () => 0).id, "a");
+  assert.equal(pickRandomMovie(movies, () => 0.99).id, "c");
+  // Генератор, вернувший единицу, не должен выводить индекс за границу.
+  assert.equal(pickRandomMovie(movies, () => 1).id, "c");
+  assert.equal(pickRandomMovie([]), null);
 });

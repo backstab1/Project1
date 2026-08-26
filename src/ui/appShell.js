@@ -14,6 +14,7 @@ import { drawWheel } from "./wheelCanvas.js";
 import { isBackupReminderDue } from "../domain/backupReminder.js";
 import { selectEnrichmentCandidates } from "../domain/tmdbEnrichment.js";
 import {
+  CATALOG_SORTS,
   filterCatalogMovies,
   getMovieStatus,
 } from "../domain/catalogQuery.js";
@@ -21,6 +22,7 @@ import { buildInsights } from "../domain/insights.js";
 import { icon } from "./icons.js";
 import { renderWelcome } from "./welcomeScreen.js";
 import { bindAccountDock, renderAccountDock } from "./accountDock.js";
+import { setScrollLock } from "./scrollLock.js";
 
 // «Главная» намеренно отсутствует в боковом меню: на неё ведёт логотип CV.
 // Пункт остаётся только в мобильной нижней навигации, где логотипа нет.
@@ -62,6 +64,18 @@ const VIEW_META = Object.freeze({
 
 const MOBILE_VIEWS = ["dashboard", "catalog", "wheel", "watched"];
 
+// Шпаргалка по клавишам: открывается вопросительным знаком и повторяет ровно
+// то, что обрабатывает handleGlobalKeydown в main.js.
+const SHORTCUTS = [
+  [["Ctrl", "K"], "Палитра команд: разделы, действия и поиск по библиотеке"],
+  [["/"], "Каталог и курсор сразу в поле поиска"],
+  [["N"], "Добавить фильм"],
+  [["R"], "Случайный фильм из текущей выборки"],
+  [["Пробел"], "Крутить колесо — в разделе «Колесо»"],
+  [["Esc"], "Закрыть карточку, палитру, диалог или эту шпаргалку"],
+  [["?"], "Эта шпаргалка"],
+];
+
 let previousView = null;
 
 export function renderAppShell(root, state) {
@@ -69,6 +83,10 @@ export function renderAppShell(root, state) {
   const counts = getNavCounts(state);
   const viewChanged = previousView !== state.view;
   previousView = state.view;
+  // Перерисовка заменяет разметку целиком, поэтому позицию прокрутки нужно
+  // запомнить до неё: иначе любое действие — звезда, фильтр, открытие
+  // карточки — отбрасывало бы человека в начало длинного каталога.
+  const keptScroll = viewChanged ? 0 : readScrollTop(root);
 
   // Витрина занимает окно целиком: ни боковой панели, ни топбара,
   // только плавающая пилюля навигации, как на самой витрине.
@@ -154,6 +172,10 @@ export function renderAppShell(root, state) {
               <span>Поиск и команды</span>
               <kbd>Ctrl</kbd><kbd>K</kbd>
             </button>
+            <button class="icon-btn" type="button" data-action="shortcuts-open"
+              aria-label="Горячие клавиши" title="Горячие клавиши (?)">
+              ${icon("keyboard")}
+            </button>
             <button class="icon-btn" type="button" data-action="theme-toggle"
               aria-label="${state.theme === "dark" ? "Включить светлую тему" : "Включить тёмную тему"}"
               title="${state.theme === "dark" ? "Светлая тема" : "Тёмная тема"}">
@@ -165,6 +187,9 @@ export function renderAppShell(root, state) {
 
           <section class="content ${viewChanged ? "is-entering" : ""}" id="view-content"></section>
         </div>
+
+        <button class="to-top" type="button" data-scroll-top
+          aria-label="Наверх" title="Наверх">${icon("arrowUpLine")}</button>
       </div>
 
       <nav class="tabbar" aria-label="Мобильная навигация">
@@ -190,6 +215,7 @@ export function renderAppShell(root, state) {
       </nav>
 
       ${renderMovieDetail(state)}
+      ${renderShortcuts(state)}
 
       <dialog class="modal" id="entity-dialog">
         <form method="dialog" class="modal__surface">
@@ -215,6 +241,11 @@ export function renderAppShell(root, state) {
   `;
 
   renderCurrentView(root.querySelector("#view-content"), state);
+  restoreScrollTop(root, keptScroll);
+  // Шторка фильма — такой же оверлей, как модалка и палитра: фон под ней
+  // ездить не должен.
+  setScrollLock("drawer", Boolean(state.detailMovieId));
+  setScrollLock("shortcuts", Boolean(state.shortcutsOpen));
   bindEvents(root, state);
   bindAccountDock(root, state);
 
@@ -244,6 +275,7 @@ const WELCOME_LINKS = [
 ];
 
 function renderWelcomeShell(root, state) {
+  const keptScroll = readScrollTop(root);
   root.innerHTML = `
     <div class="app app--welcome">
       <div class="app__aurora" aria-hidden="true">
@@ -277,6 +309,7 @@ function renderWelcomeShell(root, state) {
   `;
 
   renderWelcome(root.querySelector("#view-content"), state);
+  restoreScrollTop(root, keptScroll);
   bindEvents(root, state);
   bindWelcomeScroll(root);
   setupImageFallbacks(root);
@@ -295,6 +328,45 @@ function bindWelcomeScroll(root) {
   });
 }
 
+function readScrollTop(root) {
+  return root.querySelector(".content-scroll")?.scrollTop ?? 0;
+}
+
+function restoreScrollTop(root, value) {
+  if (!value) return;
+  const scroller = root.querySelector(".content-scroll");
+  if (scroller) scroller.scrollTop = value;
+}
+
+function renderShortcuts(state) {
+  if (!state.shortcutsOpen) return "";
+  return `
+    <div class="sheet">
+      <div class="sheet__scrim" data-action="shortcuts-close"></div>
+      <section class="sheet__panel" role="dialog" aria-modal="true"
+        aria-label="Горячие клавиши">
+        <header class="sheet__head">
+          <span class="sheet__glyph">${icon("keyboard")}</span>
+          <div>
+            <p class="eyebrow">Управление с клавиатуры</p>
+            <h2>Горячие клавиши</h2>
+          </div>
+          <button class="icon-btn" type="button" data-action="shortcuts-close"
+            aria-label="Закрыть">${icon("close")}</button>
+        </header>
+        <ul class="sheet__list">
+          ${SHORTCUTS.map(([keys, text]) => `
+            <li>
+              <span class="sheet__keys">${keys.map((key) => `<kbd>${escapeHtml(key)}</kbd>`).join("")}</span>
+              <span>${escapeHtml(text)}</span>
+            </li>
+          `).join("")}
+        </ul>
+        <p class="sheet__foot">Клавиши не срабатывают, пока курсор стоит в поле ввода.</p>
+      </section>
+    </div>`;
+}
+
 function bindEvents(root, state) {
   root.querySelectorAll("[data-view]").forEach((button) => {
     button.addEventListener("click", () => state.onNavigate(button.dataset.view));
@@ -304,6 +376,7 @@ function bindEvents(root, state) {
       state.onAction(button.dataset.action, { ...button.dataset });
     });
   });
+  bindScrollTop(root);
   root.querySelectorAll("[data-control]").forEach((control) => {
     const eventName = control.matches('input[type="search"], input[type="text"]')
       ? "input"
@@ -316,6 +389,35 @@ function bindEvents(root, state) {
       });
     });
   });
+}
+
+// Кнопка «наверх» появляется только на длинной странице. Слушатель пассивный
+// и не делает ничего тяжёлого: раз в кадр переключает класс, если порог
+// пройден, — прокрутка от этого не страдает.
+function bindScrollTop(root) {
+  const scroller = root.querySelector(".content-scroll");
+  const button = root.querySelector("[data-scroll-top]");
+  if (!scroller || !button) return;
+
+  const THRESHOLD = 640;
+  let queued = false;
+  const sync = () => {
+    queued = false;
+    button.classList.toggle("is-visible", scroller.scrollTop > THRESHOLD);
+  };
+
+  scroller.addEventListener("scroll", () => {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(sync);
+  }, { passive: true });
+
+  button.addEventListener("click", () => {
+    const reduced = document.documentElement.dataset.motion === "reduced";
+    scroller.scrollTo({ top: 0, behavior: reduced ? "auto" : "smooth" });
+  });
+
+  sync();
 }
 
 function renderPrimaryAction(state) {
@@ -399,8 +501,14 @@ function renderDashboard(container, state) {
     ? Math.round((statistics.watchedMovieCount / statistics.movieCount) * 100)
     : 0;
   const topGenres = getTopGenres(library.movies, 6);
+  // Начатое важнее следующего в очереди, поэтому «смотрю» выносится отдельной
+  // строкой и не дублируется ниже.
+  const watchingNow = library.movies
+    .filter((movie) => !movie.watchedAt && movie.status === MOVIE_STATUS.watching)
+    .slice(0, 4);
+  const watchingIds = new Set(watchingNow.map((movie) => movie.id));
   const nextUp = library.movies
-    .filter((movie) => !movie.watchedAt)
+    .filter((movie) => !movie.watchedAt && !watchingIds.has(movie.id))
     .sort((a, b) => a.categoryPosition - b.categoryPosition)
     .slice(0, 4);
   const backupDue = isBackupReminderDue({
@@ -512,6 +620,45 @@ function renderDashboard(container, state) {
         </header>
         <div class="rail">
           ${recentMovies.map(posterTile).join("")}
+        </div>
+      </section>
+    ` : ""}
+
+    ${watchingNow.length ? `
+      <section class="block">
+        <header class="block__head">
+          <div>
+            <p class="eyebrow">Начато</p>
+            <h2>Смотрю сейчас</h2>
+          </div>
+          <button class="btn btn--ghost btn--sm" type="button"
+            data-action="catalog-status-open" data-status="${MOVIE_STATUS.watching}">
+            Все начатые ${icon("arrowRight")}
+          </button>
+        </header>
+        <div class="queue-row">
+          ${watchingNow.map((movie) => `
+            <article class="queue-chip">
+              <span class="queue-chip__poster">
+                ${movie.coverUrl
+                  ? `<img src="${escapeAttribute(movie.coverUrl)}" alt="" loading="lazy"
+                      referrerpolicy="no-referrer"
+                      data-poster-fallback="${escapeAttribute(initials(movie.title))}">`
+                  : `<span class="poster-fallback">${escapeHtml(initials(movie.title))}</span>`}
+              </span>
+              <span class="queue-chip__text">
+                <strong>${escapeHtml(movie.title)}</strong>
+                <small>${movie.releaseYear ?? "—"}${movie.durationMinutes ? ` · ${movie.durationMinutes} мин` : ""}</small>
+              </span>
+              <button class="icon-btn icon-btn--sm" type="button"
+                data-action="watch-add" data-id="${movie.id}"
+                aria-label="Отметить просмотренным"
+                title="Отметить просмотренным">${icon("check")}</button>
+              <button class="icon-btn icon-btn--sm" type="button"
+                data-action="movie-open" data-id="${movie.id}"
+                aria-label="Открыть карточку">${icon("chevronRight")}</button>
+            </article>
+          `).join("")}
         </div>
       </section>
     ` : ""}
@@ -887,7 +1034,10 @@ function renderMovieDetail(state) {
 
 function renderCatalog(container, state) {
   const { library, catalogFilters } = state;
-  const viewMode = state.catalogView === "list" ? "list" : "grid";
+  // Три режима: обычная плитка, плотная плитка для больших библиотек и список.
+  const viewMode = ["list", "dense"].includes(state.catalogView)
+    ? state.catalogView
+    : "grid";
   const categories = new Map(library.categories.map((category) => [category.id, category]));
   const franchiseByMovieId = getMovieFranchiseMap(library.franchises);
   const genres = [...new Set(
@@ -939,13 +1089,24 @@ function renderCatalog(container, state) {
           aria-pressed="${Boolean(selection)}">
           ${icon("check")}<span>${selection ? "Выйти из выделения" : "Выбрать"}</span>
         </button>
+        <button type="button" class="btn btn--ghost btn--sm"
+          data-action="catalog-lucky" ${movies.length ? "" : "disabled"}
+          title="${movies.length
+            ? "Случайный фильм из текущей выборки"
+            : "Сначала нужен хотя бы один фильм"}">
+          ${icon("dice")}<span>Мне повезёт</span>
+        </button>
         <div class="segmented segmented--icons" role="group" aria-label="Вид">
-          <button type="button" class="${viewMode === "grid" ? "is-active" : ""}"
-            data-action="catalog-view" data-mode="grid" aria-label="Плитка"
-            aria-pressed="${viewMode === "grid"}">${icon("grid")}</button>
-          <button type="button" class="${viewMode === "list" ? "is-active" : ""}"
-            data-action="catalog-view" data-mode="list" aria-label="Список"
-            aria-pressed="${viewMode === "list"}">${icon("list")}</button>
+          ${[
+            ["grid", "Плитка", "grid"],
+            ["dense", "Плотная плитка", "gridDense"],
+            ["list", "Список", "list"],
+          ].map(([mode, label, iconName]) => `
+            <button type="button" class="${viewMode === mode ? "is-active" : ""}"
+              data-action="catalog-view" data-mode="${mode}"
+              aria-label="${label}" title="${label}"
+              aria-pressed="${viewMode === mode}">${icon(iconName)}</button>
+          `).join("")}
         </div>
       </div>
     </div>
@@ -996,10 +1157,10 @@ function renderCatalog(container, state) {
       <div class="select-field">
         ${icon("shuffle")}
         <select data-control="catalog-sort" aria-label="Сортировка">
-          <option value="title" ${catalogFilters.sort === "title" ? "selected" : ""}>По названию</option>
-          <option value="year" ${catalogFilters.sort === "year" ? "selected" : ""}>По году</option>
-          <option value="rating" ${catalogFilters.sort === "rating" ? "selected" : ""}>По рейтингу</option>
-          <option value="queue" ${catalogFilters.sort === "queue" ? "selected" : ""}>По очереди</option>
+          ${CATALOG_SORTS.map(([value, label]) => `
+            <option value="${value}" ${catalogFilters.sort === value ? "selected" : ""}>
+              ${escapeHtml(label)}
+            </option>`).join("")}
         </select>
         ${icon("chevronDown", "select-field__caret")}
       </div>
@@ -1052,8 +1213,8 @@ function renderCatalog(container, state) {
       library.movies.length
         ? { action: "catalog-filters-reset", label: "Сбросить фильтры", icon: "refresh" }
         : { action: "movie-add", label: "Добавить фильм", icon: "plus" },
-    ) : viewMode === "grid" ? `
-      <div class="movie-grid ${selection ? "is-selecting" : ""}">
+    ) : viewMode !== "list" ? `
+      <div class="movie-grid ${selection ? "is-selecting" : ""}" data-density="${viewMode}">
         ${movies.map((movie, index) => movieCard(
           movie,
           categories.get(movie.categoryId),
@@ -2368,17 +2529,14 @@ function escapeAttribute(value) {
   return escapeHtml(value).replaceAll("`", "&#096;");
 }
 
+// Постер, который не загрузился, заменяется инициалами — этим занимается
+// общий перехватчик в main.js. Здесь остаётся всё остальное: у оформления
+// (фоны, логотипы, кадры витрины) подпись «CV» была бы мусором, поэтому
+// декоративная картинка просто убирается, а осмысленная показывает alt.
 function setupImageFallbacks(root) {
-  root.querySelectorAll("img").forEach((image) => {
+  root.querySelectorAll("img:not([data-poster-fallback])").forEach((image) => {
     image.addEventListener("error", () => {
-      image.hidden = true;
-      const parent = image.parentElement;
-      if (parent && !parent.querySelector(".poster-fallback")) {
-        const fallback = document.createElement("span");
-        fallback.className = "poster-fallback poster-fallback--error";
-        fallback.textContent = "CV";
-        parent.append(fallback);
-      }
+      if (image.alt === "") image.hidden = true;
     }, { once: true });
   });
 }

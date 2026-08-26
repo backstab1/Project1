@@ -1,4 +1,5 @@
 import { icon } from "./icons.js";
+import { lockScroll, unlockScroll } from "./scrollLock.js";
 
 /**
  * Палитра команд (Ctrl+K): единая точка входа для навигации, действий
@@ -25,7 +26,7 @@ export function openPalette(nextCommands) {
   ensureNode();
   lastFocused = document.activeElement;
   overlay.hidden = false;
-  document.body.classList.add("has-overlay");
+  lockScroll("palette");
   requestAnimationFrame(() => overlay.classList.add("is-open"));
   inputNode.value = "";
   updateMatches("");
@@ -35,7 +36,7 @@ export function openPalette(nextCommands) {
 export function closePalette() {
   if (!overlay || overlay.hidden) return;
   overlay.classList.remove("is-open");
-  document.body.classList.remove("has-overlay");
+  unlockScroll("palette");
   setTimeout(() => {
     if (overlay && !overlay.classList.contains("is-open")) overlay.hidden = true;
   }, 180);
