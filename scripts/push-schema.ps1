@@ -1,10 +1,10 @@
-# Накат миграций через сессионный пулер Supabase.
+﻿# Накат миграций через сессионный пулер Supabase.
 #
 # Прямой адрес базы db.<ref>.supabase.co существует только в IPv6 и из этой
-# сети недоступен, поэтому подключение идёт через пулер по IPv4.
+# сети недоступен, поэтому подключение идет через пулер по IPv4.
 #
 # Скрипт собирает строку подключения сам: имя пользователя, кодирование
-# пароля и порт — те места, где проще всего ошибиться руками. Пароль вводится
+# пароля и порт - те места, где проще всего ошибиться руками. Пароль вводится
 # скрыто, в журнал не попадает и нигде не сохраняется.
 
 $ErrorActionPreference = 'Stop'
@@ -28,10 +28,10 @@ Write-Host ''
 Write-Host "  Проект: $ref"
 Write-Host "  Регион: $region"
 Write-Host ''
-Write-Host '  Нужен пароль базы данных — тот, что вы задавали при'
+Write-Host '  Нужен пароль базы данных - тот, что вы задавали при'
 Write-Host '  создании проекта. Не пароль от аккаунта Supabase.'
 Write-Host ''
-Write-Host '  Забыли — панель: Project Settings, Database,'
+Write-Host '  Забыли - панель: Project Settings, Database,'
 Write-Host '  Database password, Reset database password.'
 Write-Host ''
 Write-Host '  Ввод скрыт: символы не отображаются, это нормально.'
@@ -42,7 +42,7 @@ $plain = [Runtime.InteropServices.Marshal]::PtrToStringBSTR(
   [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
 )
 if ([string]::IsNullOrWhiteSpace($plain)) {
-  Write-Host 'Пароль не введён.' -ForegroundColor Red
+  Write-Host 'Пароль не введен.' -ForegroundColor Red
   exit 1
 }
 
@@ -83,7 +83,7 @@ foreach ($poolHost in $poolers) {
   }
   if ($output -match 'password authentication failed|SASL') {
     Write-Host ''
-    Write-Host 'Пароль не подошёл. Сбросьте его в панели и запустите файл заново.' -ForegroundColor Red
+    Write-Host 'Пароль не подошел. Сбросьте его в панели и запустите файл заново.' -ForegroundColor Red
     break
   }
 }
@@ -96,8 +96,8 @@ if ($ok) {
 } else {
   Write-Host '===========================================================' -ForegroundColor Red
   Write-Host '  Не вышло. Журнал без пароля: push-schema.log' -ForegroundColor Red
-  Write-Host '  Просто напишите в чат — я его прочитаю сам.' -ForegroundColor Red
+  Write-Host '  Просто напишите в чат - я его прочитаю сам.' -ForegroundColor Red
   Write-Host '===========================================================' -ForegroundColor Red
 }
 Write-Host ''
-Read-Host 'Enter — закрыть окно'
+Read-Host 'Enter - закрыть окно'
