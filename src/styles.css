@@ -3615,6 +3615,13 @@ strong {
   font-weight: 500;
 }
 
+.participant-tag small {
+  color: var(--text-dim);
+  font-size: 0.74rem;
+  font-weight: 400;
+  padding-right: 0.3rem;
+}
+
 .participant-tag button {
   display: grid;
   width: 1.4rem;
@@ -3761,11 +3768,6 @@ strong {
   display: grid;
   gap: 0.75rem;
   grid-template-columns: 1fr 1fr;
-}
-
-.player-row {
-  grid-template-columns: 1fr 6rem;
-  align-items: end;
 }
 
 .checkbox-list {
@@ -5017,6 +5019,9 @@ strong {
   width: 100%;
   max-width: 760px;
   gap: 1rem;
+  /* Колонка узкая, а место под неё широкое: без выравнивания по центру
+     справа оставалась пустая половина экрана. */
+  margin-inline: auto;
 }
 
 .set-group {
@@ -5063,7 +5068,8 @@ strong {
 .set-row + .set-table,
 .set-table + .set-row,
 .set-row + .set-alert,
-.set-alert + .set-row {
+.set-alert + .set-row,
+.set-block + .set-row {
   border-top: 1px solid var(--border);
 }
 
@@ -5243,6 +5249,130 @@ strong {
   .set-row { grid-template-columns: minmax(0, 1fr); }
   .set-row__control { justify-content: flex-start; }
 }
+
+/* ---------------------------------------------------------------- Друзья */
+
+/* Раздел собран из тех же групп, что и настройки: узкая колонка, строки
+   «человек — действия». Отличается только левая часть строки — вместо
+   подписи там аватар и профиль. */
+
+.person-row__who {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.person-row__avatar {
+  display: grid;
+  width: 2.1rem;
+  height: 2.1rem;
+  flex: none;
+  place-content: center;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 500;
+}
+
+/* Имя пользователя всегда с собачкой: она подсказывает формат до того, как
+   человек введёт кириллицу и получит отказ. */
+.handle-field {
+  display: inline-flex;
+  align-items: center;
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-xs);
+  background: var(--surface-2);
+}
+
+.handle-field i {
+  padding: 0 0.1rem 0 0.5rem;
+  color: var(--text-dim);
+  font-size: 0.83rem;
+  font-style: normal;
+}
+
+.handle-field input {
+  width: 9rem;
+  border: 0;
+  background: transparent;
+  padding: 0.35rem 0.5rem 0.35rem 0.15rem;
+  color: var(--text);
+  font-size: 0.83rem;
+}
+
+.handle-field input:focus { outline: none; }
+
+.handle-field:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.set-note,
+.set-empty {
+  margin: 0;
+  padding: 0.6rem 0.9rem;
+  color: var(--text-dim);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.set-row + .set-note,
+.set-row + .set-empty,
+.set-note + .set-row,
+.set-empty + .set-row {
+  border-top: 1px solid var(--border);
+}
+
+/* Состав сессии: строка «кто играет» с флажком и числом сейвов справа.
+   Имена не вводятся — они приходят из аккаунтов, поэтому строка только
+   отмечается. */
+.player-picker {
+  display: grid;
+  gap: 0.3rem;
+  max-height: 18rem;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  padding: 0.5rem;
+}
+
+.player-pick {
+  display: grid;
+  align-items: center;
+  gap: 0.75rem;
+  grid-template-columns: minmax(0, 1fr) 5.5rem;
+  border-radius: var(--r-xs);
+  padding: 0.3rem 0.4rem;
+}
+
+.player-pick__who {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.55rem;
+  cursor: pointer;
+}
+
+.player-pick__who strong {
+  display: block;
+  font-size: 0.88rem;
+  font-weight: 500;
+}
+
+.player-pick__who small {
+  display: block;
+  color: var(--text-dim);
+  font-size: 0.74rem;
+}
+
+.player-pick__saves { margin: 0; }
+.player-pick__saves span { font-size: 0.72rem; }
+.player-pick__saves input { padding: 0.3rem 0.45rem; font-size: 0.83rem; }
 
 /* --------------------------------------- Статусы и массовые операции */
 

@@ -7,7 +7,6 @@ import {
   saveCategory,
   saveFranchise,
   saveMovie,
-  saveParticipant,
   saveRollSession,
   saveSetting,
 } from "./data/libraryRepository.js";
@@ -17,7 +16,6 @@ import {
   createCategory,
   createFranchise,
   createMovie,
-  createParticipant,
   normalizeText,
   parseTagInput,
   upsertRating,
@@ -90,8 +88,24 @@ import {
   resolveAccountEntry,
   submitAuthForm,
 } from "./ui/authFlow.js";
-import { describeAuthError } from "./domain/authRules.js";
+import { describeAuthError, normalizeHandle } from "./domain/authRules.js";
+import {
+  buildViewers,
+  describeFriendError,
+  findViewer,
+  groupFriendships,
+  validateFriendHandle,
+} from "./domain/friends.js";
 import { signOut } from "./services/authService.js";
+import {
+  acceptFriendRequest,
+  blockUser,
+  findProfileByHandle,
+  loadFriendships,
+  removeFriendship,
+  sendFriendRequest,
+  setLibraryVisibility,
+} from "./services/friendsService.js";
 import { openDialog } from "./ui/dialog.js";
 import { animateWheel, drawWheel } from "./ui/wheelCanvas.js";
 import { showToast } from "./ui/toast.js";
@@ -118,6 +132,7 @@ const VIEW_IDS = new Set([
   "wheel",
   "sessions",
   "insights",
+  "friends",
   "settings",
 ]);
 const CATALOG_VIEW_KEY = "cinevault-catalog-view";
@@ -176,6 +191,16 @@ const state = {
   selectedMovieIds: new Set(),
   focusControl: null,
   account: null,
+  // Друзья приходят с сервера, а не из библиотеки: библиотека пока лежит в
+  // IndexedDB, а заявки живут только в Postgres. Список заявок хранится
+  // сырыми строками — раскладывает их по группам domain/friends.js.
+  friends: {
+    rows: [],
+    loading: false,
+    busy: false,
+    error: "",
+    search: { query: "", profile: null, error: "", notice: "", busy: false },
+  },
   // Кабинет внизу справа: гостю показывает вход, вошедшему — профиль.
   accountPanel: {
     open: false,
@@ -294,7 +319,38 @@ async function loadWorkspace() {
     console.error(error);
     state.error = error instanceof Error ? error : new Error(String(error));
   }
+  // Друзья не должны ронять библиотеку: сервер может быть недоступен, а
+  // каталог лежит рядом и открывается без него.
+  await refreshFriends();
   applyMotionPreference();
+}
+
+async function refreshFriends() {
+  if (!state.account?.id) {
+    state.friends = {
+      ...state.friends,
+      rows: [],
+      loading: false,
+      error: "",
+    };
+    return;
+  }
+
+  state.friends = { ...state.friends, loading: true, error: "" };
+  try {
+    state.friends = {
+      ...state.friends,
+      rows: await loadFriendships(state.account.id),
+      loading: false,
+    };
+  } catch (error) {
+    console.error(error);
+    state.friends = {
+      ...state.friends,
+      loading: false,
+      error: describeFriendError(error),
+    };
+  }
 }
 
 function startBackupRoutines() {
@@ -401,8 +457,21 @@ async function handleAction(action, payload) {
     "backup-export": () => exportBackup(),
     "legacy-migrate": () => migrateLegacyLibrary(),
     "backup-remind-later": () => dismissBackupReminder(),
-    "participant-edit": () => openParticipantDialog(payload.id),
-    "participant-delete": () => confirmParticipantDeletion(payload.id),
+    "participants-forget": () => confirmLegacyParticipantCleanup(),
+    "friends-open": () => state.onNavigate("friends"),
+    "friend-find": () => searchFriendByHandle(),
+    "friend-request": () => requestFriendship(payload.userId),
+    "friend-accept": () => runFriendAction(payload.id, acceptFriendRequest,
+      "Заявка принята."),
+    "friend-decline": () => runFriendAction(payload.id, removeFriendship,
+      "Заявка отклонена."),
+    "friend-cancel": () => runFriendAction(payload.id, removeFriendship,
+      "Заявка отменена."),
+    "friend-remove": () => confirmFriendRemoval(payload.id),
+    "friend-block": () => confirmFriendBlock(payload.id),
+    "friend-unblock": () => runFriendAction(payload.id, removeFriendship,
+      "Блокировка снята."),
+    "privacy-set": () => setLibraryPrivacy(payload.value),
     "session-open": () => openSessionDetails(payload.id),
     "tmdb-configure": () => openTmdbTokenDialog(),
     "tmdb-clear": () => removeTmdbToken(),
@@ -633,7 +702,219 @@ function closeWorkspace() {
   state.selectionMode = false;
   state.selectedMovieIds = new Set();
   state.catalogFilters = { ...DEFAULT_CATALOG_FILTERS };
+  state.friends = {
+    rows: [],
+    loading: false,
+    busy: false,
+    error: "",
+    search: { query: "", profile: null, error: "", notice: "", busy: false },
+  };
   state.error = null;
+}
+
+/* ---------------------------------------------------------------- Друзья */
+
+// Заявку подают по точному имени пользователя: списка аккаунтов сервер не
+// отдаёт, поэтому поиск — это отдельный шаг, а не подсказка в поле.
+async function searchFriendByHandle() {
+  const search = state.friends.search;
+  if (search.busy) return;
+
+  const message = validateFriendHandle(search.query, state.account?.handle);
+  if (message) {
+    setFriendSearch({ error: message, profile: null, notice: "" });
+    return;
+  }
+
+  const handle = normalizeHandle(search.query);
+  setFriendSearch({ busy: true, error: "", notice: "", profile: null });
+
+  try {
+    const profile = await findProfileByHandle(handle);
+    if (!profile) {
+      setFriendSearch({
+        busy: false,
+        notice: `Аккаунта @${handle} нет. Проверьте имя — оно пишется латиницей.`,
+      });
+      return;
+    }
+
+    const existing = findFriendshipWith(profile.id);
+    setFriendSearch({
+      busy: false,
+      profile,
+      notice: existing ? describeExistingLink(existing) : "",
+    });
+  } catch (error) {
+    console.error(error);
+    setFriendSearch({ busy: false, error: describeFriendError(error) });
+  }
+}
+
+function describeExistingLink(item) {
+  if (item.status === "accepted") return "Уже у вас в друзьях.";
+  if (item.status === "blocked") {
+    return item.ownBlock ? "Вы заблокировали этого человека." : "Связь заблокирована.";
+  }
+  return item.outgoing
+    ? "Заявка уже отправлена — ждём ответа."
+    : "Этот человек уже написал вам: ответьте на заявку ниже.";
+}
+
+function findFriendshipWith(userId) {
+  const groups = groupFriendships(state.friends.rows, state.account?.id);
+  return [
+    ...groups.friends,
+    ...groups.incoming,
+    ...groups.outgoing,
+    ...groups.blocked,
+  ].find((item) => item.otherId === userId) ?? null;
+}
+
+async function requestFriendship(userId) {
+  if (!userId || state.friends.busy) return;
+
+  const existing = findFriendshipWith(userId);
+  if (existing) {
+    setFriendSearch({ notice: describeExistingLink(existing) });
+    return;
+  }
+
+  await withFriendsBusy(async () => {
+    await sendFriendRequest(userId);
+    await refreshFriends();
+    setFriendSearch({ query: "", profile: null, notice: "", error: "" });
+    showToast("Заявка отправлена.");
+  });
+}
+
+function confirmFriendRemoval(id) {
+  const item = findFriendshipById(id);
+  if (!item) return;
+
+  openConfirmation(
+    "Удалить из друзей?",
+    `${friendName(item)} перестанет видеть вашу библиотеку и исчезнет из списка
+     зрителей. Оценки, которые он уже поставил, останутся.`,
+    () => runFriendAction(id, removeFriendship, "Удалён из друзей."),
+  );
+}
+
+function confirmFriendBlock(id) {
+  const item = findFriendshipById(id);
+  if (!item) return;
+
+  openConfirmation(
+    "Заблокировать?",
+    `${friendName(item)} не найдёт вас поиском и не сможет подать заявку.
+     Снять блокировку можно здесь же.`,
+    () => runFriendAction(
+      id,
+      (friendshipId) => blockUser({ friendshipId }),
+      "Человек заблокирован.",
+    ),
+    "Заблокировать",
+  );
+}
+
+function findFriendshipById(id) {
+  const groups = groupFriendships(state.friends.rows, state.account?.id);
+  return [
+    ...groups.friends,
+    ...groups.incoming,
+    ...groups.outgoing,
+    ...groups.blocked,
+  ].find((item) => item.id === id) ?? null;
+}
+
+function friendName(item) {
+  const name = String(item?.profile?.display_name ?? "").trim();
+  if (name) return name;
+  const handle = String(item?.profile?.handle ?? "").trim();
+  return handle ? `@${handle}` : "Этот человек";
+}
+
+// Все ответы на заявку устроены одинаково: запрос, перечитывание списка,
+// тост. Отличается только сам запрос и текст.
+async function runFriendAction(id, request, successText) {
+  if (!id || state.friends.busy) return;
+  await withFriendsBusy(async () => {
+    await request(id);
+    await refreshFriends();
+    showToast(successText);
+  });
+}
+
+async function withFriendsBusy(run) {
+  state.friends = { ...state.friends, busy: true, error: "" };
+  render();
+  try {
+    await run();
+  } catch (error) {
+    console.error(error);
+    state.friends = { ...state.friends, error: describeFriendError(error) };
+  } finally {
+    state.friends = { ...state.friends, busy: false };
+    render();
+  }
+}
+
+// Видимость библиотеки хранится в профиле: сервер по ней и решает, отдавать
+// ли записи другу. Локальная копия профиля обновляется ответом сервера, а не
+// нажатием кнопки.
+async function setLibraryPrivacy(visibility) {
+  if (!["private", "friends"].includes(visibility)) return;
+  if (state.friends.busy) return;
+  if ((state.account?.library_visibility ?? "private") === visibility) return;
+
+  await withFriendsBusy(async () => {
+    const profile = await setLibraryVisibility(visibility);
+    state.account = { ...state.account, ...profile };
+    showToast(
+      visibility === "friends"
+        ? "Библиотеку видят друзья."
+        : "Библиотека снова скрыта.",
+    );
+  });
+}
+
+function setFriendSearch(patch) {
+  state.friends = {
+    ...state.friends,
+    search: { ...state.friends.search, ...patch },
+  };
+  state.focusControl = "friend-search";
+  render();
+}
+
+// Имена из версии с ручным вводом: в оценках и в истории сессий они остаются,
+// но подсказывать их больше нечему.
+function confirmLegacyParticipantCleanup() {
+  const participants = state.library.participants ?? [];
+  if (participants.length === 0) return;
+
+  openConfirmation(
+    "Забыть старые имена?",
+    `${participants.length} ${pluralizeName(participants.length)} исчезнет из
+     настроек. Оценки и завершённые сессии останутся без изменений.`,
+    async () => {
+      await Promise.all(
+        participants.map((participant) => deleteParticipantRecord(participant.id)),
+      );
+      await reloadLibrary();
+      showToast("Старые имена забыты.");
+    },
+    "Забыть",
+  );
+}
+
+function pluralizeName(count) {
+  const mod100 = count % 100;
+  const mod10 = count % 10;
+  if (mod100 >= 11 && mod100 <= 19) return "имён";
+  if (mod10 === 1) return "имя";
+  if (mod10 >= 2 && mod10 <= 4) return "имени";
+  return "имён";
 }
 
 function resetCatalogFilters() {
@@ -1034,6 +1315,8 @@ function buildCommands() {
     ["watched", "Просмотренные", "eye"],
     ["wheel", "Колесо", "wheel"],
     ["sessions", "История роллов", "history"],
+    ["insights", "Статистика", "target"],
+    ["friends", "Друзья", "users"],
     ["settings", "Настройки", "settings"],
   ].map(([view, label, iconName]) => ({
     id: `nav-${view}`,
@@ -1198,6 +1481,24 @@ async function handleControl(control, payload) {
     return;
   }
 
+  // Поле поиска друга держит своё значение в состоянии: перерисовка заменяет
+  // разметку целиком, поэтому фокус возвращает focusControl.
+  if (control === "friend-search") {
+    state.friends = {
+      ...state.friends,
+      search: {
+        ...state.friends.search,
+        query: payload.value,
+        error: "",
+        notice: "",
+        profile: null,
+      },
+    };
+    state.focusControl = "friend-search";
+    render();
+    return;
+  }
+
   if (control === "backup-import" && payload.files?.[0]) {
     await importBackupFile(payload.files[0]);
     return;
@@ -1351,56 +1652,6 @@ async function dismissBackupReminder() {
   showToast(`Напоминание отложено на ${days} дней.`);
 }
 
-function openParticipantDialog(participantId) {
-  const participant = state.library.participants.find(
-    (item) => item.id === participantId,
-  );
-  if (!participant) return;
-
-  openDialog({
-    title: "Редактировать игрока",
-    body: `
-      <label class="field">
-        <span>Имя</span>
-        <input name="name" required maxlength="80"
-          value="${escapeAttribute(participant.name)}">
-      </label>
-      <p class="form-hint">Изменение имени не переписывает исторические
-      снимки уже завершённых сессий.</p>
-    `,
-    onSubmit: async (formData) => {
-      const name = String(formData.get("name")).trim();
-      const duplicate = state.library.participants.find(
-        (item) =>
-          item.id !== participant.id &&
-          item.normalizedName === normalizeText(name),
-      );
-      if (duplicate) {
-        throw new Error("Игрок с таким именем уже существует.");
-      }
-      await saveParticipant(createParticipant({ ...participant, name }));
-      await reloadLibrary();
-      showToast("Имя игрока обновлено.");
-    },
-  });
-}
-
-function confirmParticipantDeletion(participantId) {
-  const participant = state.library.participants.find(
-    (item) => item.id === participantId,
-  );
-  if (!participant) return;
-  openConfirmation(
-    "Удалить сохранённое имя?",
-    `«${participant.name}» исчезнет из быстрых подсказок. Оценки и история останутся без изменений.`,
-    async () => {
-      await deleteParticipantRecord(participantId);
-      await reloadLibrary();
-      showToast("Сохранённое имя удалено.");
-    },
-  );
-}
-
 function openSessionDetails(sessionId) {
   const session = state.library.rollSessions.find(
     (item) => item.id === sessionId,
@@ -1497,40 +1748,49 @@ function confirmWatchRemoval(movieId) {
   );
 }
 
+// Зрителя больше не вводят руками: оценку ставит аккаунт — свой или друга.
+// Поэтому в диалоге список, а не поле, и одно и то же имя не может попасть в
+// библиотеку в двух написаниях.
 function openRatingDialog(movieId) {
   const movie = state.library.movies.find((item) => item.id === movieId);
   if (!movie) return;
-  const names = new Set([
-    ...state.library.participants.map((participant) => participant.name),
-    ...(movie.ratings ?? []).map((rating) => rating.participantName),
-  ]);
+
+  const viewers = buildViewers(state.account, state.friends.rows);
+  if (viewers.length === 0) {
+    throw new Error("Оценку ставит аккаунт: войдите, чтобы оценивать фильмы.");
+  }
 
   openDialog({
     title: "Оценить фильм",
     body: `
       <p class="confirmation-text">${escapeHtml(movie.title)}</p>
       <label class="field">
-        <span>Имя зрителя</span>
-        <input name="participantName" required maxlength="80"
-          list="rating-participant-names">
-        <datalist id="rating-participant-names">
-          ${[...names].map((name) =>
-            `<option value="${escapeAttribute(name)}"></option>`
-          ).join("")}
-        </datalist>
+        <span>Зритель</span>
+        <select name="participantUserId" required>
+          ${viewers.map((viewer) => `
+            <option value="${escapeAttribute(viewer.userId)}">
+              ${escapeHtml(viewer.name)}${viewer.isSelf ? " — вы" : ` — @${escapeHtml(viewer.handle)}`}
+            </option>
+          `).join("")}
+        </select>
       </label>
       <label class="field">
         <span>Оценка от 1 до 10, шаг 0,5</span>
         <input name="ratingValue" type="number" required min="1" max="10"
           step="0.5" value="8">
       </label>
-      <p class="form-hint">Если этот зритель уже оценивал фильм, старая
-      оценка будет заменена.</p>
+      <p class="form-hint">${viewers.length > 1
+        ? "Если этот зритель уже оценивал фильм, старая оценка будет заменена."
+        : "В списке пока только вы: зрителями становятся принятые друзья."}</p>
     `,
     onSubmit: async (formData) => {
-      const participantName = formData.get("participantName");
+      const viewer = findViewer(viewers, String(formData.get("participantUserId")));
+      if (!viewer) {
+        throw new Error("Выберите зрителя из списка.");
+      }
       const ratings = upsertRating(movie.ratings, {
-        participantName,
+        participantUserId: viewer.userId,
+        participantName: viewer.name,
         value: formData.get("ratingValue"),
       });
       await saveMovie({
@@ -1538,7 +1798,6 @@ function openRatingDialog(movieId) {
         ratings,
         updatedAt: new Date().toISOString(),
       });
-      await rememberParticipants([{ name: participantName, saves: 0 }]);
       await reloadLibrary();
     },
   });
@@ -1568,58 +1827,77 @@ function shuffleRollDraft() {
   render();
 }
 
+// Состав сессии набирается из аккаунтов: вы и принятые друзья. Раньше здесь
+// было четыре поля с именами — с ними один и тот же человек попадал в историю
+// то «Ильёй», то «ильей», и сейвы уходили не тому.
 function openRollConfiguration() {
   if (state.rollDraftPool.length < 2) {
     throw new Error("Настройте квоты так, чтобы в пул попало минимум два участника.");
   }
-  const knownNames = state.library.participants
-    .sort((a, b) => String(b.lastUsedAt).localeCompare(String(a.lastUsedAt)))
-    .map((participant) => participant.name);
+
+  const viewers = buildViewers(state.account, state.friends.rows);
+  if (viewers.length === 0) {
+    throw new Error("Игроков берём из аккаунтов: войдите, чтобы начать сессию.");
+  }
+
+  const defaultSaves = Number(state.library.settings.savesEnabledAboveRemaining ?? 3);
 
   openDialog({
     title: "Настройка сессии",
     submitLabel: "Начать",
     body: `
-      <p class="form-hint">Укажите игроков и количество сейвов. Пустые строки
-      будут пропущены.</p>
-      ${[0, 1, 2, 3].map((index) => `
-        <div class="field-row player-row">
-          <label class="field">
-            <span>Игрок ${index + 1}</span>
-            <input name="playerName${index}" maxlength="80"
-              value="${escapeAttribute(knownNames[index] ?? (index < 2 ? `Игрок ${index + 1}` : ""))}">
-          </label>
-          <label class="field">
-            <span>Сейвы</span>
-            <input name="playerSaves${index}" type="number" min="0" max="99"
-              value="${index < 2 ? 3 : 0}">
-          </label>
-        </div>
-      `).join("")}
+      <p class="form-hint">Отметьте, кто играет, и задайте каждому число
+      сейвов. Список — это вы и ваши друзья: имена берутся из аккаунтов.</p>
+      <div class="player-picker">
+        ${viewers.map((viewer, index) => `
+          <div class="player-pick">
+            <label class="player-pick__who">
+              <input type="checkbox" name="player${index}"
+                value="${escapeAttribute(viewer.userId)}"
+                ${index === 0 ? "checked" : ""}>
+              <span>
+                <strong>${escapeHtml(viewer.name)}</strong>
+                <small>${viewer.isSelf ? "вы" : `@${escapeHtml(viewer.handle)}`}</small>
+              </span>
+            </label>
+            <label class="field player-pick__saves">
+              <span>Сейвы</span>
+              <input name="playerSaves${index}" type="number" min="0" max="99"
+                value="3">
+            </label>
+          </div>
+        `).join("")}
+      </div>
+      ${viewers.length === 1 ? `
+        <p class="form-hint">Пока в списке только вы. Друзья появятся здесь,
+        как только примут заявку в разделе «Друзья».</p>` : ""}
       <label class="field">
         <span>Сейвы работают, пока участников больше</span>
         <input name="saveThreshold" type="number" min="1"
           max="${state.rollDraftPool.length - 1}"
-          value="${Math.min(
-            Number(state.library.settings.savesEnabledAboveRemaining ?? 3),
-            state.rollDraftPool.length - 1,
-          )}">
+          value="${Math.min(defaultSaves, state.rollDraftPool.length - 1)}">
       </label>
     `,
     onSubmit: async (formData) => {
-      const participants = [0, 1, 2, 3]
-        .map((index) => ({
-          name: formData.get(`playerName${index}`),
+      const participants = viewers
+        .map((viewer, index) => ({ viewer, index }))
+        .filter(({ index }) => formData.get(`player${index}`) !== null)
+        .map(({ viewer, index }) => ({
+          userId: viewer.userId,
+          handle: viewer.handle,
+          name: viewer.name,
           saves: formData.get(`playerSaves${index}`),
-        }))
-        .filter((participant) => String(participant.name).trim());
+        }));
+
+      if (participants.length === 0) {
+        throw new Error("Отметьте хотя бы одного игрока.");
+      }
 
       state.activeSession = createRollSession({
         pool: state.rollDraftPool,
         participants,
         savesEnabledAboveRemaining: formData.get("saveThreshold"),
       });
-      await rememberParticipants(participants);
       render();
     },
   });
@@ -1720,27 +1998,6 @@ async function finishRollSession(session) {
     `,
     onSubmit: async () => {},
   });
-}
-
-async function rememberParticipants(participants) {
-  const existingByName = new Map(
-    state.library.participants.map((participant) => [
-      participant.normalizedName,
-      participant,
-    ]),
-  );
-  await Promise.all(
-    participants.map((participant) => {
-      const normalizedName = normalizeText(participant.name);
-      return saveParticipant(createParticipant({
-        ...(existingByName.get(normalizedName) ?? {}),
-        name: participant.name,
-        lastUsedAt: new Date().toISOString(),
-      }));
-    }),
-  );
-  state.library.participants = await loadLibrary()
-    .then((library) => library.participants);
 }
 
 function handleGlobalKeydown(event) {

@@ -363,21 +363,34 @@ function toParticipantSnapshot(item, sourceCategoryId) {
   };
 }
 
+// Игрок сессии — это аккаунт: userId и handle идут из профиля, имя остаётся
+// снимком на момент сессии, чтобы старая история не переписывалась после
+// смены имени. Один и тот же аккаунт в составе не повторяется.
 function normalizeParticipants(participants) {
   if (!Array.isArray(participants)) {
     return [];
   }
 
+  const seenUserIds = new Set();
+
   return participants
     .map((participant) => ({
-      id: participant.id ?? createId(),
+      id: participant.id ?? participant.userId ?? createId(),
+      userId: participant.userId ?? null,
+      handle: participant.handle ?? "",
       name: String(participant.name ?? "").trim(),
       savesInitial: Math.max(
         0,
         Number.parseInt(participant.saves, 10) || 0,
       ),
     }))
-    .filter((participant) => participant.name)
+    .filter((participant) => {
+      if (!participant.name) return false;
+      if (!participant.userId) return true;
+      if (seenUserIds.has(participant.userId)) return false;
+      seenUserIds.add(participant.userId);
+      return true;
+    })
     .map((participant) => ({
       ...participant,
       savesRemaining: participant.savesInitial,

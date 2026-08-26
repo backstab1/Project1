@@ -21,8 +21,18 @@ import {
 import { buildInsights } from "../domain/insights.js";
 import { icon } from "./icons.js";
 import { renderWelcome } from "./welcomeScreen.js";
-import { bindAccountDock, renderAccountDock } from "./accountDock.js";
+import { bindAccountDock, initials, renderAccountDock } from "./accountDock.js";
+import { renderFriends } from "./friendsScreen.js";
+import { buildViewers, countIncoming } from "../domain/friends.js";
 import { setScrollLock } from "./scrollLock.js";
+import {
+  escapeAttribute,
+  escapeHtml,
+  settingsGroup,
+  settingsRow,
+  smallButton,
+  toggleControl,
+} from "./settingsKit.js";
 
 // «Главная» намеренно отсутствует в боковом меню: на неё ведёт логотип CV.
 // Пункт остаётся только в мобильной нижней навигации, где логотипа нет.
@@ -42,6 +52,9 @@ const NAV_GROUPS = [
   ["Аналитика", [
     ["insights", "Статистика", "target"],
   ]],
+  ["Люди", [
+    ["friends", "Друзья", "users"],
+  ]],
   ["Система", [
     ["settings", "Настройки", "settings"],
   ]],
@@ -59,6 +72,7 @@ const VIEW_META = Object.freeze({
   wheel: { title: "Колесо", eyebrow: "Батл-рояль" },
   sessions: { title: "История роллов", eyebrow: "Завершённые сессии" },
   insights: { title: "Статистика", eyebrow: "Библиотека в цифрах" },
+  friends: { title: "Друзья", eyebrow: "Заявки и доступ к библиотеке" },
   settings: { title: "Настройки", eyebrow: "Данные и интеграции" },
 });
 
@@ -377,6 +391,15 @@ function bindEvents(root, state) {
     });
   });
   bindScrollBehaviour(root);
+  // Поле без формы, но с очевидным действием: Enter делает то же, что кнопка
+  // рядом. Иначе поиск друга требовал бы мыши.
+  root.querySelectorAll("[data-submit-action]").forEach((field) => {
+    field.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      state.onAction(field.dataset.submitAction, {});
+    });
+  });
   root.querySelectorAll("[data-control]").forEach((control) => {
     const eventName = control.matches('input[type="search"], input[type="text"]')
       ? "input"
@@ -468,6 +491,9 @@ function getNavCounts(state) {
       : (state.rollDraftPool ?? []).length,
     sessions: (library.rollSessions ?? [])
       .filter((session) => session.status === "completed").length,
+    // У «Друзей» счётчик значит другое: не размер раздела, а сколько заявок
+    // ждут ответа. Ноль друзей — просто пустой раздел, а не повод для метки.
+    friends: countIncoming(state.friends?.rows, state.account?.id),
   };
 }
 
@@ -501,6 +527,7 @@ function renderCurrentView(container, state) {
     watched: (node, appState) => renderWatched(node, appState.library),
     sessions: (node, appState) => renderSessions(node, appState.library.rollSessions),
     insights: (node, appState) => renderInsights(node, appState.library),
+    friends: renderFriends,
     settings: renderSettings,
   };
 
@@ -2177,7 +2204,10 @@ function renderSettings(container, state) {
   const enrichmentCount = selectEnrichmentCandidates(state.library.movies).length;
   const autoBackupDays = Number(settings.autoBackupDays ?? 0);
   const localBackup = state.localBackup ?? { files: [], directory: "", error: null };
-  const participants = state.library.participants ?? [];
+  // Зритель — это аккаунт: свой профиль и принятые друзья. Строки из старого
+  // локального списка игроков остаются только как след прежнего ручного ввода.
+  const viewers = buildViewers(state.account, state.friends?.rows);
+  const legacyParticipants = state.library.participants ?? [];
 
   container.innerHTML = `
     <div class="settings">
@@ -2314,23 +2344,35 @@ function renderSettings(container, state) {
       })}
 
       ${settingsGroup({
-        title: "Игроки",
-        status: `<span class="set-value">${participants.length}</span>`,
-        rows: [`
-          <div class="set-block">
+        title: "Зрители",
+        status: `<span class="set-value">${viewers.length}</span>`,
+        rows: [
+          `<div class="set-block">
             <div class="participant-tags">
-              ${participants.map((participant) => `
+              ${viewers.map((viewer) => `
                 <span class="participant-tag">
-                  <i>${escapeHtml(initials(participant.name))}</i>
-                  ${escapeHtml(participant.name)}
-                  <button type="button" data-action="participant-edit" data-id="${participant.id}"
-                    aria-label="Редактировать">${icon("edit")}</button>
-                  <button type="button" data-action="participant-delete" data-id="${participant.id}"
-                    aria-label="Удалить">${icon("close")}</button>
+                  <i>${escapeHtml(initials(viewer.name))}</i>
+                  ${escapeHtml(viewer.name)}
+                  <small>${viewer.isSelf ? "вы" : `@${escapeHtml(viewer.handle)}`}</small>
                 </span>
-              `).join("") || `<span class="set-value">Имена появятся после первой сессии или оценки.</span>`}
+              `).join("")}
             </div>
-          </div>`],
+          </div>`,
+          settingsRow({
+            title: "Кто может оценивать и играть",
+            hint: "Вы и принятые друзья. Имена берутся из аккаунтов, руками их не вводят.",
+            control: smallButton("friends-open", "Друзья"),
+          }),
+          legacyParticipants.length
+            ? settingsRow({
+                title: "Имена из старых сессий",
+                hint: `${legacyParticipants.map((participant) => escapeHtml(participant.name)).join(", ")}
+                  — остались от версии с ручным вводом. В истории и оценках они
+                  сохраняются, новые оценки на них поставить нельзя.`,
+                control: smallButton("participants-forget", "Забыть", { danger: true }),
+              })
+            : "",
+        ],
       })}
 
       ${settingsGroup({
@@ -2358,51 +2400,11 @@ function renderSettings(container, state) {
   `;
 }
 
-// Группа настроек: подпись, необязательный статус справа и строки внутри.
-function settingsGroup({ title, status = "", rows = [], note = "" }) {
-  return `
-    <section class="set-group">
-      <header class="set-group__head">
-        <h3>${escapeHtml(title)}</h3>
-        ${status}
-      </header>
-      ${rows.filter(Boolean).join("")}
-      ${note ? `<p class="set-group__note">${note}</p>` : ""}
-    </section>`;
-}
-
-// Строка настройки: слева название и пояснение, справа компактный контрол.
-function settingsRow({ title, hint = "", control = "" }) {
-  return `
-    <div class="set-row">
-      <div class="set-row__text">
-        <strong>${escapeHtml(title)}</strong>
-        ${hint ? `<small>${hint}</small>` : ""}
-      </div>
-      <div class="set-row__control">${control}</div>
-    </div>`;
-}
-
-function smallButton(action, label, { disabled = false, danger = false } = {}) {
-  return `
-    <button class="btn btn--sm ${danger ? "btn--danger-ghost" : "btn--ghost"}"
-      type="button" data-action="${action}" ${disabled ? "disabled" : ""}
-    >${escapeHtml(label)}</button>`;
-}
-
 function fileControl(control, label, accept) {
   return `
     <label class="btn btn--ghost btn--sm file-btn">
       ${escapeHtml(label)}
       <input type="file" accept="${accept}" data-control="${control}">
-    </label>`;
-}
-
-function toggleControl(control, checked) {
-  return `
-    <label class="toggle">
-      <input type="checkbox" data-control="${control}" ${checked ? "checked" : ""}>
-      <span class="toggle__track"><span class="toggle__knob"></span></span>
     </label>`;
 }
 
@@ -2464,13 +2466,6 @@ function formatRating(value) {
     : Number(value).toLocaleString("ru-RU", { maximumFractionDigits: 1 });
 }
 
-function initials(value) {
-  const text = String(value ?? "").trim();
-  if (!text) return "CV";
-  const words = text.split(/\s+/).slice(0, 2);
-  return words.map((word) => word[0]).join("").toLocaleUpperCase("ru-RU");
-}
-
 function sortByPosition(a, b) {
   return a.position - b.position || a.name.localeCompare(b.name, "ru-RU");
 }
@@ -2516,19 +2511,6 @@ function formatDateTime(value) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(value));
-}
-
-function escapeHtml(value) {
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-}
-
-function escapeAttribute(value) {
-  return escapeHtml(value).replaceAll("`", "&#096;");
 }
 
 // Постер, который не загрузился, заменяется инициалами — этим занимается

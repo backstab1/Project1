@@ -32,6 +32,58 @@ test("повторная оценка зрителя заменяет преды
   assert.equal(second[0].value, 9);
 });
 
+test("оценка аккаунта заменяет прежнюю оценку того же аккаунта", () => {
+  const first = upsertRating([], {
+    participantUserId: "user-1",
+    participantName: "Антон",
+    value: 7.5,
+  });
+  // Человек сменил имя в профиле — оценка всё равно его, ключ идёт по аккаунту.
+  const second = upsertRating(first, {
+    participantUserId: "user-1",
+    participantName: "Антон Петров",
+    value: 9,
+  });
+
+  assert.equal(second.length, 1);
+  assert.equal(second[0].value, 9);
+  assert.equal(second[0].participantName, "Антон Петров");
+});
+
+test("двум зрителям с одинаковым именем достаются разные оценки", () => {
+  const first = upsertRating([], {
+    participantUserId: "user-1",
+    participantName: "Антон",
+    value: 6,
+  });
+  const second = upsertRating(first, {
+    participantUserId: "user-2",
+    participantName: "Антон",
+    value: 10,
+  });
+
+  assert.equal(second.length, 2);
+  assert.deepEqual(
+    second.map((rating) => rating.value).sort((a, b) => a - b),
+    [6, 10],
+  );
+});
+
+test("оценка аккаунта поглощает старую оценку, введённую тем же именем руками", () => {
+  const legacy = upsertRating([], { participantName: "Антон", value: 5 });
+  assert.equal(legacy[0].participantUserId, null);
+
+  const linked = upsertRating(legacy, {
+    participantUserId: "user-1",
+    participantName: "Антон",
+    value: 8,
+  });
+
+  assert.equal(linked.length, 1);
+  assert.equal(linked[0].participantUserId, "user-1");
+  assert.equal(linked[0].value, 8);
+});
+
 test("средний рейтинг пустого списка равен null", () => {
   assert.equal(calculateAverageRating([]), null);
 });

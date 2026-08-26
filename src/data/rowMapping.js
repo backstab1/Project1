@@ -80,9 +80,9 @@ export function ratingToRow(rating, movieId, ownerId) {
     id: rating.id,
     movie_id: movieId,
     owner_id: ownerId,
-    // Связь оценки с аккаунтом появляется в этапе 19; пока все оценки — имена
-    // зрителей за столом.
-    rater_user_id: rating.raterUserId ?? null,
+    // Зритель — это аккаунт. null остаётся только у оценок, которые пришли из
+    // версии с ручным вводом имён и ещё не сопоставлены с профилем.
+    rater_user_id: rating.participantUserId ?? rating.raterUserId ?? null,
     rater_name: rating.participantName,
     normalized_rater_name: rating.normalizedParticipantName,
     value: rating.value,
@@ -93,11 +93,11 @@ export function ratingToRow(rating, movieId, ownerId) {
 export function ratingFromRow(row) {
   return {
     id: row.id,
+    participantUserId: row.rater_user_id ?? null,
     participantName: row.rater_name,
     normalizedParticipantName: row.normalized_rater_name,
     value: Number(row.value),
     createdAt: row.created_at,
-    ...(row.rater_user_id ? { raterUserId: row.rater_user_id } : {}),
   };
 }
 

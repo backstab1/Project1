@@ -135,6 +135,34 @@ test("подтверждение последовательных выбыван
   assert.equal(session.eliminated.length, 2);
 });
 
+test("игрок сессии хранит аккаунт, а не только имя", () => {
+  const session = createRollSession({
+    pool: samplePool(),
+    participants: [
+      { userId: "user-1", handle: "anton", name: "Антон", saves: 2 },
+    ],
+    savesEnabledAboveRemaining: 2,
+  });
+
+  assert.equal(session.participants[0].id, "user-1");
+  assert.equal(session.participants[0].userId, "user-1");
+  assert.equal(session.participants[0].handle, "anton");
+});
+
+test("один аккаунт не попадает в состав дважды", () => {
+  const session = createRollSession({
+    pool: samplePool(),
+    participants: [
+      { userId: "user-1", name: "Антон", saves: 2 },
+      { userId: "user-1", name: "Антон", saves: 5 },
+    ],
+    savesEnabledAboveRemaining: 2,
+  });
+
+  assert.equal(session.participants.length, 1);
+  assert.equal(session.participants[0].savesInitial, 2);
+});
+
 test("выбывшего участника можно вернуть", () => {
   let session = createRollSession({
     pool: samplePool(),

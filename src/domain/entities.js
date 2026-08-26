@@ -139,16 +139,33 @@ export function createParticipant(input = {}) {
   };
 }
 
+// Зритель — это аккаунт: participantUserId приходит из профиля, имя рядом
+// хранится снимком, чтобы старые сессии читались и без сети. Оценки без
+// participantUserId остались от версии с ручным вводом имён.
 export function upsertRating(ratings, input) {
+  const participantUserId = normalizeUserId(input.participantUserId);
   const participantName = requireText(input.participantName, "Имя зрителя");
   const normalizedParticipantName = normalizeText(participantName);
   const value = normalizeScore(input.value);
-  const nextRatings = normalizeRatings(ratings).filter(
-    (rating) => rating.normalizedParticipantName !== normalizedParticipantName,
-  );
+
+  const nextRatings = normalizeRatings(ratings).filter((rating) => {
+    if (participantUserId) {
+      // Оценка аккаунта заменяет и свою прежнюю, и безымянную оценку с тем же
+      // именем: иначе один человек считался бы в среднем дважды.
+      if (rating.participantUserId) {
+        return rating.participantUserId !== participantUserId;
+      }
+      return rating.normalizedParticipantName !== normalizedParticipantName;
+    }
+    return (
+      Boolean(rating.participantUserId) ||
+      rating.normalizedParticipantName !== normalizedParticipantName
+    );
+  });
 
   nextRatings.push({
     id: input.id ?? createId(),
+    participantUserId,
     participantName,
     normalizedParticipantName,
     value,
@@ -247,13 +264,20 @@ function normalizeRatings(ratings) {
   const byParticipant = new Map();
   for (const rating of ratings) {
     try {
+      const participantUserId = normalizeUserId(rating.participantUserId);
       const participantName = requireText(
         rating.participantName ?? rating.u,
         "Имя зрителя",
       );
       const normalizedParticipantName = normalizeText(participantName);
-      byParticipant.set(normalizedParticipantName, {
+      // Ключ по аккаунту, а не по имени: у двух друзей может совпасть имя, и
+      // одна оценка не должна затирать другую.
+      const key = participantUserId
+        ? `user:${participantUserId}`
+        : `name:${normalizedParticipantName}`;
+      byParticipant.set(key, {
         id: rating.id ?? createId(),
+        participantUserId,
         participantName,
         normalizedParticipantName,
         value: normalizeScore(rating.value),
@@ -265,6 +289,11 @@ function normalizeRatings(ratings) {
   }
 
   return [...byParticipant.values()];
+}
+
+function normalizeUserId(value) {
+  const id = String(value ?? "").trim();
+  return id || null;
 }
 
 function normalizeOptionalInteger(value, min, max) {
