@@ -395,11 +395,15 @@ strong {
   color: var(--text);
 }
 
+/* Матовых подложек нет ни у чего, что едет вместе с содержимым: браузер
+   пересчитывает backdrop-filter с отставанием на кадр, и при прокрутке
+   у таких фигур рвутся края. Размытие осталось только у слоёв, которые
+   висят над неподвижным фоном: боковая панель, модалки, шторка, палитра.
+   Взамен заливка чуть плотнее — читаемость поверх постера та же. */
 .btn--glass {
   border-color: var(--border-strong);
-  background: var(--surface-glass);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
   color: var(--text);
-  backdrop-filter: blur(14px);
 }
 
 .btn--glass:hover {
@@ -486,9 +490,8 @@ strong {
 
 .icon-btn--glass {
   border-color: rgba(255, 255, 255, 0.18);
-  background: rgba(12, 12, 20, 0.55);
+  background: rgba(12, 12, 20, 0.74);
   color: #fff;
-  backdrop-filter: blur(10px);
 }
 
 .icon-btn--glass:hover {
@@ -612,12 +615,11 @@ strong {
   align-items: center;
   gap: 0.25rem;
   border-radius: var(--r-pill);
-  background: rgba(10, 10, 18, 0.62);
+  background: rgba(10, 10, 18, 0.8);
   padding: 0.25rem 0.55rem;
   color: #fff;
   font-size: 0.74rem;
   font-weight: 500;
-  backdrop-filter: blur(8px);
 }
 
 .badge svg { width: 0.85rem; height: 0.85rem; }
@@ -1052,6 +1054,14 @@ strong {
   animation: drift-a 38s ease-in-out infinite reverse;
 }
 
+/* В библиотеке сияние стоит на месте: три пятна размытием 90px, которые
+   вечно ползут под матовыми шапкой и боковой панелью, заставляли браузер
+   пересчитывать размытие на каждый кадр прокрутки. На витрине движение
+   остаётся — там над ним только лёгкая пилюля. */
+.app:not(.app--welcome) .app__aurora-blob {
+  animation: none;
+}
+
 @keyframes drift-a {
   0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
   50% { transform: translate3d(-4rem, 3rem, 0) scale(1.12); }
@@ -1396,10 +1406,8 @@ strong {
   margin: clamp(0.5rem, 1.1vw, 1rem) auto 0;
   border-bottom: 0;
   border-radius: var(--r-xs);
-  background: var(--surface-glass);
+  background: var(--surface);
   box-shadow: var(--shadow-sm);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
   padding: 0.5rem 0.5rem 0.5rem 1rem;
   transition: box-shadow var(--t-base) ease, background var(--t-base) ease;
 }
@@ -1474,10 +1482,13 @@ strong {
 
 /* Контент */
 
+/* Прокрутка без анимации: плавный скролл контейнера догонял колесо мыши
+   рывками, а на длинных разделах ещё и подвисал. Якоря витрины, которым
+   плавность нужна, просят её у scrollIntoView сами. */
 .content-scroll {
   overflow-y: auto;
   overscroll-behavior: contain;
-  scroll-behavior: smooth;
+  scroll-behavior: auto;
 }
 
 .content {
@@ -1549,7 +1560,6 @@ strong {
       color-mix(in srgb, var(--surface) 55%, transparent) 100%);
 }
 
-.hero.has-poster .hero__grain { backdrop-filter: blur(2px); }
 
 .hero__content {
   position: relative;
@@ -1662,10 +1672,9 @@ strong {
   place-content: center;
   border: 1px solid rgba(255, 255, 255, 0.22);
   border-radius: 50%;
-  background: rgba(12, 12, 20, 0.55);
+  background: rgba(12, 12, 20, 0.74);
   color: #fff;
   opacity: 0;
-  backdrop-filter: blur(10px);
   transform: translateY(6px);
   transition: opacity var(--t-base) ease, transform var(--t-base) var(--ease-out);
 }
@@ -2404,13 +2413,12 @@ strong {
   gap: 0.35rem;
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: var(--r-pill);
-  background: rgba(12, 12, 20, 0.62);
+  background: rgba(12, 12, 20, 0.82);
   padding: 0.42rem;
   color: #fff;
   font-size: 0.8rem;
   font-weight: 500;
   opacity: 0;
-  backdrop-filter: blur(12px);
   transform: translateY(8px);
   transition: opacity var(--t-base) ease, transform var(--t-base) var(--ease-out);
 }
@@ -4624,9 +4632,8 @@ strong {
     grid-auto-flow: column;
     grid-auto-columns: 1fr;
     border-top: 1px solid var(--border);
-    background: var(--surface-glass);
+    background: var(--surface);
     padding: 0.4rem 0.4rem calc(0.4rem + env(safe-area-inset-bottom));
-    backdrop-filter: blur(22px);
   }
 
   .tabbar > button,
@@ -4910,10 +4917,9 @@ strong {
   gap: 0.75rem;
   border: 1px solid var(--border-strong);
   border-radius: var(--r-lg);
-  background: var(--surface-glass);
+  background: var(--surface);
   padding: 0.6rem 0.85rem;
   box-shadow: var(--shadow-sm);
-  backdrop-filter: blur(12px);
 }
 
 .bulk-bar__count {
