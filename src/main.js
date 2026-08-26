@@ -183,7 +183,10 @@ const state = {
   activeSession: null,
   isSpinning: false,
   catalogFilters: { ...DEFAULT_CATALOG_FILTERS },
-  catalogView: readStoredPreference(CATALOG_VIEW_KEY, "grid"),
+  catalogView: readStoredPreference(CATALOG_VIEW_KEY, "dense"),
+  // Второстепенные фильтры каталога — список, жанр, тег, порядок — спрятаны
+  // под кнопкой: постоянно они нужны редко, а строку занимали всю.
+  filtersOpen: false,
   shortcutsOpen: false,
   sidebarCollapsed: readStoredPreference(SIDEBAR_KEY, "0") === "1",
   detailMovieId: null,
@@ -491,6 +494,7 @@ async function handleAction(action, payload) {
     "tmdb-clear": () => removeTmdbToken(),
     "tmdb-enrich": () => openEnrichmentDialog(),
     "catalog-filters-reset": () => resetCatalogFilters(),
+    "catalog-filters-toggle": () => toggleCatalogFilters(),
     "catalog-status-set": () => setCatalogFilter("status", payload.value),
     "catalog-filter-clear": () => clearCatalogFilter(payload.filter),
     "catalog-view": () => setCatalogView(payload.mode),
@@ -931,6 +935,11 @@ function pluralizeName(count) {
   if (mod10 === 1) return "имя";
   if (mod10 >= 2 && mod10 <= 4) return "имени";
   return "имён";
+}
+
+function toggleCatalogFilters() {
+  state.filtersOpen = !state.filtersOpen;
+  render();
 }
 
 function resetCatalogFilters() {

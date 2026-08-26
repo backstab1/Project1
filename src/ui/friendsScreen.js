@@ -46,8 +46,8 @@ function renderPrivacy(state) {
       settingsRow({
         title: "Кто видит библиотеку",
         hint: open
-          ? "Друзья видят фильмы, статусы и оценки. Менять их можете только вы."
-          : "Библиотеку не видит никто. Заявки в друзья это не отменяет.",
+          ? "Друзья видят фильмы, статусы и оценки."
+          : "Библиотеку не видит никто.",
         control: `
           <div class="segmented" role="group" aria-label="Видимость библиотеки">
             ${[["private", "Скрыта"], ["friends", "Друзьям"]].map(([value, label]) => `
@@ -62,7 +62,7 @@ function renderPrivacy(state) {
         ? `<p class="set-alert" role="alert">${escapeHtml(friends.error)}</p>`
         : "",
     ],
-    note: "Видимость проверяет сервер: закрытую библиотеку не отдаст даже прямой запрос к API.",
+    note: "Видимость проверяет сервер, а не интерфейс.",
   });
 }
 
@@ -75,8 +75,7 @@ function renderSearch(account, search, friends) {
     rows: [
       settingsRow({
         title: "Имя пользователя",
-        hint: `Список аккаунтов закрыт: человека находят по точному имени.
-          Ваше — <code>@${escapeHtml(account?.handle ?? "")}</code>.`,
+        hint: `Ищем по точному имени. Ваше — <code>@${escapeHtml(account?.handle ?? "")}</code>.`,
         control: `
           <span class="handle-field">
             <i>@</i>
@@ -162,7 +161,7 @@ function renderFriendList(groups, friends) {
     rows: items.length
       ? items.map((item) =>
           personRow(item.profile, {
-            note: "Зритель: ставит оценки и играет в колесе",
+            note: "зритель",
             actions: `
               ${smallButton("friend-remove", "Удалить", {
                 disabled: Boolean(friends.busy),
