@@ -376,7 +376,7 @@ function bindEvents(root, state) {
       state.onAction(button.dataset.action, { ...button.dataset });
     });
   });
-  bindScrollTop(root);
+  bindScrollBehaviour(root);
   root.querySelectorAll("[data-control]").forEach((control) => {
     const eventName = control.matches('input[type="search"], input[type="text"]')
       ? "input"
@@ -391,28 +391,48 @@ function bindEvents(root, state) {
   });
 }
 
-// Кнопка «наверх» появляется только на длинной странице. Слушатель пассивный
-// и не делает ничего тяжёлого: раз в кадр переключает класс, если порог
-// пройден, — прокрутка от этого не страдает.
-function bindScrollTop(root) {
+// Всё, что зависит от прокрутки: кнопка «наверх» и подавление наведения.
+//
+// Курсор при прокрутке стоит на месте, а содержимое едет под ним — строки
+// по очереди получают и теряют :hover, и их подсветка мигает. Пока страница
+// едет, содержимое не принимает указатель: наведение гаснет один раз в начале
+// и возвращается один раз в конце.
+//
+// Слушатель пассивный и лёгкий: раз в кадр переключает класс кнопки, а класс
+// прокрутки ставится в начале и снимается по таймеру бездействия.
+function bindScrollBehaviour(root) {
   const scroller = root.querySelector(".content-scroll");
-  const button = root.querySelector("[data-scroll-top]");
-  if (!scroller || !button) return;
+  if (!scroller) return;
 
-  const THRESHOLD = 640;
+  const button = root.querySelector("[data-scroll-top]");
+  // Порог с запасом: кнопка появляется на 640 и прячется только на 400,
+  // иначе она мигала бы у самой границы.
+  const SHOW_AT = 640;
+  const HIDE_AT = 400;
+  const IDLE_MS = 140;
+
   let queued = false;
+  let idleTimer = 0;
+
   const sync = () => {
     queued = false;
-    button.classList.toggle("is-visible", scroller.scrollTop > THRESHOLD);
+    if (!button) return;
+    const visible = button.classList.contains("is-visible");
+    const top = scroller.scrollTop;
+    if (!visible && top > SHOW_AT) button.classList.add("is-visible");
+    else if (visible && top < HIDE_AT) button.classList.remove("is-visible");
   };
 
   scroller.addEventListener("scroll", () => {
+    scroller.classList.add("is-scrolling");
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => scroller.classList.remove("is-scrolling"), IDLE_MS);
     if (queued) return;
     queued = true;
     requestAnimationFrame(sync);
   }, { passive: true });
 
-  button.addEventListener("click", () => {
+  button?.addEventListener("click", () => {
     const reduced = document.documentElement.dataset.motion === "reduced";
     scroller.scrollTo({ top: 0, behavior: reduced ? "auto" : "smooth" });
   });
@@ -1303,7 +1323,7 @@ function movieCard(movie, category, franchise, index = 0, options = {}) {
               referrerpolicy="no-referrer"
               data-poster-fallback="${escapeAttribute(initials(movie.title))}">`
           : `<span class="poster-fallback">${escapeHtml(initials(movie.title))}</span>`}
-        <div class="movie-card__gradient"></div>
+        ${movie.coverUrl ? `<div class="movie-card__gradient"></div>` : ""}
         <div class="movie-card__badges">
           ${movie.isFavorite
             ? `<span class="badge badge--favorite" title="В избранном">${icon("starFilled")}</span>`
