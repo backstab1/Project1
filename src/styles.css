@@ -4049,6 +4049,256 @@ strong {
   100% { transform: translateY(560%) rotate(520deg); opacity: 0; }
 }
 
+/* Личный кабинет */
+
+/* Кабинет висит над содержимым, но ниже тостов и палитры: он не забирает
+   внимание, пока на него не нажали. */
+.account-dock {
+  position: fixed;
+  z-index: 80;
+  right: 1.25rem;
+  bottom: 1.25rem;
+  display: grid;
+  justify-items: end;
+  gap: 0.6rem;
+  width: min(348px, calc(100vw - 2.5rem));
+}
+
+.account-dock__toggle {
+  display: flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  box-shadow: var(--shadow-md);
+  padding: 0.55rem 0.7rem;
+  color: var(--text);
+  text-align: left;
+  transition:
+    transform var(--t-fast) var(--ease-out),
+    border-color var(--t-fast) ease,
+    background var(--t-fast) ease;
+}
+
+.account-dock__toggle:hover {
+  transform: translateY(-1px);
+  border-color: var(--border-strong);
+  background: var(--surface-2);
+}
+
+.account-dock__avatar {
+  display: grid;
+  width: 2rem;
+  height: 2rem;
+  flex: 0 0 auto;
+  place-content: center;
+  border-radius: var(--r-xs);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-family: var(--font-display);
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+
+.account-dock__avatar svg { width: 1.05rem; height: 1.05rem; }
+
+.account-dock__avatar--lg {
+  width: 2.6rem;
+  height: 2.6rem;
+  font-size: 0.95rem;
+}
+
+.account-dock__avatar--lg svg { width: 1.2rem; height: 1.2rem; }
+
+.account-dock__toggle-text {
+  display: grid;
+  min-width: 0;
+  gap: 0.05rem;
+}
+
+.account-dock__toggle-text strong {
+  overflow: hidden;
+  font-size: 0.79rem;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-dock__toggle-text small {
+  overflow: hidden;
+  color: var(--text-dim);
+  font-size: 0.7rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-dock__chevron {
+  display: grid;
+  place-content: center;
+  color: var(--text-dim);
+}
+
+.account-dock__chevron svg { width: 1rem; height: 1rem; }
+
+.account-dock__panel {
+  display: grid;
+  width: 100%;
+  max-height: min(70vh, 640px);
+  gap: 0.85rem;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+  padding: 1.05rem 1rem;
+  animation: account-dock-in var(--t-base) var(--ease-out);
+}
+
+@keyframes account-dock-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.account-dock__head {
+  display: grid;
+  align-items: center;
+  gap: 0.7rem;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.account-dock__who {
+  display: grid;
+  min-width: 0;
+  gap: 0.1rem;
+}
+
+.account-dock__who strong {
+  overflow: hidden;
+  font-family: var(--font-display);
+  font-size: 0.98rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-dock__who small {
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+.account-dock__close { align-self: start; }
+
+.account-dock__tabs {
+  display: grid;
+  gap: 0.25rem;
+  grid-auto-columns: 1fr;
+  grid-auto-flow: column;
+  border: 1px solid var(--border);
+  border-radius: var(--r-xs);
+  background: var(--surface-2);
+  padding: 0.2rem;
+}
+
+.account-dock__tabs button {
+  border: 0;
+  border-radius: var(--r-xs);
+  background: none;
+  padding: 0.42rem 0.6rem;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-weight: 500;
+  transition: background var(--t-fast) ease, color var(--t-fast) ease;
+}
+
+.account-dock__tabs button:hover { color: var(--text); }
+
+.account-dock__tabs button.is-active {
+  background: var(--surface);
+  box-shadow: var(--shadow-xs);
+  color: var(--text);
+}
+
+.account-dock__form {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.account-dock__submit { justify-content: center; margin-top: 0.15rem; }
+
+.account-dock__actions {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.account-dock__actions .btn { justify-content: flex-start; }
+
+.account-dock__signout {
+  color: var(--danger);
+}
+
+.account-dock__signout:hover {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.account-dock__notice,
+.account-dock__error {
+  margin: 0;
+  border-radius: var(--r-xs);
+  padding: 0.6rem 0.7rem;
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.account-dock__notice {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.account-dock__error {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.account-dock__links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  border-top: 1px solid var(--border);
+  padding-top: 0.75rem;
+}
+
+.account-dock__links button {
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  transition: color var(--t-fast) ease;
+}
+
+.account-dock__links button:hover { color: var(--accent); }
+
+.account-dock__links small {
+  color: var(--text-dim);
+  font-size: 0.74rem;
+  line-height: 1.35;
+}
+
+.account-dock__foot {
+  margin: 0;
+  border-top: 1px solid var(--border);
+  padding-top: 0.7rem;
+  color: var(--text-dim);
+  font-size: 0.74rem;
+}
+
 /* Тосты */
 
 .toast-container {
@@ -4352,6 +4602,17 @@ strong {
   }
 
   .search-trigger kbd { display: none; }
+
+  .account-dock {
+    right: 0.9rem;
+    bottom: 0.9rem;
+    width: min(348px, calc(100vw - 1.8rem));
+  }
+
+  /* В библиотеке снизу стоит мобильная навигация, на витрине её нет. */
+  .app:not(.app--welcome) .account-dock {
+    bottom: calc(4.6rem + env(safe-area-inset-bottom, 0px));
+  }
 
   .tabbar {
     position: fixed;
@@ -4889,76 +5150,152 @@ strong {
 
 /* --------------------------------------------------- 5.x Экран входа */
 
+/* Вход и регистрация — это первый экран витрины, у которого вместо заголовка
+   и кнопок стоит форма: та же пилюля сверху, тот же кадр (класс .wl-hero__bg
+   из welcome.css, поэтому кадрирование и затемнение совпадают один в один) и
+   та же строка-подпись внизу. Палитра всегда тёмная, независимо от темы
+   приложения: токены переопределены здесь, и поля с кнопками темнеют сами. */
 .auth {
+  --surface: rgba(5, 2, 20, 0.72);
+  --surface-2: rgba(10, 5, 38, 0.58);
+  --surface-3: #10093a;
+  --border: rgba(145, 142, 160, 0.2);
+  --border-strong: rgba(145, 142, 160, 0.34);
+  --text: #f4f0ff;
+  --text-muted: #c3bfd6;
+  --text-dim: #a8a4bb;
+  --accent: #9382ff;
+  --accent-strong: #b7a4fb;
+  --accent-soft: rgba(147, 130, 255, 0.16);
+  --accent-glow: rgba(147, 130, 255, 0.4);
+  --accent-fill: #5046e4;
+  --accent-fill-hover: #5f56ef;
+  --accent-contrast: #ffffff;
+  --success: #34d399;
+  --success-soft: rgba(52, 211, 153, 0.16);
+  --danger: #fb7185;
+  --danger-soft: rgba(251, 113, 133, 0.16);
+  --shadow-glow: inset 0 -7px 11px rgba(164, 143, 255, 0.12);
+
   display: grid;
   min-height: 100vh;
   min-height: 100dvh;
-  place-content: center;
-  padding: 2rem 1.25rem;
-  background:
-    radial-gradient(60% 50% at 50% -10%, var(--accent-soft), transparent 70%),
-    var(--bg);
+  /* Кадр свисает на 16rem за нижний край (так он растворяется без стыка) —
+     без обрезки это дало бы лишнюю прокрутку на пустой странице. */
+  overflow: hidden;
+  align-content: start;
+  background: #02000f;
+  color: var(--text);
 }
+
+/* Повторяет .wl-hero: кадр во весь экран, содержимое по центру, сверху воздух
+   под пилюлю. */
+.auth__hero {
+  position: relative;
+  display: grid;
+  min-height: 100vh;
+  min-height: 100svh;
+  align-items: center;
+  isolation: isolate;
+  padding: clamp(6rem, 12vh, 9rem) clamp(1rem, 2.4vw, 1.5rem) clamp(2.5rem, 7vh, 5rem);
+}
+
+.auth__stage {
+  display: grid;
+  width: 100%;
+  justify-items: center;
+  gap: 1.4rem;
+}
+
+.auth__meta { color: #cfc9e4; }
 
 .auth__card {
   display: grid;
-  gap: 1.15rem;
   width: min(430px, 100%);
+  max-height: calc(100svh - 13rem);
+  gap: 0.95rem;
+  overflow-y: auto;
   border: 1px solid var(--border);
   border-radius: var(--r-xl);
-  background: var(--surface);
-  padding: 2rem 1.9rem 1.7rem;
-  box-shadow: var(--shadow-lg, 0 30px 70px rgba(20, 12, 50, 0.14));
+  background: rgba(5, 2, 20, 0.82);
+  box-shadow:
+    0 40px 90px rgba(0, 0, 0, 0.55),
+    inset 0 0 24px rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  padding: 1.5rem 1.5rem 1.25rem;
+  text-align: left;
 }
+
+/* У регистрации шесть полей: в один столбец они не помещаются на экран,
+   поэтому карточка расширяется и поля идут парами. */
+.auth[data-mode="signup"] .auth__card { width: min(680px, 100%); }
+
+.auth[data-mode="signup"] .auth__form {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 1rem;
+}
+
+.auth[data-mode="signup"] .auth__submit { grid-column: 1 / -1; }
 
 .auth__brand {
   display: grid;
-  grid-template-columns: auto 1fr;
   align-items: center;
-  gap: 0.95rem;
+  gap: 0.85rem;
+  grid-template-columns: auto 1fr;
 }
 
 .auth__mark {
   display: grid;
-  width: 54px;
-  height: 54px;
+  width: 48px;
+  height: 48px;
   place-content: center;
-  border-radius: 18px;
+  border-radius: 16px;
   background: linear-gradient(140deg, var(--accent), var(--accent-strong));
-  color: #fff;
+  color: #0b0620;
   font-family: var(--font-display);
-  font-size: 1.1rem;
+  font-size: 1.05rem;
   font-weight: 800;
 }
 
 .auth__brand h1 {
   margin: 0;
   font-family: var(--font-display);
-  font-size: 1.3rem;
+  font-size: 1.28rem;
   letter-spacing: -0.01em;
 }
 
 .auth__brand p {
-  margin: 0.25rem 0 0;
+  margin: 0.2rem 0 0;
   color: var(--text-muted);
-  font-size: 0.86rem;
+  font-size: 0.85rem;
   line-height: 1.4;
 }
 
 .auth__form {
   display: grid;
-  gap: 0.85rem;
+  align-items: start;
+  gap: 0.7rem;
 }
 
-.auth__submit { justify-content: center; margin-top: 0.3rem; }
+/* Подсказка под одним полем не должна растягивать соседнее: поля прижаты
+   к верху своей ячейки и остаются одной высоты. */
+.auth .field {
+  align-content: start;
+  gap: 0.3rem;
+}
+
+.auth .field input { padding: 0.55rem 0.8rem; }
+
+.auth__submit { justify-content: center; margin-top: 0.2rem; }
 
 .auth__error,
 .auth__notice {
   margin: 0;
-  border-radius: var(--r-sm);
-  padding: 0.7rem 0.85rem;
-  font-size: 0.85rem;
-  line-height: 1.45;
+  border-radius: var(--r-xs);
+  padding: 0.65rem 0.8rem;
+  font-size: 0.84rem;
+  line-height: 1.4;
 }
 
 .auth__error {
@@ -4982,7 +5319,7 @@ strong {
   justify-content: space-between;
   gap: 0.6rem;
   border-top: 1px solid var(--border);
-  padding-top: 0.9rem;
+  padding-top: 0.8rem;
 }
 
 .auth__links a {
@@ -5008,7 +5345,12 @@ strong {
 .field__error { color: var(--danger); }
 .field__hint { color: var(--text-dim); }
 
+@media (max-width: 720px) {
+  .auth[data-mode="signup"] .auth__form { grid-template-columns: minmax(0, 1fr); }
+}
+
 @media (max-width: 480px) {
-  .auth__card { padding: 1.6rem 1.25rem 1.4rem; }
+  .auth__hero { padding: 5.5rem 0.9rem 2rem; }
+  .auth__card { padding: 1.25rem 1.1rem 1.1rem; }
   .auth__brand { grid-template-columns: 1fr; }
 }

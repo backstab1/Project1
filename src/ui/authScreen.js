@@ -1,7 +1,15 @@
 // Экран входа. Отдельная страница, а не часть оболочки: до появления профиля
 // приложения ещё нет и рисовать нечего.
+//
+// Выглядит он как первый экран витрины, с которого на него пришли: та же
+// пилюля навигации сверху, тот же кадр киновечера во весь экран и та же
+// строка-подпись внизу. Разница одна — вместо заголовка и кнопок посередине
+// стоит форма.
 
-const MODES = {
+import { APP_VERSION } from "../config.js";
+import { icon } from "./icons.js";
+
+export const AUTH_MODES = {
   signin: {
     title: "С возвращением",
     lead: "Войдите, чтобы открыть свою библиотеку.",
@@ -34,7 +42,7 @@ const MODES = {
   },
 };
 
-const FIELDS = {
+export const AUTH_FIELDS = {
   email: { label: "Почта", type: "email", autocomplete: "email" },
   password: { label: "Пароль", type: "password", autocomplete: "current-password" },
   passwordRepeat: {
@@ -64,33 +72,61 @@ const FIELDS = {
 };
 
 export function renderAuthScreen(root, state) {
-  const mode = MODES[state.mode] ? state.mode : "signin";
-  const config = MODES[mode];
+  const mode = AUTH_MODES[state.mode] ? state.mode : "signin";
+  const config = AUTH_MODES[mode];
   const values = state.values ?? {};
   const errors = state.errors ?? {};
 
   root.innerHTML = `
     <main class="auth" data-mode="${mode}">
-      <section class="auth__card">
-        <div class="auth__brand">
-          <div class="auth__mark">CV</div>
-          <div>
-            <h1>${config.title}</h1>
-            <p>${config.lead}</p>
-          </div>
+      <header class="pillbar">
+        <nav class="pillbar__pill">
+          <span class="pillbar__brand">
+            <span class="pillbar__mark">${icon("film")}</span>
+            CineVault
+          </span>
+          <span class="pillbar__spacer"></span>
+          ${state.cancellable
+            ? `<button class="btn btn--ghost" type="button" data-auth-mode="cancel">
+                Вернуться на витрину
+              </button>`
+            : ""}
+        </nav>
+      </header>
+
+      <section class="auth__hero">
+        <div class="wl-hero__bg" aria-hidden="true">
+          <img src="./assets/welcome/hero-night.jpg" width="1920" height="1081"
+            alt="" fetchpriority="high" decoding="async">
         </div>
-        ${state.serverConfigured ? "" : renderSetupWarning()}
-        ${state.notice ? `<p class="auth__notice" role="status">${escapeHtml(state.notice)}</p>` : ""}
-        ${errors.general ? `<p class="auth__error" role="alert">${escapeHtml(errors.general)}</p>` : ""}
-        <form class="auth__form" novalidate>
-          ${config.fields.map((name) => renderField(name, values[name], errors[name])).join("")}
-          <button
-            class="btn btn--primary btn--lg auth__submit"
-            type="submit"
-            ${state.busy || state.canSubmit === false ? "disabled" : ""}
-          >${state.busy ? "Подождите…" : config.submit}</button>
-        </form>
-        <div class="auth__links">${renderLinks(mode)}</div>
+        <div class="auth__stage">
+          <section class="auth__card">
+            <div class="auth__brand">
+              <div class="auth__mark">CV</div>
+              <div>
+                <h1>${config.title}</h1>
+                <p>${config.lead}</p>
+              </div>
+            </div>
+            ${state.serverConfigured ? "" : renderSetupWarning()}
+            ${state.notice ? `<p class="auth__notice" role="status">${escapeHtml(state.notice)}</p>` : ""}
+            ${errors.general ? `<p class="auth__error" role="alert">${escapeHtml(errors.general)}</p>` : ""}
+            <form class="auth__form" novalidate>
+              ${config.fields.map((name) => renderAuthField(name, values[name], errors[name])).join("")}
+              <button
+                class="btn btn--primary btn--lg auth__submit"
+                type="submit"
+                ${state.busy || state.canSubmit === false ? "disabled" : ""}
+              >${state.busy ? "Подождите…" : config.submit}</button>
+            </form>
+            <div class="auth__links">${renderLinks(mode, state.cancellable)}</div>
+          </section>
+          <p class="wl-meta auth__meta">
+            <span><i class="wl-dot"></i>Аккаунт по коду приглашения</span>
+            <span><i class="wl-dot"></i>Версия ${APP_VERSION}</span>
+            <span><i class="wl-dot"></i>Интерфейс полностью на русском</span>
+          </p>
+        </div>
       </section>
     </main>
   `;
@@ -117,8 +153,8 @@ export function renderAuthScreen(root, state) {
   root.querySelector(`[name="${focusName}"]`)?.focus();
 }
 
-function renderField(name, value = "", error = "") {
-  const field = FIELDS[name];
+export function renderAuthField(name, value = "", error = "") {
+  const field = AUTH_FIELDS[name];
   return `
     <label class="field${error ? " field--invalid" : ""}">
       <span>${field.label}</span>
@@ -136,7 +172,7 @@ function renderField(name, value = "", error = "") {
   `;
 }
 
-function renderLinks(mode) {
+function renderLinks(mode, cancellable = false) {
   const links = {
     signin: [
       ["signup", "Создать аккаунт"],
@@ -148,7 +184,14 @@ function renderLinks(mode) {
     profile: [["signout", "Выйти из аккаунта"]],
   };
 
-  return (links[mode] ?? [])
+  // С витрины на форму приходят по своей воле, поэтому нужен и путь обратно.
+  // На обязательных шагах (новый пароль, приглашение) уходить некуда.
+  const items = [...(links[mode] ?? [])];
+  if (cancellable && mode !== "recovery" && mode !== "profile") {
+    items.push(["cancel", "Вернуться на витрину"]);
+  }
+
+  return items
     .map(
       ([target, label]) =>
         `<a href="#" data-auth-mode="${target}">${label}</a>`,

@@ -1,4 +1,4 @@
-import { LEGACY_STORAGE_KEYS, STORE_NAMES } from "./config.js";
+import { LEGACY_STORAGE_KEYS, STORE_NAMES, isServerConfigured } from "./config.js";
 import { initializeDatabase } from "./data/database.js";
 import {
   commitLibraryChanges,
@@ -83,7 +83,14 @@ import {
 } from "./domain/spreadsheetImport.js";
 import { createReminderDismissalDate } from "./domain/backupReminder.js";
 import { renderAppShell } from "./ui/appShell.js";
-import { requireAccount } from "./ui/authFlow.js";
+import {
+  isAuthPreview,
+  openAuthScreen,
+  resolveAccountEntry,
+  submitAuthForm,
+} from "./ui/authFlow.js";
+import { describeAuthError } from "./domain/authRules.js";
+import { signOut } from "./services/authService.js";
 import { openDialog } from "./ui/dialog.js";
 import { animateWheel } from "./ui/wheelCanvas.js";
 import { showToast } from "./ui/toast.js";
@@ -167,11 +174,28 @@ const state = {
   selectedMovieIds: new Set(),
   focusControl: null,
   account: null,
+  // Кабинет внизу справа: гостю показывает вход, вошедшему — профиль.
+  accountPanel: {
+    open: false,
+    mode: "signin",
+    values: {},
+    errors: {},
+    notice: "",
+    busy: false,
+    autofocus: false,
+  },
+  // Библиотека закрыта, пока сервер настроен, а аккаунта ещё нет.
+  libraryLocked: isServerConfigured(),
   tmdbStatus: { configured: false, loading: true, error: null },
   localBackup: { directory: "", files: [], lastSavedAt: null, error: null },
   error: null,
   onNavigate(view) {
     if (!VIEW_IDS.has(view)) return;
+    if (state.libraryLocked && view !== "welcome") {
+      openAccountScreen("signin", "Войдите, чтобы открыть библиотеку.")
+        .catch(showUnexpectedError);
+      return;
+    }
     state.view = view;
     state.focusControl = null;
     state.detailMovieId = null;
@@ -190,45 +214,82 @@ const state = {
 
 start();
 
+// Гостя встречает витрина, а не форма: вход открывается кабинетом внизу
+// справа. Полноэкранный экран остаётся только для шагов, которые нельзя
+// пропустить, — смены пароля по ссылке и обмена приглашения на профиль.
 async function start() {
-  // Шлюз входа. Пока библиотека ещё локальная, он работает только при
-  // настроенном сервере: см. комментарий в ui/authFlow.js.
-  try {
-    state.account = await requireAccount(root);
-  } catch (error) {
-    console.error(error);
-    state.error = error instanceof Error ? error : new Error(String(error));
+  bindGlobalListeners();
+
+  if (isAuthPreview()) {
+    state.account = await openAuthScreen(root, { mode: "signin" });
+    state.libraryLocked = false;
+    await loadWorkspace();
+    render();
+    startBackupRoutines();
+    return;
+  }
+
+  const entry = await resolveAccountEntry();
+  if (entry.blocking) {
+    state.account = await openAuthScreen(root, entry);
+  } else {
+    state.account = entry.profile;
+    if (entry.error) {
+      state.accountPanel.errors = { general: entry.error };
+    }
+  }
+
+  state.libraryLocked = isServerConfigured() && !state.account;
+  if (state.libraryLocked) {
+    // Гостю показывать нечего, кроме витрины: якорь вида в адресе убираем,
+    // иначе кнопка «назад» вернула бы его в раздел, которого он не видел.
+    state.view = "welcome";
+    if (location.hash) history.replaceState(null, "", location.pathname);
     render();
     return;
   }
 
+  await loadWorkspace();
+  render();
+  startBackupRoutines();
+}
+
+function bindGlobalListeners() {
+  // Событие error у изображений не всплывает, поэтому слушаем фазу перехвата.
+  document.addEventListener("error", handleBrokenPoster, true);
+  window.addEventListener("keydown", handleGlobalKeydown);
+  window.addEventListener("popstate", () => {
+    const view = readViewFromHash();
+    state.view = state.libraryLocked && view !== "welcome" ? "welcome" : view;
+    state.focusControl = null;
+    state.detailMovieId = null;
+    render();
+  });
+}
+
+// Открывает библиотеку: база, записи, статус TMDB. Вызывается и на старте,
+// и сразу после входа в кабинете.
+async function loadWorkspace() {
   try {
     await initializeDatabase();
     state.library = await loadLibrary();
     state.statistics = buildLibraryStatistics(state.library);
     state.rollDraftPool = buildRollPool(state.library, state.rollPoolFilters);
     await refreshTmdbStatus();
+    state.error = null;
   } catch (error) {
     console.error(error);
     state.error = error instanceof Error ? error : new Error(String(error));
   }
-
   applyMotionPreference();
-  render();
+}
+
+function startBackupRoutines() {
   refreshLocalBackupStatus()
     .then(() => runScheduledBackup())
     .catch(() => {
       // Лаунчер может быть недоступен: приложение всё равно работает.
     });
-  // Событие error у изображений не всплывает, поэтому слушаем фазу перехвата.
-  document.addEventListener("error", handleBrokenPoster, true);
-  window.addEventListener("keydown", handleGlobalKeydown);
-  window.addEventListener("popstate", () => {
-    state.view = readViewFromHash();
-    state.focusControl = null;
-    state.detailMovieId = null;
-    render();
-  });
 }
 
 function render() {
@@ -352,9 +413,202 @@ async function handleAction(action, payload) {
     "palette-open": () => openCommandPalette(),
     "theme-set": () => setTheme(payload.theme),
     "theme-toggle": () => changeTheme(),
+    "account-toggle": () => toggleAccountPanel(),
+    "account-open": () => openAccountScreen(payload.mode ?? "signin"),
+    "account-close": () => closeAccountPanel(),
+    "account-mode": () => setAccountMode(payload.mode),
+    "account-submit": () => submitAccountForm(payload.mode, payload.values),
+    "account-signout": () => signOutAccount(),
   };
 
   await handlers[action]?.();
+}
+
+/* --------------------------------------------------------- Личный кабинет */
+
+// «Создать аккаунт» и «Войти» с витрины ведут на следующую страницу — форму
+// во весь экран. Кабинет внизу справа живёт уже внутри библиотеки и нужен
+// вошедшему: посмотреть профиль и выйти.
+async function openAccountScreen(mode = "signin", notice = "") {
+  const profile = await openAuthScreen(root, { mode, notice, cancellable: true });
+  if (!profile) {
+    // Вернулись на витрину: состояние не менялось, хватит перерисовки.
+    render();
+    return;
+  }
+  await enterLibrary(profile);
+}
+
+function openAccountPanel(mode = "signin", notice = "") {
+  state.accountPanel = {
+    ...state.accountPanel,
+    open: true,
+    mode: state.account ? state.accountPanel.mode : mode,
+    values: {},
+    errors: {},
+    notice,
+    busy: false,
+    // Фокус нужен только форме: у вошедшего в панели одни кнопки.
+    autofocus: !state.account,
+  };
+  render();
+}
+
+function toggleAccountPanel() {
+  if (state.accountPanel.open) {
+    closeAccountPanel();
+    return;
+  }
+  openAccountPanel(state.accountPanel.mode);
+}
+
+function closeAccountPanel() {
+  state.accountPanel = {
+    ...state.accountPanel,
+    open: false,
+    busy: false,
+    autofocus: false,
+  };
+  render();
+}
+
+function setAccountMode(mode) {
+  state.accountPanel = {
+    ...state.accountPanel,
+    open: true,
+    mode: mode ?? "signin",
+    values: {},
+    errors: {},
+    notice: "",
+    busy: false,
+    autofocus: true,
+  };
+  render();
+}
+
+async function submitAccountForm(mode, values) {
+  if (state.accountPanel.busy) return;
+  state.accountPanel = {
+    ...state.accountPanel,
+    values,
+    errors: {},
+    notice: "",
+    busy: true,
+    autofocus: false,
+  };
+  render();
+
+  let result;
+  try {
+    result = await submitAuthForm(mode, values);
+  } catch (error) {
+    state.accountPanel = {
+      ...state.accountPanel,
+      busy: false,
+      errors: { general: describeAuthError(error) },
+      autofocus: true,
+    };
+    render();
+    return;
+  }
+
+  if (result.profile) {
+    await enterLibrary(result.profile);
+    return;
+  }
+
+  state.accountPanel = {
+    ...state.accountPanel,
+    busy: false,
+    mode: result.mode ?? state.accountPanel.mode,
+    values: result.clearValues ? {} : state.accountPanel.values,
+    errors: result.errors ?? {},
+    notice: result.notice ?? "",
+    autofocus: true,
+  };
+  render();
+}
+
+async function enterLibrary(profile) {
+  state.account = profile;
+  state.libraryLocked = false;
+  state.accountPanel = {
+    open: false,
+    mode: "signin",
+    values: {},
+    errors: {},
+    notice: "",
+    busy: false,
+    autofocus: false,
+  };
+  state.view = "dashboard";
+  if (location.hash !== "#dashboard") {
+    history.pushState(null, "", "#dashboard");
+  }
+
+  await loadWorkspace();
+  render();
+  startBackupRoutines();
+  showToast(`С возвращением, ${profile.display_name ?? profile.handle}.`);
+}
+
+async function signOutAccount() {
+  state.accountPanel = { ...state.accountPanel, busy: true, errors: {} };
+  render();
+
+  try {
+    await signOut();
+  } catch (error) {
+    state.accountPanel = {
+      ...state.accountPanel,
+      busy: false,
+      errors: { general: describeAuthError(error) },
+    };
+    render();
+    return;
+  }
+
+  state.account = null;
+  state.libraryLocked = isServerConfigured();
+  closeWorkspace();
+  state.accountPanel = {
+    open: false,
+    mode: "signin",
+    values: {},
+    errors: {},
+    notice: "",
+    busy: false,
+    autofocus: false,
+  };
+  state.view = "welcome";
+  history.pushState(null, "", location.pathname);
+  render();
+  showToast("Вы вышли из аккаунта.");
+}
+
+// После выхода в памяти не должно остаться ни записей, ни начатой сессии:
+// следующий вход соберёт всё заново.
+function closeWorkspace() {
+  state.library = {
+    movies: [],
+    categories: [],
+    franchises: [],
+    participants: [],
+    rollSessions: [],
+  };
+  state.statistics = {
+    movieCount: 0,
+    watchedMovieCount: 0,
+    unwatchedMovieCount: 0,
+    categoryCount: 0,
+  };
+  state.rollDraftPool = [];
+  state.activeSession = null;
+  state.detailMovieId = null;
+  state.selectionMode = false;
+  state.selectedMovieIds = new Set();
+  state.catalogFilters = { ...DEFAULT_CATALOG_FILTERS };
+  state.error = null;
 }
 
 function resetCatalogFilters() {
@@ -1399,11 +1653,20 @@ async function rememberParticipants(participants) {
 function handleGlobalKeydown(event) {
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
     event.preventDefault();
-    if (isPaletteOpen()) {
+    if (state.libraryLocked) {
+      openAccountScreen("signin", "Войдите, чтобы искать по библиотеке.")
+        .catch(showUnexpectedError);
+    } else if (isPaletteOpen()) {
       closePalette();
     } else {
       openCommandPalette();
     }
+    return;
+  }
+
+  if (event.key === "Escape" && state.accountPanel.open && !isPaletteOpen()) {
+    event.preventDefault();
+    closeAccountPanel();
     return;
   }
 
@@ -1916,8 +2179,8 @@ function openTmdbTokenDialog({ returnToMovie = false } = {}) {
         <input name="token" type="password" required autocomplete="off"
           minlength="20" maxlength="2048" placeholder="eyJhbGciOiJIUzI1NiJ9…">
       </label>
-      <p class="form-hint">Токен проверяется запросом к TMDB и хранится только
-      на этом компьютере. В резервную копию он не попадает.</p>
+      <p class="form-hint">Токен проверяется запросом к TMDB и хранится отдельно
+      от библиотеки. В резервную копию он не попадает.</p>
     `,
     onSubmit: async (formData) => {
       await configureTmdbToken(formData.get("token"));
@@ -1930,7 +2193,7 @@ function openTmdbTokenDialog({ returnToMovie = false } = {}) {
 }
 
 async function removeTmdbToken() {
-  if (!confirm("Удалить сохранённый токен TMDB с этого компьютера?")) return;
+  if (!confirm("Удалить сохранённый токен TMDB?")) return;
   await clearTmdbToken();
   await refreshTmdbStatus();
   render();

@@ -1,9 +1,9 @@
-// Шлюз входа: держит экран авторизации, пока у человека не появится профиль.
+// Вход в CineVault: витрина открыта всем, библиотека — только по аккаунту.
 //
-// Пока хранилище ещё локальное (этап 16 не сделан), шлюз включается только при
-// настроенном сервере — иначе разработка остального приложения встала бы.
-// После переноса библиотеки на сервер условие уйдёт: без аккаунта показывать
-// будет нечего.
+// Глухого экрана входа на старте больше нет. Гость попадает на витрину и сам
+// решает, когда открыть кабинет внизу справа. Полноэкранный экран остаётся для
+// двух случаев, где выбора действительно нет: смена пароля по ссылке из письма
+// и обмен приглашения на профиль после подтверждения почты.
 
 import { isServerConfigured } from "../config.js";
 import {
@@ -32,25 +32,56 @@ import {
 } from "../services/authService.js";
 import { renderAuthScreen } from "./authScreen.js";
 
+// Режимы, в которых человека нельзя пустить дальше формы: без нового пароля
+// сессия непригодна, без приглашения нет профиля, а значит и библиотеки.
+const BLOCKING_MODES = new Set(["recovery", "profile"]);
+
 export function isAuthPreview() {
   return new URLSearchParams(location.search).get("auth") === "preview";
 }
 
-// Возвращает профиль, когда человек вошёл. null означает «шлюз выключен»:
-// сервер не настроен и приложение работает по-старому, локально.
-export async function requireAccount(root) {
-  const configured = isServerConfigured();
-  if (!configured && !isAuthPreview()) {
-    return null;
+// Тихо выясняет, кто пришёл. Ничего не рисует и никого не задерживает:
+// решение — показывать витрину гостю или сразу библиотеку — принимает main.js.
+export async function resolveAccountEntry() {
+  if (!isServerConfigured()) {
+    return entry({ configured: false, error: "Сервер не настроен." });
   }
 
+  try {
+    const point = await resolveEntryPoint();
+    if (point.profile) return entry({ profile: point.profile });
+    return entry({ mode: point.mode, notice: point.notice ?? "" });
+  } catch (error) {
+    return entry({ error: describeAuthError(error) });
+  }
+}
+
+function entry(values = {}) {
+  const mode = values.mode ?? "signin";
+  return {
+    profile: values.profile ?? null,
+    mode,
+    notice: values.notice ?? "",
+    error: values.error ?? null,
+    configured: values.configured ?? true,
+    blocking: BLOCKING_MODES.has(mode),
+  };
+}
+
+// Полноэкранная форма — следующая страница после витрины и единственный экран
+// на обязательных шагах. Разрешается профилем, когда человек довёл дело до
+// конца, или null, если он решил вернуться на витрину.
+export function openAuthScreen(root, source = {}) {
+  const configured = isServerConfigured();
   const screen = {
-    mode: "signin",
+    mode: source.mode ?? "signin",
     values: {},
-    errors: {},
-    notice: "",
+    errors: source.error ? { general: source.error } : {},
+    notice: source.notice ?? "",
     busy: false,
     serverConfigured: configured,
+    // Уйти можно только с того экрана, на который пришли добровольно.
+    cancellable: Boolean(source.cancellable),
     // В предпросмотре форму можно отправлять и без сервера: проверки полей
     // срабатывают до сети, и их видно, а до запроса дело не доходит.
     canSubmit: configured || isAuthPreview(),
@@ -58,21 +89,14 @@ export async function requireAccount(root) {
     onModeChange: () => {},
   };
 
-  if (configured) {
-    try {
-      const entry = await resolveEntryPoint();
-      if (entry.profile) return entry.profile;
-      screen.mode = entry.mode;
-      screen.notice = entry.notice ?? "";
-    } catch (error) {
-      screen.errors = { general: describeAuthError(error) };
-    }
-  }
-
   return new Promise((resolve) => {
     const paint = () => renderAuthScreen(root, screen);
 
     screen.onModeChange = (mode) => {
+      if (mode === "cancel") {
+        resolve(null);
+        return;
+      }
       if (mode === "signout") {
         signOut().catch(() => {});
         screen.mode = "signin";
@@ -92,7 +116,7 @@ export async function requireAccount(root) {
       screen.busy = true;
       paint();
 
-      submit(mode, values)
+      submitAuthForm(mode, values)
         .then((result) => {
           screen.busy = false;
           if (result.profile) {
@@ -133,7 +157,9 @@ async function resolveEntryPoint() {
   };
 }
 
-async function submit(mode, values) {
+// Одна отправка формы — один результат. Форму рисует и полноэкранный экран,
+// и кабинет внизу справа, поэтому правила живут здесь, а не в разметке.
+export async function submitAuthForm(mode, values) {
   if (mode === "signin") return submitSignIn(values);
   if (mode === "signup") return submitSignUp(values);
   if (mode === "reset") return submitReset(values);

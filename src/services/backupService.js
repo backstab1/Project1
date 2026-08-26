@@ -17,7 +17,7 @@ async function requestJson(url, options = {}) {
   try {
     response = await fetch(url, options);
   } catch {
-    throw new Error("Локальный сервис CineVault недоступен.");
+    throw new Error("Служба CineVault недоступна.");
   }
 
   let payload = {};

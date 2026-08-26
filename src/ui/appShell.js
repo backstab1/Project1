@@ -20,6 +20,7 @@ import {
 import { buildInsights } from "../domain/insights.js";
 import { icon } from "./icons.js";
 import { renderWelcome } from "./welcomeScreen.js";
+import { bindAccountDock, renderAccountDock } from "./accountDock.js";
 
 // «Главная» намеренно отсутствует в боковом меню: на неё ведёт логотип CV.
 // Пункт остаётся только в мобильной нижней навигации, где логотипа нет.
@@ -126,9 +127,9 @@ export function renderAppShell(root, state) {
 
         <div class="sidebar__bottom">
           <button class="storage-chip ${state.error ? "is-error" : ""}" type="button" data-view="welcome">
-            <span class="storage-chip__icon">${icon(state.error ? "warning" : "shield")}</span>
+            <span class="storage-chip__icon">${icon(state.error ? "warning" : "film")}</span>
             <span class="storage-chip__text">
-              <strong>${state.error ? "Хранилище недоступно" : "Данные на устройстве"}</strong>
+              <strong>${state.error ? "Хранилище недоступно" : "Витрина CineVault"}</strong>
               <small>CineVault ${escapeHtml(APP_VERSION)}</small>
             </span>
           </button>
@@ -208,11 +209,14 @@ export function renderAppShell(root, state) {
           </footer>
         </form>
       </dialog>
+
+      ${renderAccountDock(state)}
     </div>
   `;
 
   renderCurrentView(root.querySelector("#view-content"), state);
   bindEvents(root, state);
+  bindAccountDock(root, state);
 
   setupDialog();
   const wheelCanvas = root.querySelector("#wheel-canvas");
@@ -235,7 +239,7 @@ export function renderAppShell(root, state) {
 const WELCOME_LINKS = [
   ["feats", "Возможности"],
   ["wheel", "Колесо"],
-  ["privacy", "Приватность"],
+  ["account", "Аккаунт"],
   ["faq", "Вопросы"],
 ];
 
@@ -261,7 +265,10 @@ function renderWelcomeShell(root, state) {
               `).join("")}
             </ul>
             <span class="pillbar__spacer"></span>
-            <button class="btn btn--primary" type="button" data-view="catalog">Открыть хранилище</button>
+            ${state.libraryLocked
+              ? `<button class="btn btn--primary" type="button"
+                  data-action="account-open" data-mode="signup">Создать аккаунт</button>`
+              : `<button class="btn btn--primary" type="button" data-view="catalog">Открыть хранилище</button>`}
           </nav>
         </header>
         <section class="content" id="view-content"></section>
@@ -353,7 +360,7 @@ function renderCurrentView(container, state) {
         <span class="notice__icon">${icon("warning")}</span>
         <div>
           <p class="eyebrow">Хранилище недоступно</p>
-          <h2>Не удалось открыть локальную базу</h2>
+          <h2>Не удалось открыть хранилище библиотеки</h2>
           <p>${escapeHtml(state.error.message)}</p>
           <p class="muted">Запускайте приложение через <code>launch.py</code>,
           а не открывайте <code>index.html</code> напрямую из файла.</p>
@@ -642,8 +649,8 @@ function renderDashboard(container, state) {
           <h2>${library.settings.lastBackupAt
             ? "Пора обновить резервную копию"
             : "Резервная копия ещё не создавалась"}</h2>
-          <p>Библиотека живёт локально в браузере. Скачайте JSON сейчас или
-          отложите напоминание на ${library.settings.backupReminderDays ?? 30} дней.</p>
+          <p>Резервная копия — вся библиотека одним файлом. Скачайте JSON сейчас
+          или отложите напоминание на ${library.settings.backupReminderDays ?? 30} дней.</p>
         </div>
         <div class="notice__actions">
           <button class="btn btn--primary" type="button" data-action="backup-export">
@@ -2006,8 +2013,8 @@ function renderSettings(container, state) {
           </span>
         </header>
         <p>${tmdb.configured
-          ? "Поиск доступен в форме добавления фильма: название, год, длительность, страна, жанры, описание и постер заполняются автоматически, а постеры кэшируются локально."
-          : "Подключите API Read Access Token, чтобы искать фильмы по названию и сохранять постеры на этом компьютере."}</p>
+          ? "Поиск доступен в форме добавления фильма: название, год, длительность, страна, жанры, описание и постер заполняются автоматически."
+          : "Подключите API Read Access Token, чтобы искать фильмы по названию и подтягивать постеры автоматически."}</p>
         ${tmdb.error ? `<p class="form-error is-visible">${escapeHtml(tmdb.error)}</p>` : ""}
         ${tmdb.configured && enrichmentCount ? `
           <p class="notice">
@@ -2120,8 +2127,8 @@ function renderSettings(container, state) {
             <span class="switch-field__box">${icon("check")}</span>
             <span class="switch-field__text">
               <strong>Копия на диск автоматически</strong>
-              <small>Хранится рядом с данными приложения и переживает очистку
-              браузера. CineVault держит последние пять копий.</small>
+              <small>Резервный файл сохраняется по расписанию; CineVault держит
+              последние пять копий.</small>
             </span>
           </label>
           ${autoBackupDays > 0 ? `
@@ -2227,13 +2234,13 @@ function renderSettings(container, state) {
             <span class="panel__glyph">${icon("shield")}</span>
             <div>
               <p class="eyebrow">Формат данных</p>
-              <h3>IndexedDB · схема v3</h3>
+              <h3>Библиотека · схема v3</h3>
             </div>
           </div>
         </header>
-        <p>Библиотека сохраняется автоматически в профиле текущего браузера и
-        никуда не отправляется. Для переноса на другой компьютер используйте
-        резервный JSON.</p>
+        <p>Библиотека сохраняется автоматически при каждом изменении и
+        принадлежит вашему аккаунту. Резервный JSON нужен для архива и для
+        переноса записей из другой программы.</p>
         <div class="kv-list">
           <div><span>Фильмов</span><b>${state.library.movies.length}</b></div>
           <div><span>Списков</span><b>${state.library.categories.length}</b></div>
