@@ -271,6 +271,29 @@ async function main() {
       !foreignInvites.error &&
       foreignInvites.data.some((row) => row.code === invite.data?.code);
     check("чужие приглашения не видны", !seesAlicesCode, "код виден постороннему");
+    // Удаление аккаунта — часть продукта, а не только уборка за тестом.
+    // Раньше оно падало: обнуление invites.used_by ломало ограничение, и
+    // человек не мог удалить свой аккаунт.
+    const removal = await admin.auth.admin.deleteUser(bob.id);
+    check("аккаунт удаляется вместе со всеми данными", !removal.error, removal.error?.message);
+
+    const usedInvite = await admin
+      .from("invites")
+      .select("code, used_at")
+      .not("used_at", "is", null)
+      .limit(1);
+    check(
+      "погашенное приглашение не возвращается в оборот после удаления",
+      !usedInvite.error && usedInvite.data.length > 0,
+      "код снова числится свободным",
+    );
+
+    const orphan = await admin.from("profiles").select("id").eq("id", bob.id);
+    check(
+      "данные удалённого аккаунта не остаются в базе",
+      !orphan.error && orphan.data.length === 0,
+      `осталось строк: ${orphan.data?.length}`,
+    );
   } finally {
     await admin.auth.admin.deleteUser(alice.id);
     await admin.auth.admin.deleteUser(bob.id);
