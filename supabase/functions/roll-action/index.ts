@@ -23,6 +23,7 @@ const CORS = {
 };
 
 const ALLOWED = new Set<string>([
+  LOG_EVENTS.started,
   LOG_EVENTS.spin,
   LOG_EVENTS.reroll,
   LOG_EVENTS.save,
@@ -33,6 +34,7 @@ const ALLOWED = new Set<string>([
 // Ведущий распоряжается ходом колеса; сейв тратит любой участник, потому что
 // сейв принадлежит игроку, а не ведущему.
 const HOST_ONLY = new Set<string>([
+  LOG_EVENTS.started,
   LOG_EVENTS.spin,
   LOG_EVENTS.eliminate,
   LOG_EVENTS.restore,
@@ -122,6 +124,17 @@ Deno.serve(async (request) => {
 
   const at = new Date().toISOString();
   const payload = { ...(body.payload ?? {}) };
+
+  // Состав сессии фиксируется один раз: журнал начинается с одного события,
+  // и переписать начало задним числом нельзя.
+  if (action === LOG_EVENTS.started) {
+    if (state) {
+      return json(409, { error: "Сессия уже начата." });
+    }
+    payload.sessionId = sessionId;
+  } else if (!state) {
+    return json(409, { error: "Сессия ещё не начата." });
+  }
 
   // Случайность — единственное, чего нет в запросе клиента и не может быть.
   if (action === LOG_EVENTS.spin) {
