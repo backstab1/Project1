@@ -69,39 +69,22 @@ foreach ($poolHost in $poolers) {
   Write-Host "--- Пробую $poolHost ---------------------------" -ForegroundColor Cyan
   Write-Host ''
 
-  # Никакого 2>&1: в PowerShell 5.1 каждая строка stderr внешней программы
-  # становится ошибкой, а при ErrorActionPreference = Stop - фатальной.
-  # Supabase CLI пишет в stderr обычные сообщения о ходе работы.
-  $outFile = Join-Path $env:TEMP 'cinevault-push-out.txt'
-  $errFile = Join-Path $env:TEMP 'cinevault-push-err.txt'
-  $process = Start-Process -FilePath 'npx.cmd' `
-    -ArgumentList @('supabase', 'db', 'push', '--db-url', $url) `
-    -NoNewWindow -Wait -PassThru `
-    -RedirectStandardOutput $outFile -RedirectStandardError $errFile
-  $code = $process.ExitCode
+  # Вывод не перехватывается вовсе. Причин две, и обе стоили нам по запуску:
+  # 1) db push спрашивает подтверждение - вопрос обязан быть виден;
+  # 2) в PowerShell 5.1 перехват stderr внешней программы превращает каждую
+  #    её строку в ошибку, а обычные сообщения CLI идут именно в stderr.
+  Write-Host 'CLI спросит подтверждение - ответьте Y и нажмите Enter.' -ForegroundColor Yellow
+  Write-Host ''
+  & npx.cmd supabase db push --db-url $url
+  $code = $LASTEXITCODE
+  $output = @()
 
-  $raw = @()
-  if (Test-Path $outFile) { $raw += @(Get-Content $outFile -ErrorAction SilentlyContinue) }
-  if (Test-Path $errFile) { $raw += @(Get-Content $errFile -ErrorAction SilentlyContinue) }
-  # Во временных файлах может оказаться строка подключения целиком.
-  Remove-Item $outFile, $errFile -Force -ErrorAction SilentlyContinue
-  $output = $raw | Where-Object { $_ } | ForEach-Object { Hide-Secret ([string]$_) }
-
-  $output | ForEach-Object { Write-Host $_ }
   Add-Content -Path $logPath -Value "=== $poolHost (код $code) ===" -Encoding utf8
-  $output | ForEach-Object { Add-Content -Path $logPath -Value $_ -Encoding utf8 }
 
   if ($code -eq 0) { $ok = $true; break }
 
-  if ($output -match 'Tenant or user not found') {
-    Write-Host 'Этот пулер не обслуживает проект, пробую следующий.' -ForegroundColor Yellow
-    continue
-  }
-  if ($output -match 'password authentication failed|SASL') {
-    Write-Host ''
-    Write-Host 'Пароль не подошел. Сбросьте его в панели и запустите файл заново.' -ForegroundColor Red
-    break
-  }
+  Write-Host ''
+  Write-Host 'Не вышло на этом пулере, пробую следующий.' -ForegroundColor Yellow
 }
 
 Write-Host ''
