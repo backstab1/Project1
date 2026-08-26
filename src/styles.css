@@ -3541,25 +3541,7 @@ strong {
 
 /* Настройки */
 
-.settings-grid {
-  display: grid;
-  gap: 1rem;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-}
-
 .panel--wide { grid-column: 1 / -1; }
-
-.attribution {
-  display: flex;
-  align-items: center;
-  gap: 0.9rem;
-  border-top: 1px solid var(--border);
-  padding-top: 0.9rem;
-  color: var(--text-dim);
-}
-
-.attribution img { width: 5.5rem; }
-.attribution small { font-size: 0.74rem; line-height: 1.4; }
 
 .file-btn {
   position: relative;
@@ -4940,11 +4922,6 @@ strong {
   white-space: pre-line;
 }
 
-.preferences {
-  display: grid;
-  gap: 0.9rem;
-}
-
 .switch-field {
   display: grid;
   align-items: center;
@@ -4999,6 +4976,243 @@ strong {
 .field__hint {
   color: var(--text-dim);
   font-size: 0.78rem;
+}
+
+/* ------------------------------------------------------------ Настройки */
+
+/* Настройки — технический экран: узкая колонка, группы со строками
+   «название — контрол» и никаких крупных кнопок. Всё управление мелкое и
+   выровнено по правому краю, поэтому взгляд идёт по одному столбцу. */
+.settings {
+  display: grid;
+  width: 100%;
+  max-width: 760px;
+  gap: 1rem;
+}
+
+.set-group {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+
+.set-group__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+  padding: 0.6rem 0.9rem;
+}
+
+.set-group__head h3 {
+  font-size: 0.9rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.set-group__note {
+  margin: 0;
+  border-top: 1px solid var(--border);
+  padding: 0.6rem 0.9rem;
+  color: var(--text-dim);
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
+.set-row {
+  display: grid;
+  align-items: center;
+  gap: 0.75rem 1.25rem;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 0.65rem 0.9rem;
+}
+
+.set-row + .set-row,
+.set-row + .set-table,
+.set-table + .set-row,
+.set-row + .set-alert,
+.set-alert + .set-row {
+  border-top: 1px solid var(--border);
+}
+
+.set-row__text strong {
+  display: block;
+  font-size: 0.87rem;
+  font-weight: 500;
+}
+
+.set-row__text small {
+  display: block;
+  margin-top: 0.12rem;
+  color: var(--text-dim);
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
+.set-row__text code {
+  font-size: 0.95em;
+  overflow-wrap: anywhere;
+}
+
+.set-row__control {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.35rem;
+}
+
+.set-value {
+  color: var(--text-dim);
+  font-size: 0.78rem;
+}
+
+.set-alert {
+  margin: 0;
+  padding: 0.55rem 0.9rem;
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 0.78rem;
+}
+
+/* Число вводится узким полем: настройки — это значения, а не формы. */
+.set-number {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.set-number input {
+  width: 4.2rem;
+  border: 1px solid var(--border);
+  border-radius: var(--r-xs);
+  background: var(--surface-2);
+  padding: 0.32rem 0.45rem;
+  color: var(--text);
+  font-size: 0.85rem;
+  text-align: right;
+  outline: none;
+  transition: border-color var(--t-fast) ease, box-shadow var(--t-fast) ease;
+}
+
+.set-number input:focus {
+  border-color: var(--accent);
+  background: var(--surface);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.set-number small { color: var(--text-dim); font-size: 0.74rem; }
+
+.set-table {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.7rem 0.9rem;
+}
+
+.set-table div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border-radius: var(--r-xs);
+  background: var(--surface-2);
+  padding: 0.32rem 0.55rem;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+.set-table b { color: var(--text); font-weight: 500; }
+
+.set-kv {
+  display: grid;
+  gap: 0.4rem;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  padding: 0.7rem 0.9rem;
+}
+
+.set-kv div {
+  display: grid;
+  gap: 0.15rem;
+  border-radius: var(--r-xs);
+  background: var(--surface-2);
+  padding: 0.45rem 0.6rem;
+}
+
+.set-kv span {
+  color: var(--text-dim);
+  font-size: 0.68rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.set-kv b { font-size: 0.88rem; font-weight: 500; }
+
+.set-block { padding: 0.7rem 0.9rem; }
+
+.set-attribution {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.set-attribution img { width: 3.6rem; }
+
+/* Переключатель: та же акцентная заливка, что у остальных включённых
+   состояний, но размером с текст — строке настройки крупный флажок ни к чему. */
+.toggle {
+  display: inline-flex;
+  flex: none;
+  cursor: pointer;
+}
+
+.toggle input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  clip-path: inset(50%);
+}
+
+.toggle__track {
+  display: block;
+  width: 2.3rem;
+  height: 1.3rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  padding: 2px;
+  transition: background var(--t-fast) ease, border-color var(--t-fast) ease;
+}
+
+.toggle__knob {
+  display: block;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 50%;
+  background: var(--text-dim);
+  transition: transform var(--t-fast) var(--ease-out), background var(--t-fast) ease;
+}
+
+.toggle input:checked + .toggle__track {
+  border-color: var(--accent-fill);
+  background: var(--accent-fill);
+}
+
+.toggle input:checked + .toggle__track .toggle__knob {
+  background: #fff;
+  transform: translateX(1rem);
+}
+
+.toggle input:focus-visible + .toggle__track {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (max-width: 620px) {
+  .set-row { grid-template-columns: minmax(0, 1fr); }
+  .set-row__control { justify-content: flex-start; }
 }
 
 /* --------------------------------------- Статусы и массовые операции */
@@ -5229,20 +5443,6 @@ strong {
 .taste-list__name { font-weight: 500; }
 
 .taste-list__row small { color: var(--text-dim); font-size: 0.78rem; }
-
-.backup-local {
-  display: grid;
-  gap: 0.7rem;
-  border-top: 1px solid var(--border);
-  margin-top: 0.4rem;
-  padding-top: 0.9rem;
-}
-
-.kv-list--files code,
-.backup-local code {
-  overflow-wrap: anywhere;
-  font-size: 0.75rem;
-}
 
 .enrich-progress {
   display: grid;

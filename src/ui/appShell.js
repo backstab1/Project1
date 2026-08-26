@@ -2157,260 +2157,242 @@ function renderSettings(container, state) {
   const enrichmentCount = selectEnrichmentCandidates(state.library.movies).length;
   const autoBackupDays = Number(settings.autoBackupDays ?? 0);
   const localBackup = state.localBackup ?? { files: [], directory: "", error: null };
+  const participants = state.library.participants ?? [];
 
   container.innerHTML = `
-    <div class="settings-grid">
-      <section class="panel panel--wide ${tmdb.configured ? "panel--ok" : ""}">
-        <header class="panel__head">
-          <div class="panel__lead">
-            <span class="panel__glyph">${icon("bolt")}</span>
-            <div>
-              <p class="eyebrow">Каталог фильмов</p>
-              <h3>Интеграция с TMDB</h3>
-            </div>
-          </div>
-          <span class="status-pill ${tmdb.configured ? "status-pill--ok" : ""}">
-            <i></i>${tmdb.loading ? "Проверка…" : tmdb.configured ? "Подключён" : "Не подключён"}
-          </span>
-        </header>
-        <p>${tmdb.configured
-          ? "Поиск доступен в форме добавления фильма: название, год, длительность, страна, жанры, описание и постер заполняются автоматически."
-          : "Подключите API Read Access Token, чтобы искать фильмы по названию и подтягивать постеры автоматически."}</p>
-        ${tmdb.error ? `<p class="form-error is-visible">${escapeHtml(tmdb.error)}</p>` : ""}
-        ${tmdb.configured && enrichmentCount ? `
-          <p class="notice">
-            ${icon("info")}
-            <span>${enrichmentCount} ${pluralize(enrichmentCount, ["фильм", "фильма", "фильмов"])}
-            без карточки TMDB или без части метаданных: постеры, жанры и описания
-            можно подтянуть одним проходом.</span>
-          </p>` : ""}
-        <div class="panel__actions">
-          ${tmdb.configured ? `
-            <button class="btn btn--primary" type="button" data-action="tmdb-enrich"
-              ${enrichmentCount ? "" : "disabled"}>
-              ${icon("sparkles")}<span>${enrichmentCount
-                ? `Обогатить ${enrichmentCount}`
-                : "Всё уже обогащено"}</span>
-            </button>` : ""}
-          <button class="btn ${tmdb.configured ? "btn--ghost" : "btn--primary"}" type="button"
-            data-action="tmdb-configure">
-            ${icon("bolt")}<span>${tmdb.configured ? "Заменить токен" : "Подключить TMDB"}</span>
-          </button>
-          ${tmdb.configured ? `
-            <button class="btn btn--ghost" type="button" data-action="tmdb-clear">
-              ${icon("trash")}<span>Удалить токен</span>
-            </button>` : ""}
-        </div>
-        <div class="attribution">
-          <a href="https://www.themoviedb.org" target="_blank" rel="noreferrer"
-            aria-label="The Movie Database">
-            <img src="./assets/tmdb.svg" alt="The Movie Database (TMDB)">
-          </a>
-          <small>This product uses the TMDB API but is not endorsed or certified by TMDB.</small>
-        </div>
-      </section>
+    <div class="settings">
 
-      <section class="panel">
-        <header class="panel__head">
-          <div class="panel__lead">
-            <span class="panel__glyph">${icon("settings")}</span>
-            <div>
-              <p class="eyebrow">Поведение приложения</p>
-              <h3>Звук, движение и сейвы</h3>
-            </div>
-          </div>
-        </header>
-        <div class="preferences">
-          <label class="switch-field">
-            <input type="checkbox" data-control="setting-sound"
-              ${settings.soundEnabled === false ? "" : "checked"}>
-            <span class="switch-field__box">${icon("check")}</span>
-            <span class="switch-field__text">
-              <strong>Звук колеса</strong>
-              <small>Щелчки при вращении и аккорд в конце.</small>
-            </span>
-          </label>
-          <label class="switch-field">
-            <input type="checkbox" data-control="setting-reduced-motion"
-              ${settings.reducedMotion === true ? "checked" : ""}>
-            <span class="switch-field__box">${icon("check")}</span>
-            <span class="switch-field__text">
-              <strong>Меньше движения</strong>
-              <small>Отключает анимации появления и вращение колеса.</small>
-            </span>
-          </label>
-          <label class="field">
-            <span>Сейвы работают, пока участников больше</span>
-            <input type="number" min="1" max="99" data-control="setting-save-threshold"
-              value="${Number(settings.savesEnabledAboveRemaining ?? 3)}">
-            <small class="field__hint">Значение подставляется в диалог настройки
-            сессии колеса.</small>
-          </label>
-          <label class="field">
-            <span>Напоминать о резервной копии, дней</span>
-            <input type="number" min="1" max="365" data-control="setting-backup-days"
-              value="${Number(settings.backupReminderDays ?? 30)}">
-          </label>
-        </div>
-      </section>
+      ${settingsGroup({
+        title: "Интеграция с TMDB",
+        status: `<span class="status-pill ${tmdb.configured ? "status-pill--ok" : ""}">
+          <i></i>${tmdb.loading ? "проверка" : tmdb.configured ? "подключено" : "не подключено"}
+        </span>`,
+        rows: [
+          settingsRow({
+            title: "API Read Access Token",
+            hint: "Хранится отдельно от библиотеки и не попадает в резервную копию.",
+            control: tmdb.configured
+              ? `${smallButton("tmdb-configure", "Заменить")}
+                 ${smallButton("tmdb-clear", "Удалить", { danger: true })}`
+              : smallButton("tmdb-configure", "Подключить"),
+          }),
+          settingsRow({
+            title: "Обогащение метаданными",
+            hint: tmdb.configured
+              ? enrichmentCount
+                ? `${enrichmentCount} ${pluralize(enrichmentCount, ["карточка", "карточки", "карточек"])} без части полей: год, страна, жанры, описание, постер.`
+                : "Все карточки заполнены."
+              : "Доступно после подключения токена.",
+            control: tmdb.configured
+              ? smallButton(
+                  "tmdb-enrich",
+                  enrichmentCount ? `Обогатить ${enrichmentCount}` : "Нечего обогащать",
+                  { disabled: !enrichmentCount },
+                )
+              : `<span class="set-value">—</span>`,
+          }),
+          tmdb.error ? `<p class="set-alert" role="alert">${escapeHtml(tmdb.error)}</p>` : "",
+        ],
+        note: `<span class="set-attribution">
+            <a href="https://www.themoviedb.org" target="_blank" rel="noreferrer"
+              aria-label="The Movie Database"><img src="./assets/tmdb.svg" alt="TMDB"></a>
+            <span>This product uses the TMDB API but is not endorsed or certified by TMDB.</span>
+          </span>`,
+      })}
 
-      <section class="panel">
-        <header class="panel__head">
-          <div class="panel__lead">
-            <span class="panel__glyph">${icon("download")}</span>
-            <div>
-              <p class="eyebrow">Резервная копия</p>
-              <h3>Экспорт и импорт</h3>
-            </div>
-          </div>
-        </header>
-        <p>Копия содержит фильмы, списки, коллекции, оценки, игроков и историю
-        завершённых роллов.</p>
-        <div class="panel__actions">
-          <button class="btn btn--primary" type="button" data-action="backup-export">
-            ${icon("download")}<span>Скачать JSON</span>
-          </button>
-          <label class="btn btn--ghost file-btn">
-            ${icon("upload")}<span>Импортировать JSON</span>
-            <input type="file" accept=".json,application/json" data-control="backup-import">
-          </label>
-          <button class="btn btn--ghost" type="button" data-action="csv-export">
-            ${icon("table")}<span>Выгрузить CSV</span>
-          </button>
-        </div>
-        <p class="form-hint">CSV удобно открыть в таблице, но восстановить
-        библиотеку целиком можно только из JSON.</p>
+      ${settingsGroup({
+        title: "Поведение",
+        rows: [
+          settingsRow({
+            title: "Звук колеса",
+            hint: "Щелчки при вращении и аккорд в конце.",
+            control: toggleControl("setting-sound", settings.soundEnabled !== false),
+          }),
+          settingsRow({
+            title: "Меньше движения",
+            hint: "Отключает анимации появления и вращение колеса.",
+            control: toggleControl("setting-reduced-motion", settings.reducedMotion === true),
+          }),
+          settingsRow({
+            title: "Порог сейвов",
+            hint: "Сейвы работают, пока участников в сессии больше этого числа.",
+            control: numberControl(
+              "setting-save-threshold",
+              settings.savesEnabledAboveRemaining ?? 3,
+              1,
+              99,
+            ),
+          }),
+          settingsRow({
+            title: "Напоминание о копии",
+            hint: "Через сколько дней без резервной копии показать напоминание.",
+            control: numberControl(
+              "setting-backup-days",
+              settings.backupReminderDays ?? 30,
+              1,
+              365,
+              "дней",
+            ),
+          }),
+        ],
+      })}
 
-        <div class="backup-local">
-          <label class="switch-field">
-            <input type="checkbox" data-control="setting-auto-backup"
-              ${autoBackupDays > 0 ? "checked" : ""}>
-            <span class="switch-field__box">${icon("check")}</span>
-            <span class="switch-field__text">
-              <strong>Копия на диск автоматически</strong>
-              <small>Резервный файл сохраняется по расписанию; CineVault держит
-              последние пять копий.</small>
-            </span>
-          </label>
-          ${autoBackupDays > 0 ? `
-            <label class="field">
-              <span>Как часто, дней</span>
-              <input type="number" min="1" max="90" data-control="setting-auto-backup-days"
-                value="${autoBackupDays}">
-            </label>` : ""}
-          <div class="panel__actions">
-            <button class="btn btn--ghost btn--sm" type="button" data-action="local-backup-now">
-              ${icon("shield")}<span>Сохранить копию сейчас</span>
-            </button>
-          </div>
-          ${localBackup.error
-            ? `<p class="form-hint">Лаунчер недоступен, копия на диск не делается:
-               ${escapeHtml(localBackup.error)}</p>`
-            : localBackup.files.length ? `
-              <div class="kv-list kv-list--files">
-                ${localBackup.files.map((file) => `
-                  <div>
-                    <span>${escapeHtml(formatDateTime(file.savedAt))}</span>
-                    <b>${Math.max(1, Math.round(file.size / 1024))} КБ</b>
-                  </div>
-                `).join("")}
-              </div>
-              <p class="form-hint">Папка: <code>${escapeHtml(localBackup.directory)}</code></p>
-            ` : `<p class="form-hint">Копий на диске пока нет.</p>`}
-        </div>
-        <p class="form-hint">Последняя копия: ${state.library.settings.lastBackupAt
-          ? escapeHtml(formatDateTime(state.library.settings.lastBackupAt))
-          : "не создавалась"}.</p>
-      </section>
+      ${settingsGroup({
+        title: "Данные",
+        rows: [
+          settingsRow({
+            title: "Резервная копия",
+            hint: "Фильмы, списки, коллекции, оценки, игроки и история роллов одним файлом.",
+            control: `${smallButton("backup-export", "Скачать JSON")}
+              ${fileControl("backup-import", "Загрузить JSON", ".json,application/json")}`,
+          }),
+          settingsRow({
+            title: "Выгрузка в CSV",
+            hint: "Удобно открыть в таблице; восстановить библиотеку целиком можно только из JSON.",
+            control: smallButton("csv-export", "Выгрузить"),
+          }),
+          settingsRow({
+            title: "Импорт таблицы",
+            hint: "CSV, TSV и XLSX. Столбцы: «Название», «Список», «Франшиза», «Год», «Длительность», «Страна», «Просмотрено», «Дата просмотра», «Оценка Имя».",
+            control: fileControl("table-import", "Выбрать файл", ".csv,.tsv,.xlsx,text/csv"),
+          }),
+          settingsRow({
+            title: "Копия на диск по расписанию",
+            hint: "CineVault держит последние пять копий рядом с приложением.",
+            control: `${autoBackupDays > 0
+              ? numberControl("setting-auto-backup-days", autoBackupDays, 1, 90, "дней")
+              : ""}
+              ${toggleControl("setting-auto-backup", autoBackupDays > 0)}`,
+          }),
+          settingsRow({
+            title: "Копия прямо сейчас",
+            hint: localBackup.error
+              ? `Лаунчер недоступен: ${escapeHtml(localBackup.error)}`
+              : localBackup.directory
+                ? `Папка: <code>${escapeHtml(localBackup.directory)}</code>`
+                : "Копия сохраняется через лаунчер CineVault.",
+            control: smallButton("local-backup-now", "Сохранить"),
+          }),
+          localBackup.files.length ? `
+            <div class="set-table">
+              ${localBackup.files.map((file) => `
+                <div>
+                  <span>${escapeHtml(formatDateTime(file.savedAt))}</span>
+                  <b>${Math.max(1, Math.round(file.size / 1024))} КБ</b>
+                </div>`).join("")}
+            </div>` : "",
+          settingsRow({
+            title: "Перенос из Movie Manager V13",
+            hint: state.legacyDataFound
+              ? "Найдены старые данные. Миграция объединит их с текущей библиотекой и ничего не удалит."
+              : "Старая база в этом браузере не найдена.",
+            control: smallButton("legacy-migrate", "Перенести", {
+              disabled: !state.legacyDataFound,
+            }),
+          }),
+        ],
+      })}
 
-      <section class="panel">
-        <header class="panel__head">
-          <div class="panel__lead">
-            <span class="panel__glyph">${icon("table")}</span>
-            <div>
-              <p class="eyebrow">Google Таблицы и Excel</p>
-              <h3>Импорт CSV, TSV, XLSX</h3>
+      ${settingsGroup({
+        title: "Игроки",
+        status: `<span class="set-value">${participants.length}</span>`,
+        rows: [`
+          <div class="set-block">
+            <div class="participant-tags">
+              ${participants.map((participant) => `
+                <span class="participant-tag">
+                  <i>${escapeHtml(initials(participant.name))}</i>
+                  ${escapeHtml(participant.name)}
+                  <button type="button" data-action="participant-edit" data-id="${participant.id}"
+                    aria-label="Редактировать">${icon("edit")}</button>
+                  <button type="button" data-action="participant-delete" data-id="${participant.id}"
+                    aria-label="Удалить">${icon("close")}</button>
+                </span>
+              `).join("") || `<span class="set-value">Имена появятся после первой сессии или оценки.</span>`}
             </div>
-          </div>
-        </header>
-        <p>Поддерживаются столбцы «Название», «Список» или «Категория», «Франшиза»,
-        «Год», «Длительность», «Страна», «Просмотрено», «Дата просмотра» и оценки
-        вида «Оценка Антон».</p>
-        <div class="panel__actions">
-          <label class="btn btn--primary file-btn">
-            ${icon("upload")}<span>Выбрать таблицу</span>
-            <input type="file" accept=".csv,.tsv,.xlsx,text/csv" data-control="table-import">
-          </label>
-        </div>
-      </section>
+          </div>`],
+      })}
 
-      <section class="panel ${state.legacyDataFound ? "panel--ok" : ""}">
-        <header class="panel__head">
-          <div class="panel__lead">
-            <span class="panel__glyph">${icon("database")}</span>
-            <div>
-              <p class="eyebrow">Movie Manager V13</p>
-              <h3>${state.legacyDataFound ? "Найдены старые данные" : "Старая база не найдена"}</h3>
-            </div>
-          </div>
-        </header>
-        <p>${state.legacyDataFound
-          ? "Миграция объединит старую библиотеку с новой и не удалит текущие записи."
-          : "Если старая версия использовалась в другом браузере, сначала экспортируйте её данные там."}</p>
-        <div class="panel__actions">
-          <button class="btn btn--primary" type="button" data-action="legacy-migrate"
-            ${state.legacyDataFound ? "" : "disabled"}>
-            ${icon("refresh")}<span>Перенести данные</span>
-          </button>
-        </div>
-      </section>
+      ${settingsGroup({
+        title: "Хранилище",
+        status: `<span class="set-value">схема v3</span>`,
+        rows: [`
+          <div class="set-kv">
+            ${[
+              ["Фильмов", state.library.movies.length],
+              ["Списков", state.library.categories.length],
+              ["Коллекций", state.library.franchises.length],
+              ["Сессий", state.library.rollSessions.length],
+              ["Версия", APP_VERSION],
+              ["Последняя копия", settings.lastBackupAt
+                ? formatDateTime(settings.lastBackupAt)
+                : "не создавалась"],
+            ].map(([label, value]) => `
+              <div><span>${escapeHtml(label)}</span><b>${escapeHtml(String(value))}</b></div>
+            `).join("")}
+          </div>`],
+        note: "Библиотека сохраняется автоматически при каждом изменении и принадлежит вашему аккаунту.",
+      })}
 
-      <section class="panel">
-        <header class="panel__head">
-          <div class="panel__lead">
-            <span class="panel__glyph">${icon("users")}</span>
-            <div>
-              <p class="eyebrow">Игроки</p>
-              <h3>Сохранённые имена</h3>
-            </div>
-          </div>
-        </header>
-        <div class="participant-tags">
-          ${state.library.participants.map((participant) => `
-            <span class="participant-tag">
-              <i>${escapeHtml(initials(participant.name))}</i>
-              ${escapeHtml(participant.name)}
-              <button type="button" data-action="participant-edit" data-id="${participant.id}"
-                aria-label="Редактировать">${icon("edit")}</button>
-              <button type="button" data-action="participant-delete" data-id="${participant.id}"
-                aria-label="Удалить">${icon("close")}</button>
-            </span>
-          `).join("") || '<span class="muted">Имена появятся после первой сессии или оценки.</span>'}
-        </div>
-      </section>
-
-      <section class="panel">
-        <header class="panel__head">
-          <div class="panel__lead">
-            <span class="panel__glyph">${icon("shield")}</span>
-            <div>
-              <p class="eyebrow">Формат данных</p>
-              <h3>Библиотека · схема v3</h3>
-            </div>
-          </div>
-        </header>
-        <p>Библиотека сохраняется автоматически при каждом изменении и
-        принадлежит вашему аккаунту. Резервный JSON нужен для архива и для
-        переноса записей из другой программы.</p>
-        <div class="kv-list">
-          <div><span>Фильмов</span><b>${state.library.movies.length}</b></div>
-          <div><span>Списков</span><b>${state.library.categories.length}</b></div>
-          <div><span>Коллекций</span><b>${state.library.franchises.length}</b></div>
-          <div><span>Сессий</span><b>${state.library.rollSessions.length}</b></div>
-        </div>
-      </section>
     </div>
   `;
+}
+
+// Группа настроек: подпись, необязательный статус справа и строки внутри.
+function settingsGroup({ title, status = "", rows = [], note = "" }) {
+  return `
+    <section class="set-group">
+      <header class="set-group__head">
+        <h3>${escapeHtml(title)}</h3>
+        ${status}
+      </header>
+      ${rows.filter(Boolean).join("")}
+      ${note ? `<p class="set-group__note">${note}</p>` : ""}
+    </section>`;
+}
+
+// Строка настройки: слева название и пояснение, справа компактный контрол.
+function settingsRow({ title, hint = "", control = "" }) {
+  return `
+    <div class="set-row">
+      <div class="set-row__text">
+        <strong>${escapeHtml(title)}</strong>
+        ${hint ? `<small>${hint}</small>` : ""}
+      </div>
+      <div class="set-row__control">${control}</div>
+    </div>`;
+}
+
+function smallButton(action, label, { disabled = false, danger = false } = {}) {
+  return `
+    <button class="btn btn--sm ${danger ? "btn--danger-ghost" : "btn--ghost"}"
+      type="button" data-action="${action}" ${disabled ? "disabled" : ""}
+    >${escapeHtml(label)}</button>`;
+}
+
+function fileControl(control, label, accept) {
+  return `
+    <label class="btn btn--ghost btn--sm file-btn">
+      ${escapeHtml(label)}
+      <input type="file" accept="${accept}" data-control="${control}">
+    </label>`;
+}
+
+function toggleControl(control, checked) {
+  return `
+    <label class="toggle">
+      <input type="checkbox" data-control="${control}" ${checked ? "checked" : ""}>
+      <span class="toggle__track"><span class="toggle__knob"></span></span>
+    </label>`;
+}
+
+function numberControl(control, value, min, max, suffix = "") {
+  return `
+    <span class="set-number">
+      <input type="number" min="${min}" max="${max}" data-control="${control}"
+        value="${Number(value)}">
+      ${suffix ? `<small>${escapeHtml(suffix)}</small>` : ""}
+    </span>`;
 }
 
 /* -------------------------------------------------------------- Хелперы */
