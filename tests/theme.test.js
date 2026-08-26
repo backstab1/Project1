@@ -14,10 +14,10 @@ test("сохранённая тема имеет приоритет над си�
   assert.equal(getInitialTheme({ storage, prefersDark: true }), "light");
 });
 
-test("системная тема используется при первом запуске", () => {
+test("при первом запуске тема тёмная независимо от системной", () => {
   const storage = { getItem: () => null };
   assert.equal(getInitialTheme({ storage, prefersDark: true }), "dark");
-  assert.equal(getInitialTheme({ storage, prefersDark: false }), "light");
+  assert.equal(getInitialTheme({ storage, prefersDark: false }), "dark");
 });
 
 test("тема применяется и сохраняется безопасно", () => {

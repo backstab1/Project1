@@ -1,0 +1,711 @@
+/* ==========================================================================
+   CineVault — витрина и плавающая пилюля навигации
+   Продолжение визуальной системы из styles.css: те же токены, те же
+   скругления, те же насыщенности. Отдельный файл — потому что это
+   отдельный экран со своей вёрсткой, а не набор общих примитивов.
+   ========================================================================== */
+
+/* ------------------------------------------------- Пилюля навигации */
+
+/* Пилюля висит поверх первого экрана и не занимает высоту в потоке —
+   поэтому кадр уходит под неё до самого верха окна. */
+.pillbar {
+  position: sticky;
+  top: 1rem;
+  z-index: 40;
+  margin-bottom: -4.5rem;
+  padding: 1rem clamp(0.75rem, 2vw, 1.6rem) 0;
+}
+
+.pillbar__pill {
+  display: flex;
+  max-width: 1200px;
+  height: 3.5rem;
+  align-items: center;
+  gap: 1.25rem;
+  margin: 0 auto;
+  border-radius: var(--r-xs);
+  background: rgba(5, 2, 20, 0.82);
+  box-shadow:
+    inset 0 0 24px rgba(255, 255, 255, 0.04),
+    inset 0 0 0 1px rgba(145, 142, 160, 0.14);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  padding: 0.5rem 0.5rem 0.5rem 1.25rem;
+}
+
+.pillbar__brand {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: #f4f0ff;
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.pillbar__mark {
+  display: grid;
+  width: 1.75rem;
+  height: 1.75rem;
+  flex: none;
+  place-items: center;
+  border-radius: var(--r-xs);
+  background: #10093a;
+  box-shadow: inset 0 -7px 11px rgba(164, 143, 255, 0.12);
+  color: #9382ff;
+}
+
+.pillbar__mark svg { width: 0.95rem; height: 0.95rem; }
+
+.pillbar__links {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  margin: 0 0 0 0.75rem;
+  padding: 0;
+  list-style: none;
+}
+
+.pillbar__links button {
+  border: 0;
+  background: none;
+  color: #f4f0ff;
+  font: inherit;
+  font-size: 0.94rem;
+  opacity: 0.8;
+  cursor: pointer;
+  transition: color var(--t-fast) ease, opacity var(--t-fast) ease;
+}
+
+.pillbar__links button:hover {
+  color: #9382ff;
+  opacity: 1;
+}
+
+.pillbar__spacer { flex: 1; }
+
+.pillbar__tools {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* ------------------------------------------------- Каркас витрины */
+
+/* Витрина всегда тёмная — это её собственный зал, а не тема приложения.
+   Переключателя тем здесь нет, поэтому токены задаются прямо на корне вида. */
+.app--welcome {
+  color-scheme: dark;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+
+  --bg: #02000f;
+  --bg-deep: #010008;
+  --surface: #050214;
+  --surface-2: #0a0526;
+  --surface-3: #10093a;
+  --surface-glass: rgba(5, 2, 20, 0.76);
+  --border: rgba(145, 142, 160, 0.14);
+  --border-strong: rgba(145, 142, 160, 0.28);
+  --text: #f4f0ff;
+  --text-muted: #a8a6b7;
+  --text-dim: #918ea0;
+  --accent: #9382ff;
+  --accent-strong: #b7a4fb;
+  --accent-soft: rgba(147, 130, 255, 0.16);
+  --accent-glow: rgba(147, 130, 255, 0.4);
+  --accent-fill: #5046e4;
+  --accent-fill-hover: #5f56ef;
+  --gold: #f0a93b;
+  --shadow-xs: inset 0 0 0 1px rgba(145, 142, 160, 0.14);
+  --shadow-sm: inset 0 0 24px rgba(255, 255, 255, 0.04);
+  --shadow-md: inset 0 0 24px rgba(255, 255, 255, 0.06);
+  --shadow-lg: 0 36px 80px rgba(0, 0, 0, 0.66), inset 0 0 24px rgba(255, 255, 255, 0.05);
+  --shadow-glow: inset 0 -7px 11px rgba(164, 143, 255, 0.12);
+
+  background: var(--bg);
+  color: var(--text);
+}
+
+.content-scroll--welcome { min-height: 0; }
+
+.content-scroll--welcome > .content {
+  max-width: none;
+  gap: 0;
+  padding: 0;
+}
+
+.wl {
+  --wl-page: 1200px;
+  display: block;
+  color: var(--text);
+}
+
+.wl-sec {
+  width: 100%;
+  max-width: var(--wl-page);
+  margin: 0 auto;
+  padding: clamp(4.5rem, 9vw, 7.5rem) clamp(1rem, 2.4vw, 1.5rem);
+}
+
+.wl-sec--tight { padding-block: clamp(3rem, 6vw, 4.5rem); }
+
+.wl-head {
+  display: grid;
+  max-width: 44rem;
+  justify-items: center;
+  gap: 1rem;
+  margin: 0 auto 3.5rem;
+  text-align: center;
+}
+
+.wl-head h2,
+.wl-final h2 {
+  font-family: var(--font-display);
+  font-size: clamp(1.9rem, 4vw, 3rem);
+  font-weight: 500;
+  line-height: 1.17;
+  letter-spacing: -0.3px;
+}
+
+.wl-head p {
+  color: var(--text-dim);
+  font-size: 1.1rem;
+  line-height: 1.56;
+}
+
+.wl-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid var(--accent-fill);
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  box-shadow: var(--shadow-glow);
+  padding: 0.44rem 0.9rem;
+  color: var(--text);
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
+.wl-badge svg { color: var(--accent); }
+
+.wl-grad {
+  background: linear-gradient(90deg, #e59cff 0%, #ba9cff 50%, #9cb2ff 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.wl-dot {
+  width: 3px;
+  height: 3px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.wl-meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 1rem;
+  color: var(--text-dim);
+  font-size: 0.78rem;
+}
+
+.wl-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.wl-cta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.75rem;
+}
+
+/* ------------------------------------------------- Первый экран */
+
+.wl-hero {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  min-height: 100vh;
+  min-height: 100svh;
+  align-items: center;
+  /* сверху оставлен воздух под плавающую пилюлю */
+  padding: clamp(6rem, 12vh, 9rem) clamp(1rem, 2.4vw, 1.5rem) clamp(3.5rem, 9vh, 7.5rem);
+  text-align: center;
+}
+
+/* Слой с кадром свисает за края экрана: край блока и конец растворения
+   не совпадают, поэтому стыка на границе секций не возникает. */
+.wl-hero__bg {
+  position: absolute;
+  z-index: -1;
+  /* сверху вровень с окном (пилюля висит над кадром),
+     снизу — с запасом за границу секции */
+  inset: 0 0 -16rem;
+  overflow: hidden;
+  pointer-events: none;
+  --wl-fade: linear-gradient(180deg,
+    #000 0%, #000 48%,
+    rgba(0, 0, 0, 0.82) 64%, rgba(0, 0, 0, 0.5) 76%,
+    rgba(0, 0, 0, 0.22) 86%, rgba(0, 0, 0, 0.06) 94%, transparent 100%);
+}
+
+.wl-hero__bg img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 44%;
+  -webkit-mask-image: var(--wl-fade);
+  mask-image: var(--wl-fade);
+}
+
+.wl-hero__bg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(58% 48% at 50% 42%,
+      rgba(2, 0, 15, 0.62), rgba(2, 0, 15, 0.3) 60%, rgba(2, 0, 15, 0.04) 100%),
+    linear-gradient(180deg,
+      rgba(2, 0, 15, 0.66) 0%, rgba(2, 0, 15, 0.16) 17%, rgba(2, 0, 15, 0) 38%);
+  -webkit-mask-image: var(--wl-fade);
+  mask-image: var(--wl-fade);
+}
+
+/* Кадр тёмный в обеих темах, поэтому текст поверх него всегда светлый. */
+.wl-hero__inner {
+  display: grid;
+  max-width: var(--wl-page);
+  justify-items: center;
+  gap: 1.5rem;
+  margin: 0 auto;
+  color: #f4f0ff;
+}
+
+.wl-hero__inner .wl-badge {
+  background: rgba(5, 2, 20, 0.72);
+  color: #f4f0ff;
+}
+
+.wl-hero__inner .wl-meta { color: #cfc9e4; }
+
+.wl-hero h1 {
+  max-width: 15ch;
+  color: #f4f0ff;
+  font-family: var(--font-display);
+  font-size: clamp(2.4rem, 6.4vw, 4.5rem);
+  font-weight: 500;
+  line-height: 1.11;
+  letter-spacing: -0.5px;
+}
+
+.wl-hero__sub {
+  max-width: 58ch;
+  color: #d9d4ea;
+  font-size: 1.1rem;
+  line-height: 1.56;
+}
+
+/* ------------------------------------------------- Метрики */
+
+.wl-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.wl-metric {
+  display: grid;
+  gap: 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  padding: 1.5rem;
+}
+
+.wl-metric b {
+  font-family: var(--font-display);
+  font-size: 2rem;
+  font-weight: 500;
+  line-height: 1.25;
+  letter-spacing: -0.2px;
+}
+
+.wl-metric span {
+  color: var(--text-dim);
+  font-size: 0.88rem;
+  line-height: 1.43;
+}
+
+/* ------------------------------------------------- Возможности */
+
+.wl-feats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1.75rem 1.5rem;
+}
+
+.wl-feat {
+  display: grid;
+  align-content: start;
+  gap: 0.6rem;
+  padding: 1rem;
+}
+
+.wl-feat__ic { color: var(--text); opacity: 0.9; }
+
+.wl-feat h3 {
+  font-family: var(--font-display);
+  font-size: 1.18rem;
+  font-weight: 500;
+}
+
+.wl-feat p {
+  color: var(--text-dim);
+  font-size: 0.94rem;
+  line-height: 1.53;
+}
+
+.wl-aurora {
+  width: 100%;
+  max-width: var(--wl-page);
+  height: 1px;
+  margin: 0 auto;
+  background: linear-gradient(90deg,
+    transparent 0%, var(--accent-strong) 45%, var(--accent) 72%, transparent 100%);
+  opacity: 0.5;
+}
+
+/* ------------------------------------------------- Блок про колесо */
+
+.wl-block {
+  display: grid;
+  overflow: hidden;
+  grid-template-columns: 1.05fr 0.95fr;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-md);
+}
+
+.wl-block__text {
+  display: grid;
+  align-content: center;
+  justify-items: start;
+  gap: 1.25rem;
+  padding: clamp(1.75rem, 4vw, 3.5rem);
+  text-align: left;
+}
+
+.wl-block__text h2 { font-size: clamp(1.75rem, 3.2vw, 2.5rem); }
+
+.wl-block__text p {
+  color: var(--text-muted);
+  line-height: 1.56;
+}
+
+.wl-block__vis {
+  display: grid;
+  place-items: center;
+  padding: clamp(1.5rem, 3vw, 2.5rem);
+  background: radial-gradient(70% 70% at 50% 40%, var(--accent-soft), transparent 70%);
+}
+
+.wl-steps {
+  display: grid;
+  gap: 0.85rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wl-steps li {
+  display: flex;
+  gap: 0.75rem;
+  color: var(--text-dim);
+  font-size: 0.94rem;
+  line-height: 1.5;
+}
+
+.wl-steps b {
+  display: grid;
+  width: 1.4rem;
+  height: 1.4rem;
+  flex: none;
+  place-items: center;
+  margin-top: 0.1rem;
+  border-radius: 50%;
+  background: var(--surface-3);
+  box-shadow: var(--shadow-glow);
+  color: var(--accent);
+  font-size: 0.7rem;
+  font-weight: 500;
+}
+
+.wl-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: 0;
+  border-radius: var(--r-xs);
+  background: none;
+  padding: 0;
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.94rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color var(--t-fast) ease;
+}
+
+.wl-link:hover { color: var(--text); }
+.wl-link svg { transition: transform var(--t-fast) var(--ease-out); }
+.wl-link:hover svg { transform: translateX(3px); }
+
+/* ------------------------------------------------- Иллюстрация колеса */
+
+.wl-wheel { width: 100%; max-width: 21rem; height: auto; }
+.wl-wheel__halo { fill: var(--accent); opacity: 0.07; }
+.wl-wheel__disc { fill: var(--surface-3); }
+.wl-wheel__spokes { stroke: var(--accent); stroke-width: 1; opacity: 0.32; }
+.wl-wheel__ring { fill: none; stroke: var(--text-dim); stroke-width: 1.2; opacity: 0.5; }
+
+.wl-wheel__out {
+  fill: var(--text-dim);
+  font-family: var(--font-sans);
+  font-size: 12px;
+}
+
+.wl-wheel__alive {
+  fill: var(--text);
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.wl-wheel__hub {
+  fill: var(--surface);
+  stroke: var(--accent-fill);
+  stroke-width: 1.5;
+}
+
+.wl-wheel__label {
+  fill: var(--text-dim);
+  font-family: var(--font-display);
+  font-size: 11px;
+  letter-spacing: 1.2px;
+}
+
+.wl-wheel__round {
+  fill: var(--text);
+  font-family: var(--font-display);
+  font-size: 19px;
+  font-weight: 500;
+}
+
+.wl-wheel__pin { fill: var(--accent); }
+
+/* ------------------------------------------------- Кадры и карточки */
+
+.wl-frames,
+.wl-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.5rem;
+}
+
+.wl-faq {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.wl-frame {
+  display: grid;
+  overflow: hidden;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.wl-frame img {
+  width: 100%;
+  height: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+}
+
+.wl-frame figcaption {
+  padding: 1rem 1.25rem;
+  color: var(--text-dim);
+  font-size: 0.88rem;
+  line-height: 1.43;
+}
+
+.wl-card {
+  display: grid;
+  align-content: start;
+  gap: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  padding: 1.75rem;
+}
+
+.wl-card h3 {
+  font-family: var(--font-display);
+  font-size: 1.12rem;
+  font-weight: 500;
+}
+
+.wl-card p {
+  color: var(--text-dim);
+  font-size: 0.94rem;
+  line-height: 1.53;
+}
+
+.wl-list {
+  display: grid;
+  gap: 0.6rem;
+  margin: 0.25rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wl-list li {
+  display: flex;
+  gap: 0.6rem;
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.wl-list svg {
+  flex: none;
+  margin-top: 0.2rem;
+  color: var(--accent);
+}
+
+/* ------------------------------------------------- Вопросы */
+
+.wl-faq details {
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  padding: 1.25rem 1.5rem;
+}
+
+.wl-faq summary {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 1rem;
+  font-weight: 500;
+  list-style: none;
+  cursor: pointer;
+}
+
+.wl-faq summary::-webkit-details-marker { display: none; }
+
+.wl-faq summary::after {
+  content: "";
+  width: 0.55rem;
+  height: 0.55rem;
+  flex: none;
+  margin-left: auto;
+  border-right: 1.5px solid var(--text-dim);
+  border-bottom: 1.5px solid var(--text-dim);
+  transform: rotate(45deg) translateY(-2px);
+  transition: transform var(--t-base) var(--ease-out);
+}
+
+.wl-faq details[open] summary::after { transform: rotate(225deg) translateY(-2px); }
+
+.wl-faq details p {
+  margin-top: 0.75rem;
+  color: var(--text-dim);
+  font-size: 0.94rem;
+  line-height: 1.55;
+}
+
+/* ------------------------------------------------- Финал и подвал */
+
+.wl-final {
+  display: grid;
+  max-width: var(--wl-page);
+  justify-items: center;
+  gap: 1.5rem;
+  margin: 0 auto;
+  padding: clamp(5rem, 10vw, 7.5rem) clamp(1rem, 2.4vw, 1.5rem);
+  text-align: center;
+}
+
+.wl-final h2 { max-width: 16ch; }
+
+.wl-final > p {
+  max-width: 52ch;
+  color: var(--text-muted);
+  font-size: 1.1rem;
+  line-height: 1.56;
+}
+
+.wl-foot {
+  max-width: var(--wl-page);
+  margin: 0 auto;
+  border-top: 1px solid var(--border);
+  padding: 2rem clamp(1rem, 2.4vw, 1.5rem) 3.5rem;
+}
+
+.wl-foot p {
+  color: var(--text-dim);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+/* ------------------------------------------------- Адаптив */
+
+@media (max-width: 1080px) {
+  .wl-feats,
+  .wl-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .wl-block { grid-template-columns: minmax(0, 1fr); }
+  .wl-block__vis { order: -1; }
+  .pillbar__links { display: none; }
+}
+
+@media (max-width: 760px) {
+  .wl-feats,
+  .wl-frames,
+  .wl-cards,
+  .wl-faq { grid-template-columns: minmax(0, 1fr); }
+
+  .wl-hero__bg img { object-position: 52% 44%; }
+
+  .wl-hero__bg::after {
+    background:
+      radial-gradient(80% 52% at 50% 42%,
+        rgba(2, 0, 15, 0.42), rgba(2, 0, 15, 0.84) 74%),
+      linear-gradient(180deg,
+        rgba(2, 0, 15, 0.84) 0%, rgba(2, 0, 15, 0.58) 28%,
+        rgba(2, 0, 15, 0.16) 84%, transparent 100%);
+  }
+
+  .pillbar__pill {
+    gap: 0.75rem;
+    padding-left: 1rem;
+  }
+}

@@ -101,6 +101,7 @@ import {
 
 const root = document.querySelector("#app");
 const VIEW_IDS = new Set([
+  "welcome",
   "dashboard",
   "catalog",
   "categories",
@@ -116,7 +117,9 @@ const SIDEBAR_KEY = "cinevault-sidebar-collapsed";
 
 function readViewFromHash() {
   const view = location.hash.slice(1);
-  return VIEW_IDS.has(view) ? view : "dashboard";
+  if (VIEW_IDS.has(view)) return view;
+  // Без якоря приложение открывается витриной, а не сразу библиотекой.
+  return view ? "dashboard" : "welcome";
 }
 
 function readStoredPreference(key, fallback) {

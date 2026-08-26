@@ -502,6 +502,11 @@ def parse_arguments(arguments: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="не открывать браузер автоматически",
     )
+    parser.add_argument(
+        "--app",
+        action="store_true",
+        help="открыть сразу библиотеку, минуя стартовую страницу",
+    )
     return parser.parse_args(arguments)
 
 
@@ -512,7 +517,10 @@ def main(arguments: list[str] | None = None) -> None:
 
     port = find_available_port(options.port)
     server = http.server.ThreadingHTTPServer((HOST, port), CineVaultHandler)
-    url = f"http://{HOST}:{port}/"
+    origin = f"http://{HOST}:{port}"
+    # Приложение одно: витрина — его первый экран, библиотека — якорь #catalog.
+    # Флаг --app пропускает витрину и открывает сразу каталог.
+    url = f"{origin}/#catalog" if options.app else f"{origin}/"
 
     if not options.no_browser:
         threading.Timer(0.4, lambda: webbrowser.open(url)).start()

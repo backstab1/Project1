@@ -10,14 +10,13 @@ export function getInitialTheme({ storage, prefersDark } = {}) {
     // Недоступное локальное хранилище не должно блокировать запуск приложения.
   }
 
-  const resolvedPreference = prefersDark ?? globalThis.matchMedia?.(
-    "(prefers-color-scheme: dark)",
-  ).matches;
-  return resolvedPreference ? "dark" : "light";
+  // Без сохранённого выбора CineVault открывается тёмным независимо от
+  // системной настройки: тёмный зал — базовый вид приложения.
+  return "dark";
 }
 
 export function applyTheme(theme, documentElement = globalThis.document?.documentElement) {
-  const normalizedTheme = THEMES.includes(theme) ? theme : "light";
+  const normalizedTheme = THEMES.includes(theme) ? theme : "dark";
   if (documentElement) {
     documentElement.dataset.theme = normalizedTheme;
     documentElement.style.colorScheme = normalizedTheme;
@@ -26,7 +25,7 @@ export function applyTheme(theme, documentElement = globalThis.document?.documen
 }
 
 export function saveTheme(theme, storage = globalThis.localStorage) {
-  const normalizedTheme = THEMES.includes(theme) ? theme : "light";
+  const normalizedTheme = THEMES.includes(theme) ? theme : "dark";
   try {
     storage?.setItem(THEME_STORAGE_KEY, normalizedTheme);
   } catch {

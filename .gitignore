@@ -27,6 +27,6 @@ Desktop.ini
 tmp/
 temp/
 
-# Supabase CLI
+# служебный кэш Supabase CLI
 supabase/.temp/
 supabase/.branches/
