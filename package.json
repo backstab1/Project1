@@ -13,7 +13,8 @@
     "check:rls": "node --env-file=.env.local scripts/check-rls.mjs",
     "vendor:supabase": "esbuild vendor/supabase-entry.js --bundle --format=esm --minify --target=es2022 --outfile=vendor/supabase.esm.js --legal-comments=none",
     "check:functions": "node --env-file=.env.local scripts/check-functions.mjs",
-    "check:library": "node --env-file=.env.local scripts/check-library.mjs"
+    "check:library": "node --env-file=.env.local scripts/check-library.mjs",
+    "check:tmdb": "node --env-file=.env.local scripts/check-tmdb.mjs"
   },
   "devDependencies": {
     "@supabase/supabase-js": "^2.45.0",

@@ -60,14 +60,11 @@ import {
   summarizeEnrichment,
 } from "./domain/tmdbEnrichment.js";
 import {
-  cacheTmdbPoster,
-  clearTmdbToken,
-  configureTmdbToken,
   getTmdbMovie,
   getTmdbStatus,
   searchTmdbMovies,
-  tmdbPosterPreviewUrl,
 } from "./services/tmdbClient.js";
+import { POSTER_SIZES, tmdbPosterUrl } from "./domain/posters.js";
 import { isModalView, renderAppShell } from "./ui/appShell.js";
 import {
   isAuthPreview,
@@ -488,8 +485,6 @@ async function handleAction(action, payload) {
       "Блокировка снята."),
     "privacy-set": () => setLibraryPrivacy(payload.value),
     "session-open": () => openSessionDetails(payload.id),
-    "tmdb-configure": () => openTmdbTokenDialog(),
-    "tmdb-clear": () => removeTmdbToken(),
     "tmdb-enrich": () => openEnrichmentDialog(),
     "catalog-filters-reset": () => resetCatalogFilters(),
     "catalog-filters-toggle": () => toggleCatalogFilters(),
@@ -1950,12 +1945,10 @@ function openMovieDialog(movieId = null) {
           <div class="tmdb-connect-card">
             <span class="movie-search-flow__icon" aria-hidden="true">⌕</span>
             <div>
-              <h3>Подключите TMDB для быстрого добавления</h3>
-              <p>После подключения достаточно найти фильм и выбрать карточку — остальные поля заполнятся сами.</p>
+              <h3>Поиск по TMDB сейчас недоступен</h3>
+              <p>Карточку можно заполнить руками — поля ниже. Поиск вернётся,
+              когда служба ответит.</p>
             </div>
-            <button class="btn btn--primary" type="button" data-tmdb-connect>
-              Подключить TMDB
-            </button>
           </div>
         `}
       </section>
@@ -2060,8 +2053,8 @@ function openMovieDialog(movieId = null) {
 
       const posterPath = formData.get("tmdbPosterPath");
       if (candidate.tmdbId && posterPath) {
-        const cached = await cacheTmdbPoster(candidate.tmdbId, posterPath);
-        candidate.coverUrl = cached.url;
+        // Картинку отдаёт CDN TMDB: у себя остаётся только путь.
+        candidate.posterPath = posterPath;
         candidate.tmdbUpdatedAt = new Date().toISOString();
       }
 
@@ -2080,7 +2073,7 @@ const ENRICHMENT_FAILURE_LIMIT = 3;
 
 function openEnrichmentDialog() {
   if (!state.tmdbStatus.configured) {
-    openTmdbTokenDialog();
+    showToast("TMDB не подключён на сервере.");
     return;
   }
 
@@ -2184,13 +2177,7 @@ async function enrichSingleMovie(movie, { overwrite }) {
   }
 
   const details = await getTmdbMovie(match.id);
-  let posterUrl = "";
-  if (details.poster_path && (overwrite || !movie.coverUrl)) {
-    const cached = await cacheTmdbPoster(details.id, details.poster_path);
-    posterUrl = cached.url;
-  }
-
-  const patch = buildEnrichmentPatch(movie, details, { posterUrl, overwrite });
+  const patch = buildEnrichmentPatch(movie, details, { overwrite });
   await saveMovie(createMovie({ ...movie, ...patch }));
   return { outcome: "updated", movie, confidence, title: match.title };
 }
@@ -2317,9 +2304,6 @@ function setupMovieDialog(movie) {
   manualFields?.addEventListener("toggle", () => {
     if (manualFields.open && !titleInput.value.trim()) titleInput.focus();
   });
-  form.querySelector("[data-tmdb-connect]")?.addEventListener("click", () => {
-    openTmdbTokenDialog({ returnToMovie: true });
-  });
   updateSubmitAvailability();
   if (state.tmdbStatus.configured) setupTmdbMovieSearch();
 }
@@ -2331,7 +2315,7 @@ function renderTmdbResults(container, results) {
   }
   container.innerHTML = results.map((movie) => {
     const year = String(movie.release_date ?? "").slice(0, 4) || "год неизвестен";
-    const poster = tmdbPosterPreviewUrl(movie.poster_path);
+    const poster = tmdbPosterUrl(movie.poster_path, POSTER_SIZES.row);
     return `
       <button class="tmdb-result" type="button" data-tmdb-id="${movie.id}">
         ${poster
@@ -2359,7 +2343,7 @@ async function selectTmdbMovie(form, resultsNode, tmdbId) {
       .map((genre) => genre.name).filter(Boolean).join(", ");
     form.elements.tmdbPosterPath.value = movie.poster_path || "";
     form.elements.title.dispatchEvent(new Event("input", { bubbles: true }));
-    const poster = tmdbPosterPreviewUrl(movie.poster_path);
+    const poster = tmdbPosterUrl(movie.poster_path, POSTER_SIZES.row);
     const year = String(movie.release_date ?? "").slice(0, 4) || "год неизвестен";
     resultsNode.innerHTML = `
       <div class="tmdb-selected-card">
@@ -2388,37 +2372,6 @@ async function refreshTmdbStatus() {
   } catch (error) {
     state.tmdbStatus = { configured: false, loading: false, error: error.message };
   }
-}
-
-function openTmdbTokenDialog({ returnToMovie = false } = {}) {
-  openDialog({
-    title: state.tmdbStatus.configured ? "Заменить токен TMDB" : "Подключить TMDB",
-    submitLabel: "Проверить и сохранить",
-    body: `
-      <label class="field">
-        <span>API Read Access Token *</span>
-        <input name="token" type="password" required autocomplete="off"
-          minlength="20" maxlength="2048" placeholder="eyJhbGciOiJIUzI1NiJ9…">
-      </label>
-      <p class="form-hint">Токен проверяется запросом к TMDB и хранится отдельно
-      от библиотеки. В резервную копию он не попадает.</p>
-    `,
-    onSubmit: async (formData) => {
-      await configureTmdbToken(formData.get("token"));
-      await refreshTmdbStatus();
-      render();
-      showToast("TMDB подключён.");
-    },
-    onSuccess: returnToMovie ? () => openMovieDialog() : null,
-  });
-}
-
-async function removeTmdbToken() {
-  if (!confirm("Удалить сохранённый токен TMDB?")) return;
-  await clearTmdbToken();
-  await refreshTmdbStatus();
-  render();
-  showToast("Токен TMDB удалён.");
 }
 
 function openCategoryDialog(categoryId = null, requestedParentId = null) {

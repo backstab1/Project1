@@ -15,8 +15,12 @@ export function selectEnrichmentCandidates(movies, options = {}) {
 
   return (movies ?? []).filter((movie) => {
     if (!includeLinked && movie.tmdbId) return false;
-    if (onlyMissingPoster) return !movie.coverUrl;
-    return !movie.coverUrl || !movie.overview || (movie.genres ?? []).length === 0;
+    if (onlyMissingPoster) return !movie.posterPath && !movie.coverUrl;
+    return (
+      (!movie.posterPath && !movie.coverUrl) ||
+      !movie.overview ||
+      (movie.genres ?? []).length === 0
+    );
   });
 }
 
@@ -87,7 +91,7 @@ export function pickBestMatch(movie, results) {
 // Обогащение дополняет карточку, а не переписывает её: то, что человек уже
 // заполнил руками, остаётся нетронутым.
 export function buildEnrichmentPatch(movie, details, options = {}) {
-  const { posterUrl = "", overwrite = false } = options;
+  const { overwrite = false } = options;
   const patch = {};
   const fill = (field, value) => {
     if (value === null || value === undefined || value === "") return;
@@ -104,7 +108,7 @@ export function buildEnrichmentPatch(movie, details, options = {}) {
     (details?.production_countries ?? [])
       .map((country) => country?.name).filter(Boolean).join(", "),
   );
-  fill("coverUrl", posterUrl);
+  fill("posterPath", String(details?.poster_path ?? "").trim());
 
   const genres = normalizeTags(
     (details?.genres ?? []).map((genre) => genre?.name).filter(Boolean),

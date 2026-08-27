@@ -1,24 +1,15 @@
-import io
 import json
-import tempfile
 import threading
 import unittest
+import urllib.error
 import urllib.request
 from functools import partial
 from http.server import ThreadingHTTPServer
-from pathlib import Path
-from unittest import mock
 
-import launch
 from launch import (
     CineVaultHandler,
-    cache_tmdb_poster,
-    delete_tmdb_token,
     find_available_port,
     parse_arguments,
-    read_tmdb_token,
-    save_tmdb_token,
-    tmdb_request,
 )
 
 
@@ -48,64 +39,43 @@ class LauncherTests(unittest.TestCase):
             thread.join(timeout=3)
 
 
-class TmdbTests(unittest.TestCase):
-    TOKEN = "test-token-that-is-long-enough-for-validation"
+class StaticOnlyTests(unittest.TestCase):
+    """Лаунчер отдаёт статику и здоровье, и больше ничего.
+
+    Прокси TMDB и кэш постеров переехали на сервер: токен стал секретом Edge
+    Function, а картинки отдаёт CDN TMDB. Проверяем, что старые адреса не
+    остались случайно.
+    """
 
     def setUp(self):
-        self.temporary_directory = tempfile.TemporaryDirectory()
-        self.data_root_patch = mock.patch.object(
-            launch,
-            "DATA_ROOT",
-            Path(self.temporary_directory.name),
+        self.server = ThreadingHTTPServer(
+            ("127.0.0.1", find_available_port(19100)),
+            partial(CineVaultHandler),
         )
-        self.data_root_patch.start()
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
 
     def tearDown(self):
-        self.data_root_patch.stop()
-        self.temporary_directory.cleanup()
+        self.server.shutdown()
+        self.server.server_close()
+        self.thread.join(timeout=3)
 
-    def test_token_is_stored_outside_browser_database(self):
-        save_tmdb_token(self.TOKEN)
-        self.assertEqual(read_tmdb_token(), self.TOKEN)
-        delete_tmdb_token()
-        self.assertIsNone(read_tmdb_token())
+    def get(self, path: str) -> int:
+        try:
+            with urllib.request.urlopen(
+                f"http://127.0.0.1:{self.server.server_port}{path}", timeout=3
+            ) as response:
+                return response.status
+        except urllib.error.HTTPError as error:
+            return error.code
 
-    def test_tmdb_request_uses_bearer_token_and_russian_query(self):
-        captured = {}
+    def test_tmdb_endpoints_are_gone(self):
+        self.assertEqual(self.get("/api/tmdb/status"), 404)
+        self.assertEqual(self.get("/api/tmdb/search?query=%D0%94%D1%8E%D0%BD%D0%B0"), 404)
+        self.assertEqual(self.get("/media/posters/tmdb-27205.jpg"), 404)
 
-        def opener(request, timeout):
-            captured["request"] = request
-            captured["timeout"] = timeout
-            return io.BytesIO(b'{"results": []}')
-
-        result = tmdb_request(
-            "/search/movie",
-            params={"query": "Начало", "language": "ru-RU"},
-            token=self.TOKEN,
-            opener=opener,
-        )
-
-        self.assertEqual(result, {"results": []})
-        self.assertIn("language=ru-RU", captured["request"].full_url)
-        self.assertEqual(
-            captured["request"].get_header("Authorization"),
-            f"Bearer {self.TOKEN}",
-        )
-        self.assertEqual(captured["timeout"], 12)
-
-    def test_poster_is_cached_under_local_data_root(self):
-        def opener(request, timeout):
-            self.assertIn("image.tmdb.org", request.full_url)
-            self.assertEqual(timeout, 20)
-            return io.BytesIO(b"poster-bytes")
-
-        url = cache_tmdb_poster(27205, "/poster.jpg", opener=opener)
-
-        self.assertEqual(url, "/media/posters/tmdb-27205.jpg")
-        self.assertEqual(
-            (launch.DATA_ROOT / "posters" / "tmdb-27205.jpg").read_bytes(),
-            b"poster-bytes",
-        )
+    def test_index_is_served(self):
+        self.assertEqual(self.get("/index.html"), 200)
 
 
 if __name__ == "__main__":

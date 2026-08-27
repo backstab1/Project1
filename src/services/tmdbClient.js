@@ -1,60 +1,45 @@
-const JSON_HEADERS = Object.freeze({ "Content-Type": "application/json" });
+// Обращения к TMDB идут через Edge Function `tmdb`.
+//
+// Токена в браузере нет: он секрет функции, один на весь сервис. Поэтому здесь
+// не осталось ни подключения токена, ни его удаления — только поиск, карточка
+// и состояние подключения. Квоту считает сервер.
 
-export function getTmdbStatus() {
-  return requestJson("/api/tmdb/status");
-}
+import { getSupabaseClient } from "./supabaseClient.js";
 
-export function configureTmdbToken(token) {
-  return requestJson("/api/tmdb/token", {
-    method: "POST",
-    headers: JSON_HEADERS,
-    body: JSON.stringify({ token }),
-  });
-}
-
-export function clearTmdbToken() {
-  return requestJson("/api/tmdb/token", { method: "DELETE" });
+export async function getTmdbStatus() {
+  return invoke({ action: "status" });
 }
 
 export function searchTmdbMovies(query, year = null) {
-  const parameters = new URLSearchParams({ query: String(query ?? "").trim() });
-  if (year) parameters.set("year", String(year));
-  return requestJson(`/api/tmdb/search?${parameters}`);
-}
-
-export function getTmdbMovie(tmdbId) {
-  return requestJson(`/api/tmdb/movie/${encodeURIComponent(tmdbId)}`);
-}
-
-export function cacheTmdbPoster(tmdbId, posterPath) {
-  return requestJson("/api/tmdb/poster", {
-    method: "POST",
-    headers: JSON_HEADERS,
-    body: JSON.stringify({ tmdbId, posterPath }),
+  return invoke({
+    action: "search",
+    query: String(query ?? "").trim(),
+    year: year ? String(year) : "",
   });
 }
 
-export function tmdbPosterPreviewUrl(posterPath) {
-  if (!posterPath || !/^\/[A-Za-z0-9._-]+$/.test(posterPath)) return "";
-  return `https://image.tmdb.org/t/p/w185${posterPath}`;
+export function getTmdbMovie(tmdbId) {
+  return invoke({ action: "movie", tmdbId });
 }
 
-async function requestJson(url, options = {}) {
-  let response;
-  try {
-    response = await fetch(url, options);
-  } catch {
-    throw new Error("Служба CineVault недоступна.");
-  }
+async function invoke(body) {
+  const client = await getSupabaseClient();
+  const { data, error } = await client.functions.invoke("tmdb", { body });
 
-  let payload = {};
+  if (!error) return data;
+
+  // Текст ошибки функция кладёт в тело ответа: без него у пользователя
+  // осталось бы «Edge Function returned a non-2xx status code».
+  const detail = await readFunctionError(error);
+  throw new Error(detail || "Служба TMDB недоступна.");
+}
+
+async function readFunctionError(error) {
   try {
-    payload = await response.json();
+    const payload = await error?.context?.json?.();
+    if (payload?.error) return String(payload.error);
   } catch {
-    // Ошибка ниже остаётся понятной даже при повреждённом ответе сервера.
+    // Тело могло быть пустым или нечитаемым — остаётся общий текст.
   }
-  if (!response.ok) {
-    throw new Error(payload.error || `TMDB вернул ошибку ${response.status}.`);
-  }
-  return payload;
+  return error?.message ?? "";
 }

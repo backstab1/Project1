@@ -2,10 +2,9 @@
 setlocal
 cd /d "%~dp0"
 
-if exist "CineVault.exe" (
-    start "" "CineVault.exe"
-    goto :end
-)
+rem CineVault стал веб-сервисом: сборки .exe и переносимой папки больше нет.
+rem Этот файл остаётся запуском локального сервера разработки; когда у сервиса
+rem появится адрес, он станет ярлыком на него.
 
 where py >nul 2>nul
 if %errorlevel%==0 (
@@ -28,4 +27,3 @@ pause
 
 :end
 endlocal
-

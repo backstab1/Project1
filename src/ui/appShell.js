@@ -10,6 +10,7 @@ import {
   getMovieFranchiseMap,
 } from "../domain/libraryRules.js";
 import { setupDialog } from "./dialog.js";
+import { POSTER_SIZES, moviePosterUrl } from "../domain/posters.js";
 import { drawWheel } from "./wheelCanvas.js";
 import { selectEnrichmentCandidates } from "../domain/tmdbEnrichment.js";
 import {
@@ -694,8 +695,8 @@ function renderDashboard(container, state) {
           ${watchingNow.map((movie) => `
             <article class="queue-chip">
               <span class="queue-chip__poster">
-                ${movie.coverUrl
-                  ? `<img src="${escapeAttribute(movie.coverUrl)}" alt="" loading="lazy"
+                ${moviePosterUrl(movie)
+                  ? `<img src="${escapeAttribute(moviePosterUrl(movie))}" alt="" loading="lazy"
                       referrerpolicy="no-referrer"
                       data-poster-fallback="${escapeAttribute(initials(movie.title))}">`
                   : `<span class="poster-fallback">${escapeHtml(initials(movie.title))}</span>`}
@@ -733,8 +734,8 @@ function renderDashboard(container, state) {
             <article class="queue-chip">
               <span class="queue-chip__index">${index + 1}</span>
               <span class="queue-chip__poster">
-                ${movie.coverUrl
-                  ? `<img src="${escapeAttribute(movie.coverUrl)}" alt="" loading="lazy"
+                ${moviePosterUrl(movie)
+                  ? `<img src="${escapeAttribute(moviePosterUrl(movie))}" alt="" loading="lazy"
                       referrerpolicy="no-referrer"
                       data-poster-fallback="${escapeAttribute(initials(movie.title))}">`
                   : `<span class="poster-fallback">${escapeHtml(initials(movie.title))}</span>`}
@@ -868,8 +869,8 @@ function collectionCard(franchise, movieById) {
       <div class="collection-card__stack">
         ${movies.slice(0, 3).map((movie, index) => `
           <span class="collection-card__layer" style="--i:${index}">
-            ${movie.coverUrl
-              ? `<img src="${escapeAttribute(movie.coverUrl)}" alt="" loading="lazy"
+            ${moviePosterUrl(movie)
+              ? `<img src="${escapeAttribute(moviePosterUrl(movie))}" alt="" loading="lazy"
                   referrerpolicy="no-referrer"
                   data-poster-fallback="${escapeAttribute(initials(movie.title))}">`
               : `<span class="poster-fallback">${escapeHtml(initials(movie.title))}</span>`}
@@ -923,8 +924,8 @@ function renderMovieDetail(state, opening = true) {
         <div class="movie-modal__scroll">
           <div class="movie-modal__top">
             <div class="movie-modal__poster">
-              ${movie.coverUrl
-                ? `<img src="${escapeAttribute(movie.coverUrl)}"
+              ${moviePosterUrl(movie)
+                ? `<img src="${escapeAttribute(moviePosterUrl(movie))}"
                     alt="Постер: ${escapeAttribute(movie.title)}" referrerpolicy="no-referrer"
                     data-poster-fallback="${escapeAttribute(initials(movie.title))}">`
                 : `<span class="poster-fallback">${escapeHtml(initials(movie.title))}</span>`}
@@ -1343,8 +1344,9 @@ function movieCard(movie, category, franchise, index = 0, options = {}) {
 // квадрат с двумя буквами: сетка рассыпалась на дыры. Заглушка красится
 // по названию — один и тот же фильм всегда получает свой цвет.
 function posterFill(movie) {
-  if (movie.coverUrl) {
-    return `<img class="movie-card__art" src="${escapeAttribute(movie.coverUrl)}" alt=""
+  const poster = moviePosterUrl(movie, POSTER_SIZES.card);
+  if (poster) {
+    return `<img class="movie-card__art" src="${escapeAttribute(poster)}" alt=""
       loading="lazy" referrerpolicy="no-referrer"
       data-poster-fallback="${escapeAttribute(initials(movie.title))}">`;
   }
@@ -2184,26 +2186,18 @@ function renderSettings(container, state) {
     <div class="settings">
 
       ${settingsGroup({
-        title: "Интеграция с TMDB",
+        title: "Данные из TMDB",
         status: `<span class="status-pill ${tmdb.configured ? "status-pill--ok" : ""}">
           <i></i>${tmdb.loading ? "проверка" : tmdb.configured ? "подключено" : "не подключено"}
         </span>`,
         rows: [
-          settingsRow({
-            title: "API Read Access Token",
-            hint: "Не попадает в резервную копию.",
-            control: tmdb.configured
-              ? `${smallButton("tmdb-configure", "Заменить")}
-                 ${smallButton("tmdb-clear", "Удалить", { danger: true })}`
-              : smallButton("tmdb-configure", "Подключить"),
-          }),
           settingsRow({
             title: "Обогащение метаданными",
             hint: tmdb.configured
               ? enrichmentCount
                 ? `${enrichmentCount} ${pluralize(enrichmentCount, ["карточка", "карточки", "карточек"])} без части полей: год, страна, жанры, описание, постер.`
                 : "Все карточки заполнены."
-              : "Доступно после подключения токена.",
+              : "Служба TMDB сейчас не отвечает.",
             control: tmdb.configured
               ? smallButton(
                   "tmdb-enrich",

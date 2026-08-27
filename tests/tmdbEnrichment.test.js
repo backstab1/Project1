@@ -98,7 +98,7 @@ test("обогащение не затирает заполненные рука
     genres: [{ name: "Фантастика" }, { name: "Приключения" }],
   };
 
-  const patch = buildEnrichmentPatch(movie, details, { posterUrl: "/media/posters/438631.jpg" });
+  const patch = buildEnrichmentPatch(movie, { ...details, poster_path: "/dune.jpg" });
 
   assert.equal(patch.overview, undefined);
   assert.equal(patch.country, undefined);
@@ -106,7 +106,7 @@ test("обогащение не затирает заполненные рука
   assert.equal(patch.originalTitle, "Dune");
   assert.equal(patch.releaseYear, 2021);
   assert.equal(patch.durationMinutes, 155);
-  assert.equal(patch.coverUrl, "/media/posters/438631.jpg");
+  assert.equal(patch.posterPath, "/dune.jpg");
   assert.equal(patch.tmdbId, 438631);
   assert.ok(patch.tmdbUpdatedAt);
 });

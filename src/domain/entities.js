@@ -94,6 +94,8 @@ export function createMovie(input = {}) {
       ? input.categoryPosition
       : 0,
     coverUrl: String(input.coverUrl ?? "").trim(),
+    // Путь постера в TMDB: картинку отдаёт их CDN, у себя храним только путь.
+    posterPath: normalizePosterPath(input.posterPath),
     releaseYear: normalizeOptionalInteger(input.releaseYear, 1888, 2200),
     durationMinutes: normalizeOptionalInteger(input.durationMinutes, 1, 2000),
     country: String(input.country ?? "").trim(),
@@ -105,6 +107,13 @@ export function createMovie(input = {}) {
     createdAt: input.createdAt ?? now,
     updatedAt: now,
   };
+}
+
+// Путь вида «/abc123.jpg» приходит из ответа TMDB и попадает в адрес картинки,
+// поэтому проверяется по форме, а не переносится как есть.
+function normalizePosterPath(value) {
+  const path = String(value ?? "").trim();
+  return /^\/[A-Za-z0-9._-]+$/.test(path) ? path : "";
 }
 
 export function createFranchise(input = {}) {
