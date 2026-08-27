@@ -14,7 +14,11 @@
     "vendor:supabase": "esbuild vendor/supabase-entry.js --bundle --format=esm --minify --target=es2022 --outfile=vendor/supabase.esm.js --legal-comments=none",
     "check:functions": "node --env-file=.env.local scripts/check-functions.mjs",
     "check:library": "node --env-file=.env.local scripts/check-library.mjs",
-    "check:tmdb": "node --env-file=.env.local scripts/check-tmdb.mjs"
+    "check:tmdb": "node --env-file=.env.local scripts/check-tmdb.mjs",
+    "backup": "node --env-file=.env.local scripts/backup-db.mjs",
+    "restore": "node --env-file=.env.local scripts/restore-db.mjs",
+    "check:backup": "node --env-file=.env.local scripts/check-backup.mjs",
+    "build:site": "node scripts/build-site.mjs"
   },
   "devDependencies": {
     "@supabase/supabase-js": "^2.45.0",
