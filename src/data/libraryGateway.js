@@ -39,8 +39,12 @@ export class LibraryConflictError extends Error {
   }
 }
 
+// PT409 — расхождение ревизий: PostgREST отдаёт такие коды как HTTP-статус,
+// то есть 409 Conflict. Обычной ошибкой Postgres это не является.
+export const CONFLICT_CODE = "PT409";
+
 export function isLibraryConflict(error) {
-  return error instanceof LibraryConflictError || error?.code === "40001";
+  return error instanceof LibraryConflictError || error?.code === CONFLICT_CODE;
 }
 
 export function getLibraryRevision() {
@@ -184,7 +188,7 @@ async function commit(commands) {
     expected_revision: cachedRevision,
   });
   if (error) {
-    if (error.code === "40001") throw new LibraryConflictError();
+    if (error.code === CONFLICT_CODE) throw new LibraryConflictError();
     throw error;
   }
   cachedRevision = Number(data);

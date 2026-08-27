@@ -69,13 +69,16 @@ foreach ($poolHost in $poolers) {
   Write-Host "--- Пробую $poolHost ---------------------------" -ForegroundColor Cyan
   Write-Host ''
 
-  # Вывод не перехватывается вовсе. Причин две, и обе стоили нам по запуску:
-  # 1) db push спрашивает подтверждение - вопрос обязан быть виден;
-  # 2) в PowerShell 5.1 перехват stderr внешней программы превращает каждую
-  #    её строку в ошибку, а обычные сообщения CLI идут именно в stderr.
-  Write-Host 'CLI спросит подтверждение - ответьте Y и нажмите Enter.' -ForegroundColor Yellow
-  Write-Host ''
-  & npx.cmd supabase db push --db-url $url
+  # Вывод не перехватывается: в PowerShell 5.1 перехват stderr внешней
+  # программы превращает каждую её строку в ошибку, а обычные сообщения CLI
+  # идут именно в stderr.
+  #
+  # Вопрос «применить эти миграции?» снимается двумя способами сразу: флагом
+  # --yes и ответом на вход. Одного флага мало - CLI 2.115 всё равно рисует
+  # приглашение, и накат дважды простоял на нём по несколько минут, потому что
+  # ответ уходил не в то окно. Список миграций известен заранее и лежит в Git,
+  # подтверждать там нечего.
+  'y' | & npx.cmd supabase db push --db-url $url --yes
   $code = $LASTEXITCODE
   $output = @()
 
@@ -95,8 +98,18 @@ if ($ok) {
 } else {
   Write-Host '===========================================================' -ForegroundColor Red
   Write-Host '  Не вышло. Журнал без пароля: push-schema.log' -ForegroundColor Red
-  Write-Host '  Просто напишите в чат - я его прочитаю сам.' -ForegroundColor Red
   Write-Host '===========================================================' -ForegroundColor Red
+  Write-Host ''
+  Write-Host '  Что искать в выводе выше:' -ForegroundColor Yellow
+  Write-Host ''
+  Write-Host '  28P01, password authentication failed - неверный пароль базы.'
+  Write-Host '  Это единственная настоящая причина: пулер ответил, значит'
+  Write-Host '  проект и адрес верные. Пароль базы задается при создании'
+  Write-Host '  проекта и показывается один раз; если его нет - панель:'
+  Write-Host '  Project Settings, Database, Reset database password.'
+  Write-Host ''
+  Write-Host '  tenant/user ... not found на втором пулере - это норма:'
+  Write-Host '  проект обслуживает только один из двух, скрипт пробует оба.'
 }
 Write-Host ''
 Read-Host 'Enter - закрыть окно'

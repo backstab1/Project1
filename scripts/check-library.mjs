@@ -438,7 +438,7 @@ async function main() {
     });
     check(
       "пакет с устаревшей ревизией отвергается",
-      stale.error?.code === "40001",
+      stale.error?.code === "PT409",
       `ответ: ${stale.error?.code ?? "без ошибки"}`,
     );
 

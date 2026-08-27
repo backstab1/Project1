@@ -74,10 +74,15 @@ begin
   for update;
 
   if expected_revision is not null and expected_revision <> v_current then
+    -- Код PT409, а не 40001. Класс 40 означает «транзакция откачена, повторите»,
+    -- и PostgREST повторяет такой запрос сам; расхождение ревизий постоянное,
+    -- поэтому запрос уходил в бесконечный повтор и не возвращался вовсе.
+    -- Коды вида PTxxx PostgREST превращает в HTTP-статус xxx: клиент получает
+    -- 409 Conflict с этим же текстом.
     raise exception
       'Библиотека изменилась на другом устройстве (ревизия % вместо %).',
       v_current, expected_revision
-      using errcode = '40001';
+      using errcode = 'PT409';
   end if;
 
   for v_command in select * from jsonb_array_elements(coalesce(commands, '[]'::jsonb))
