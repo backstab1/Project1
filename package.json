@@ -18,6 +18,7 @@
     "backup": "node --env-file=.env.local scripts/backup-db.mjs",
     "restore": "node --env-file=.env.local scripts/restore-db.mjs",
     "check:backup": "node --env-file=.env.local scripts/check-backup.mjs",
+    "check:realtime": "node --env-file=.env.local scripts/check-realtime.mjs",
     "build:site": "node scripts/build-site.mjs"
   },
   "devDependencies": {
