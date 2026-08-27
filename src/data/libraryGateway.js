@@ -1,11 +1,15 @@
-// Серверная реализация хранилища библиотеки.
+// Хранилище библиотеки: Postgres через supabase-js.
 //
-// Повторяет интерфейс libraryRepository.js один в один: main.js вызывает те же
-// функции с теми же аргументами и не знает, откуда пришли данные. Переключение
-// произойдёт в этапе 16, когда появится живой проект и станет что проверять;
-// до этого момента модуль в приложении не используется.
+// Приложение обращается сюда не напрямую, а через data/libraryStore.js — там
+// же лежит снимок последней загрузки. Интерфейс достался от прежнего
+// локального репозитория дословно, поэтому вызовы в main.js не менялись.
+//
+// Запись идёт одним RPC: функция Postgres — это транзакция, поэтому пакет
+// применяется целиком или не применяется вовсе. Вместе с пакетом уходит
+// ревизия библиотеки, с которой он собран: если на сервере она уже другая,
+// запись отвергается, а приложение показывает, что произошло.
 
-import { STORE_NAMES } from "../config.js";
+import { DEFAULT_SETTINGS, STORE_NAMES } from "../config.js";
 import { getSupabaseClient } from "../services/supabaseClient.js";
 import {
   categoryFromRow,
@@ -17,6 +21,31 @@ import {
 } from "./rowMapping.js";
 
 let cachedOwnerId = null;
+// Ревизия библиотеки на момент последней загрузки. null означает «ещё не
+// читали»: такой пакет уходит без проверки, иначе первая же запись после
+// восстановления соединения упиралась бы в сравнение с пустотой.
+let cachedRevision = null;
+
+// Отдельный класс, потому что это не поломка, а нормальный исход: кто-то
+// изменил библиотеку с другого устройства, и приложению нужно перечитать её,
+// а не показывать пользователю текст ошибки Postgres.
+export class LibraryConflictError extends Error {
+  constructor() {
+    super(
+      "Библиотека изменилась на другом устройстве. " +
+        "Обновите её и повторите действие.",
+    );
+    this.name = "LibraryConflictError";
+  }
+}
+
+export function isLibraryConflict(error) {
+  return error instanceof LibraryConflictError || error?.code === "40001";
+}
+
+export function getLibraryRevision() {
+  return cachedRevision;
+}
 
 export async function getOwnerId() {
   if (cachedOwnerId) return cachedOwnerId;
@@ -31,6 +60,7 @@ export async function getOwnerId() {
 
 export function forgetOwner() {
   cachedOwnerId = null;
+  cachedRevision = null;
 }
 
 export async function loadLibrary() {
@@ -46,10 +76,13 @@ export async function loadLibrary() {
       select(client, "ratings", "*", (query) => query.eq("owner_id", ownerId)),
       select(client, "participants", "*"),
       select(client, "roll_sessions", "*", (query) => query.eq("host_id", ownerId)),
-      client.from("user_settings").select("data").maybeSingle(),
+      client.from("user_settings").select("data, revision").maybeSingle(),
     ]);
 
   if (settings.error) throw settings.error;
+  // Строки настроек у нового аккаунта ещё нет: его библиотека пуста, а
+  // ревизия начинается с нуля — с ней же её заведёт первая запись.
+  cachedRevision = Number(settings.data?.revision ?? 0);
 
   const ratingsByMovie = new Map();
   for (const rating of ratings) {
@@ -73,7 +106,9 @@ export async function loadLibrary() {
     ),
     participants: participants.map(participantFromRow),
     rollSessions: sessions.map(rollSessionFromRow),
-    settings: settings.data?.data ?? {},
+    // Значения по умолчанию подставляются здесь: у нового аккаунта строки
+    // настроек ещё нет, а разделы приложения ждут полный набор.
+    settings: { ...DEFAULT_SETTINGS, ...(settings.data?.data ?? {}) },
   };
 }
 
@@ -139,55 +174,20 @@ export function commitLibraryChanges(commands) {
   return commit(commands);
 }
 
-// Перенос существующей библиотеки: подготовленные данные уходят одной
-// транзакцией. Отчёт о правках строится до вызова, в domain/libraryMigration.js.
-export async function importLibrary(library) {
-  const client = await getSupabaseClient();
-  const ownerId = await getOwnerId();
-
-  const payload = {
-    categories: library.categories.map(
-      (category) => commandToPayload(
-        { type: "put", storeName: STORE_NAMES.categories, value: category },
-        ownerId,
-      ).row,
-    ),
-    movies: library.movies.map((movie) => {
-      const mapped = commandToPayload(
-        { type: "put", storeName: STORE_NAMES.movies, value: movie },
-        ownerId,
-      );
-      return { ...mapped.row, ratings: mapped.ratings };
-    }),
-    franchises: library.franchises.map((franchise) => {
-      const mapped = commandToPayload(
-        { type: "put", storeName: STORE_NAMES.franchises, value: franchise },
-        ownerId,
-      );
-      return { ...mapped.row, movie_ids: mapped.movie_ids };
-    }),
-    participants: library.participants.map(
-      (participant) => commandToPayload(
-        { type: "put", storeName: STORE_NAMES.participants, value: participant },
-        ownerId,
-      ).row,
-    ),
-  };
-
-  const { data, error } = await client.rpc("import_library", { payload });
-  if (error) throw error;
-  return data;
-}
-
 async function commit(commands) {
   if (!Array.isArray(commands) || commands.length === 0) return;
   const client = await getSupabaseClient();
   const ownerId = await getOwnerId();
 
-  const { error } = await client.rpc("apply_library_changes", {
+  const { data, error } = await client.rpc("apply_library_changes", {
     commands: commands.map((command) => commandToPayload(command, ownerId)),
+    expected_revision: cachedRevision,
   });
-  if (error) throw error;
+  if (error) {
+    if (error.code === "40001") throw new LibraryConflictError();
+    throw error;
+  }
+  cachedRevision = Number(data);
 }
 
 async function select(client, table, columns, refine = (query) => query) {

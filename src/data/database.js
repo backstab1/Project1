@@ -1,7 +1,15 @@
+// Локальная база браузера. После перехода на сервер в ней не остаётся записей
+// библиотеки: только отметка о версии схемы и снимок последней загрузки,
+// который показывается на старте и при обрыве связи.
+//
+// Хранилища прежней локальной версии здесь больше не создаются, но и не
+// удаляются: у того, кто открывал старую сборку, они остаются в браузере со
+// своими данными. Стирать их приложение не вправе — это данные человека,
+// пусть и не нужные ему больше.
+
 import {
   DATABASE_NAME,
   DATABASE_VERSION,
-  DEFAULT_SETTINGS,
   STORE_NAMES,
 } from "../config.js";
 
@@ -34,15 +42,10 @@ export function openDatabase() {
 
 export async function initializeDatabase() {
   const database = await openDatabase();
-  await Promise.all([
-    putRecord(STORE_NAMES.meta, {
-      key: "schemaVersion",
-      value: DATABASE_VERSION,
-    }),
-    ...Object.entries(DEFAULT_SETTINGS).map(([key, value]) =>
-      ensureRecord(STORE_NAMES.settings, { key, value }),
-    ),
-  ]);
+  await putRecord(STORE_NAMES.meta, {
+    key: "schemaVersion",
+    value: DATABASE_VERSION,
+  });
   return database;
 }
 
@@ -50,13 +53,6 @@ export async function getRecord(storeName, key) {
   const database = await openDatabase();
   return requestToPromise(
     database.transaction(storeName, "readonly").objectStore(storeName).get(key),
-  );
-}
-
-export async function getAllRecords(storeName) {
-  const database = await openDatabase();
-  return requestToPromise(
-    database.transaction(storeName, "readonly").objectStore(storeName).getAll(),
   );
 }
 
@@ -75,109 +71,19 @@ export async function deleteRecord(storeName, key) {
   await transactionToPromise(transaction);
 }
 
-export async function countRecords(storeName) {
-  const database = await openDatabase();
-  return requestToPromise(
-    database.transaction(storeName, "readonly").objectStore(storeName).count(),
-  );
-}
-
-export async function applyBatch(commands) {
-  if (!Array.isArray(commands) || commands.length === 0) {
-    return;
-  }
-
-  const database = await openDatabase();
-  const storeNames = [...new Set(commands.map((command) => command.storeName))];
-  const transaction = database.transaction(storeNames, "readwrite");
-
-  for (const command of commands) {
-    const store = transaction.objectStore(command.storeName);
-    if (command.type === "put") {
-      store.put(command.value);
-    } else if (command.type === "delete") {
-      store.delete(command.key);
-    } else {
-      transaction.abort();
-      throw new TypeError(`Неизвестная пакетная операция: ${command.type}`);
-    }
-  }
-
-  await transactionToPromise(transaction);
-}
-
-async function ensureRecord(storeName, value) {
-  const current = await getRecord(storeName, value.key);
-  if (!current) {
-    await putRecord(storeName, value);
-  }
-}
-
 function applySchema(database, transaction) {
   createStore(database, transaction, STORE_NAMES.meta, { keyPath: "key" });
-  createStore(database, transaction, STORE_NAMES.settings, { keyPath: "key" });
-
-  const categories = createStore(database, transaction, STORE_NAMES.categories, {
-    keyPath: "id",
+  // Снимок серверной библиотеки одной записью на аккаунт: читается один раз
+  // при старте, поэтому индексы ему не нужны.
+  createStore(database, transaction, STORE_NAMES.snapshots, {
+    keyPath: "ownerId",
   });
-  createIndex(categories, "parentId", "parentId");
-  createIndex(categories, "position", "position");
-  createIndex(categories, "normalizedName", "normalizedName");
-
-  const movies = createStore(database, transaction, STORE_NAMES.movies, {
-    keyPath: "id",
-  });
-  createIndex(movies, "categoryId", "categoryId");
-  createIndex(movies, "categoryPosition", "categoryPosition");
-  createIndex(movies, "normalizedTitle", "normalizedTitle");
-  createIndex(movies, "tmdbId", "tmdbId");
-  createIndex(movies, "watchedAt", "watchedAt");
-
-  const franchises = createStore(database, transaction, STORE_NAMES.franchises, {
-    keyPath: "id",
-  });
-  createIndex(franchises, "categoryId", "categoryId");
-  createIndex(franchises, "normalizedName", "normalizedName", { unique: true });
-
-  const participants = createStore(database, transaction, STORE_NAMES.participants, {
-    keyPath: "id",
-  });
-  createIndex(participants, "normalizedName", "normalizedName", {
-    unique: true,
-  });
-  createIndex(participants, "lastUsedAt", "lastUsedAt");
-
-  const sessions = createStore(database, transaction, STORE_NAMES.rollSessions, {
-    keyPath: "id",
-  });
-  createIndex(sessions, "createdAt", "createdAt");
-  createIndex(sessions, "status", "status");
 }
 
 function createStore(database, transaction, name, options) {
   return database.objectStoreNames.contains(name)
     ? transaction.objectStore(name)
     : database.createObjectStore(name, options);
-}
-
-function createIndex(store, name, keyPath, options) {
-  if (!store) {
-    return;
-  }
-
-  if (store.indexNames.contains(name)) {
-    const existing = store.index(name);
-    const requestedUnique = Boolean(options?.unique);
-    if (
-      String(existing.keyPath) === String(keyPath) &&
-      existing.unique === requestedUnique
-    ) {
-      return;
-    }
-    store.deleteIndex(name);
-  }
-
-  store.createIndex(name, keyPath, options);
 }
 
 function requestToPromise(request) {

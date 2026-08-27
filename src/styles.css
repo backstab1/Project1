@@ -922,6 +922,27 @@ strong {
   color: var(--danger);
 }
 
+/* Полоса «нет связи»: библиотека на экране — снимок прошлой загрузки. */
+.stale-strip {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin: 0 var(--gutter);
+  border: 1px solid color-mix(in srgb, var(--danger) 34%, var(--border));
+  border-radius: var(--r-sm);
+  background: var(--danger-soft);
+  padding: 0.5rem 0.8rem;
+  color: var(--text);
+  font-size: var(--fs-sm);
+}
+
+.stale-strip svg {
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
+  color: var(--danger);
+}
+
 .empty {
   display: grid;
   justify-items: center;
@@ -3427,18 +3448,6 @@ strong {
 
 .panel--wide { grid-column: 1 / -1; }
 
-.file-btn {
-  position: relative;
-  overflow: hidden;
-}
-
-.file-btn input {
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-  cursor: pointer;
-}
-
 .participant-tags {
   display: flex;
   flex-wrap: wrap;
@@ -4960,8 +4969,6 @@ strong {
 }
 
 .set-row + .set-row,
-.set-row + .set-table,
-.set-table + .set-row,
 .set-row + .set-alert,
 .set-alert + .set-row,
 .set-block + .set-row {
@@ -5035,26 +5042,6 @@ strong {
 }
 
 .set-number small { color: var(--text-dim); font-size: var(--fs-sm); }
-
-.set-table {
-  display: grid;
-  gap: 0.25rem;
-  padding: 0.7rem 0.9rem;
-}
-
-.set-table div {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  border-radius: var(--r-xs);
-  background: var(--surface-2);
-  padding: 0.32rem 0.55rem;
-  color: var(--text-muted);
-  font-size: var(--fs-sm);
-}
-
-.set-table b { color: var(--text); font-weight: 500; }
 
 .set-kv {
   display: grid;

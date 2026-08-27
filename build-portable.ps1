@@ -22,16 +22,12 @@ if (Test-Path -LiteralPath $outputFull) {
 }
 
 New-Item -ItemType Directory -Force -Path $outputFull | Out-Null
-New-Item -ItemType Directory -Force -Path (Join-Path $outputFull "docs") | Out-Null
-
 Copy-Item -LiteralPath (Join-Path $projectRoot "index.html") -Destination $outputFull
 Copy-Item -LiteralPath (Join-Path $projectRoot "launch.py") -Destination $outputFull
 Copy-Item -LiteralPath (Join-Path $projectRoot "CineVault.cmd") -Destination $outputFull
 Copy-Item -LiteralPath (Join-Path $projectRoot "README.md") -Destination $outputFull
 Copy-Item -LiteralPath (Join-Path $projectRoot "src") -Destination $outputFull -Recurse
 Copy-Item -LiteralPath (Join-Path $projectRoot "assets") -Destination $outputFull -Recurse
-Copy-Item -LiteralPath (Join-Path $projectRoot "docs\IMPORT_FORMAT.md") `
-    -Destination (Join-Path $outputFull "docs\IMPORT_FORMAT.md")
 
 $zipPath = Join-Path $releaseRoot "CineVault-portable.zip"
 if (Test-Path -LiteralPath $zipPath) {

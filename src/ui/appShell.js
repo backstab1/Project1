@@ -11,7 +11,6 @@ import {
 } from "../domain/libraryRules.js";
 import { setupDialog } from "./dialog.js";
 import { drawWheel } from "./wheelCanvas.js";
-import { isBackupReminderDue } from "../domain/backupReminder.js";
 import { selectEnrichmentCandidates } from "../domain/tmdbEnrichment.js";
 import {
   CATALOG_SORTS,
@@ -203,6 +202,14 @@ export function renderAppShell(root, state) {
             ${renderAccountMenu(state)}
           </div>
         </header>
+
+          ${state.libraryStale ? `
+            <p class="stale-strip" role="status">
+              ${icon("warning")}
+              <span>Нет связи с сервером: показан последний снимок библиотеки.
+              Изменения сейчас не сохранятся.</span>
+            </p>
+          ` : ""}
 
           <section class="content ${viewChanged ? "is-entering" : ""}" id="view-content"></section>
         </div>
@@ -517,11 +524,11 @@ function renderCurrentView(container, state) {
       <section class="notice notice--error">
         <span class="notice__icon">${icon("warning")}</span>
         <div>
-          <p class="eyebrow">Хранилище недоступно</p>
-          <h2>Не удалось открыть хранилище библиотеки</h2>
+          <p class="eyebrow">Нет связи с сервером</p>
+          <h2>Библиотека сейчас недоступна</h2>
           <p>${escapeHtml(state.error.message)}</p>
-          <p class="muted">Запускайте приложение через <code>launch.py</code>,
-          а не открывайте <code>index.html</code> напрямую из файла.</p>
+          <p class="muted">Библиотека хранится в вашем аккаунте. Проверьте
+          соединение и обновите страницу — записи никуда не делись.</p>
         </div>
       </section>
     `;
@@ -608,12 +615,6 @@ function renderDashboard(container, state) {
     .filter((movie) => !movie.watchedAt && !watchingIds.has(movie.id))
     .sort((a, b) => a.categoryPosition - b.categoryPosition)
     .slice(0, 4);
-  const backupDue = isBackupReminderDue({
-    movieCount: library.movies.length,
-    lastBackupAt: library.settings.lastBackupAt,
-    dismissedUntil: library.settings.backupReminderDismissedUntil,
-    reminderDays: library.settings.backupReminderDays,
-  });
 
   container.innerHTML = `
     <section class="glance">
@@ -841,43 +842,6 @@ function renderDashboard(container, state) {
       </article>
     </section>
 
-    ${backupDue ? `
-      <section class="notice notice--accent">
-        <span class="notice__icon">${icon("download")}</span>
-        <div>
-          <p class="eyebrow">Резервная копия</p>
-          <h2>${library.settings.lastBackupAt
-            ? "Пора обновить резервную копию"
-            : "Резервная копия ещё не создавалась"}</h2>
-          <p>Резервная копия — вся библиотека одним файлом. Скачайте JSON сейчас
-          или отложите напоминание на ${library.settings.backupReminderDays ?? 30} дней.</p>
-        </div>
-        <div class="notice__actions">
-          <button class="btn btn--primary" type="button" data-action="backup-export">
-            ${icon("download")}<span>Скачать JSON</span>
-          </button>
-          <button class="btn btn--ghost" type="button" data-action="backup-remind-later">
-            Напомнить позже
-          </button>
-        </div>
-      </section>
-    ` : ""}
-
-    ${state.legacyDataFound ? `
-      <section class="notice">
-        <span class="notice__icon">${icon("database")}</span>
-        <div>
-          <p class="eyebrow">Найдена старая версия</p>
-          <h2>Данные Movie Manager готовы к переносу</h2>
-          <p>Миграция объединит старую библиотеку с текущей и ничего не удалит.</p>
-        </div>
-        <div class="notice__actions">
-          <button class="btn btn--primary" type="button" data-view="settings">
-            Открыть настройки ${icon("arrowRight")}
-          </button>
-        </div>
-      </section>
-    ` : ""}
   `;
 }
 
@@ -2211,8 +2175,6 @@ function renderSettings(container, state) {
   const tmdb = state.tmdbStatus;
   const settings = state.library.settings ?? {};
   const enrichmentCount = selectEnrichmentCandidates(state.library.movies).length;
-  const autoBackupDays = Number(settings.autoBackupDays ?? 0);
-  const localBackup = state.localBackup ?? { files: [], directory: "", error: null };
   // Зритель — это аккаунт: свой профиль и принятые друзья. Строки из старого
   // локального списка игроков остаются только как след прежнего ручного ввода.
   const viewers = buildViewers(state.account, state.friends?.rows);
@@ -2282,73 +2244,6 @@ function renderSettings(container, state) {
               99,
             ),
           }),
-          settingsRow({
-            title: "Напоминание о копии",
-            hint: "",
-            control: numberControl(
-              "setting-backup-days",
-              settings.backupReminderDays ?? 30,
-              1,
-              365,
-              "дней",
-            ),
-          }),
-        ],
-      })}
-
-      ${settingsGroup({
-        title: "Данные",
-        rows: [
-          settingsRow({
-            title: "Резервная копия",
-            hint: "Вся библиотека одним файлом.",
-            control: `${smallButton("backup-export", "Скачать JSON")}
-              ${fileControl("backup-import", "Загрузить JSON", ".json,application/json")}`,
-          }),
-          settingsRow({
-            title: "Выгрузка в CSV",
-            hint: "Для чтения в таблице; восстановить можно только из JSON.",
-            control: smallButton("csv-export", "Выгрузить"),
-          }),
-          settingsRow({
-            title: "Импорт таблицы",
-            hint: "CSV, TSV и XLSX — формат столбцов описан в docs/IMPORT_FORMAT.md.",
-            control: fileControl("table-import", "Выбрать файл", ".csv,.tsv,.xlsx,text/csv"),
-          }),
-          settingsRow({
-            title: "Копия на диск по расписанию",
-            hint: "Хранятся последние пять копий.",
-            control: `${autoBackupDays > 0
-              ? numberControl("setting-auto-backup-days", autoBackupDays, 1, 90, "дней")
-              : ""}
-              ${toggleControl("setting-auto-backup", autoBackupDays > 0)}`,
-          }),
-          settingsRow({
-            title: "Копия прямо сейчас",
-            hint: localBackup.error
-              ? `Лаунчер недоступен: ${escapeHtml(localBackup.error)}`
-              : localBackup.directory
-                ? `Папка: <code>${escapeHtml(localBackup.directory)}</code>`
-                : "Копия сохраняется через лаунчер CineVault.",
-            control: smallButton("local-backup-now", "Сохранить"),
-          }),
-          localBackup.files.length ? `
-            <div class="set-table">
-              ${localBackup.files.map((file) => `
-                <div>
-                  <span>${escapeHtml(formatDateTime(file.savedAt))}</span>
-                  <b>${Math.max(1, Math.round(file.size / 1024))} КБ</b>
-                </div>`).join("")}
-            </div>` : "",
-          settingsRow({
-            title: "Перенос из Movie Manager V13",
-            hint: state.legacyDataFound
-              ? "Найдены старые данные. Миграция объединит их с текущей библиотекой и ничего не удалит."
-              : "Старая база в этом браузере не найдена.",
-            control: smallButton("legacy-migrate", "Перенести", {
-              disabled: !state.legacyDataFound,
-            }),
-          }),
         ],
       })}
 
@@ -2395,9 +2290,6 @@ function renderSettings(container, state) {
               ["Коллекций", state.library.franchises.length],
               ["Сессий", state.library.rollSessions.length],
               ["Версия", APP_VERSION],
-              ["Последняя копия", settings.lastBackupAt
-                ? formatDateTime(settings.lastBackupAt)
-                : "не создавалась"],
             ].map(([label, value]) => `
               <div><span>${escapeHtml(label)}</span><b>${escapeHtml(String(value))}</b></div>
             `).join("")}
@@ -2407,14 +2299,6 @@ function renderSettings(container, state) {
 
     </div>
   `;
-}
-
-function fileControl(control, label, accept) {
-  return `
-    <label class="btn btn--ghost btn--sm file-btn">
-      ${escapeHtml(label)}
-      <input type="file" accept="${accept}" data-control="${control}">
-    </label>`;
 }
 
 function numberControl(control, value, min, max, suffix = "") {

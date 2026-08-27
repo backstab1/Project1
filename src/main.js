@@ -1,15 +1,18 @@
-import { LEGACY_STORAGE_KEYS, STORE_NAMES, isServerConfigured } from "./config.js";
+import { STORE_NAMES } from "./config.js";
 import { initializeDatabase } from "./data/database.js";
 import {
   commitLibraryChanges,
   deleteParticipantRecord,
+  isLibraryConflict,
+  loadCachedLibrary,
   loadLibrary,
+  resetLibraryStore,
   saveCategory,
   saveFranchise,
   saveMovie,
   saveRollSession,
   saveSetting,
-} from "./data/libraryRepository.js";
+} from "./data/libraryStore.js";
 import {
   MOVIE_STATUS,
   MOVIE_STATUS_LABELS,
@@ -43,12 +46,7 @@ import {
   useSave,
 } from "./domain/rollEngine.js";
 import { buildLibraryStatistics } from "./domain/statistics.js";
-import { buildLibraryCsv } from "./domain/csvExport.js";
 import { buildUndoCommands, describeDeletion } from "./domain/undo.js";
-import {
-  getLocalBackupStatus,
-  saveLocalBackup,
-} from "./services/backupService.js";
 import {
   DEFAULT_CATALOG_FILTERS,
   filterCatalogMovies,
@@ -70,17 +68,6 @@ import {
   searchTmdbMovies,
   tmdbPosterPreviewUrl,
 } from "./services/tmdbClient.js";
-import {
-  createBackup,
-  mergeLibraries,
-  parseBackup,
-  readLegacyLocalStorage,
-} from "./domain/backup.js";
-import {
-  parseDelimitedText,
-  tableRowsToLibrary,
-} from "./domain/spreadsheetImport.js";
-import { createReminderDismissalDate } from "./domain/backupReminder.js";
 import { isModalView, renderAppShell } from "./ui/appShell.js";
 import {
   isAuthPreview,
@@ -170,6 +157,7 @@ const state = {
     franchises: [],
     participants: [],
     rollSessions: [],
+    settings: {},
   },
   statistics: {
     movieCount: 0,
@@ -177,7 +165,6 @@ const state = {
     unwatchedMovieCount: 0,
     categoryCount: 0,
   },
-  legacyDataFound: detectLegacyData(),
   rollDraftPool: [],
   rollPoolFilters: { ...DEFAULT_POOL_FILTERS },
   activeSession: null,
@@ -217,10 +204,11 @@ const state = {
     busy: false,
     autofocus: false,
   },
-  // Библиотека закрыта, пока сервер настроен, а аккаунта ещё нет.
-  libraryLocked: isServerConfigured(),
+  // Библиотека принадлежит аккаунту: без входа открыта только витрина.
+  libraryLocked: true,
+  // На экране снимок прошлой загрузки, а свежих данных получить не удалось.
+  libraryStale: false,
   tmdbStatus: { configured: false, loading: true, error: null },
-  localBackup: { directory: "", files: [], lastSavedAt: null, error: null },
   error: null,
   onNavigate(view) {
     if (!VIEW_IDS.has(view)) return;
@@ -266,10 +254,9 @@ async function start() {
 
   if (isAuthPreview()) {
     state.account = await openAuthScreen(root, { mode: "signin" });
-    state.libraryLocked = false;
-    await loadWorkspace();
+    state.libraryLocked = !state.account;
+    if (!state.libraryLocked) await loadWorkspace();
     render();
-    startBackupRoutines();
     return;
   }
 
@@ -283,7 +270,7 @@ async function start() {
     }
   }
 
-  state.libraryLocked = isServerConfigured() && !state.account;
+  state.libraryLocked = !state.account;
   if (state.libraryLocked) {
     // Гостю показывать нечего, кроме витрины: якорь вида в адресе убираем,
     // иначе кнопка «назад» вернула бы его в раздел, которого он не видел.
@@ -295,7 +282,6 @@ async function start() {
 
   await loadWorkspace();
   render();
-  startBackupRoutines();
 }
 
 function bindGlobalListeners() {
@@ -325,21 +311,47 @@ function bindGlobalListeners() {
 // Открывает библиотеку: база, записи, статус TMDB. Вызывается и на старте,
 // и сразу после входа в кабинете.
 async function loadWorkspace() {
+  state.libraryStale = false;
+
   try {
     await initializeDatabase();
-    state.library = await loadLibrary();
-    state.statistics = buildLibraryStatistics(state.library);
-    state.rollDraftPool = buildRollPool(state.library, state.rollPoolFilters);
+
+    // Снимок прошлой загрузки показывается сразу: библиотека не должна
+    // открываться пустым экраном, пока идёт запрос к серверу.
+    const cached = await loadCachedLibrary();
+    if (cached) {
+      applyLibrary(cached);
+      state.libraryStale = true;
+      state.error = null;
+      render();
+    }
+
+    applyLibrary(await loadLibrary());
+    state.libraryStale = false;
     await refreshTmdbStatus();
     state.error = null;
   } catch (error) {
     console.error(error);
-    state.error = error instanceof Error ? error : new Error(String(error));
+    if (state.libraryStale) {
+      // Снимок уже на экране: библиотеку видно, а о том, что она может быть
+      // устаревшей, говорит полоса вверху. Экран ошибки здесь только мешал бы.
+      showToast("Нет связи с сервером: показан последний снимок.");
+    } else {
+      state.error = error instanceof Error ? error : new Error(String(error));
+    }
   }
   // Друзья не должны ронять библиотеку: сервер может быть недоступен, а
   // каталог лежит рядом и открывается без него.
   await refreshFriends();
   applyMotionPreference();
+}
+
+function applyLibrary(library) {
+  state.library = library;
+  state.statistics = buildLibraryStatistics(state.library);
+  if (!state.activeSession) {
+    state.rollDraftPool = buildRollPool(state.library, state.rollPoolFilters);
+  }
 }
 
 async function refreshFriends() {
@@ -368,14 +380,6 @@ async function refreshFriends() {
       error: describeFriendError(error),
     };
   }
-}
-
-function startBackupRoutines() {
-  refreshLocalBackupStatus()
-    .then(() => runScheduledBackup())
-    .catch(() => {
-      // Лаунчер может быть недоступен: приложение всё равно работает.
-    });
 }
 
 function render() {
@@ -428,11 +432,8 @@ function handleBrokenPoster(event) {
 }
 
 async function reloadLibrary() {
-  state.library = await loadLibrary();
-  state.statistics = buildLibraryStatistics(state.library);
-  if (!state.activeSession) {
-    state.rollDraftPool = buildRollPool(state.library, state.rollPoolFilters);
-  }
+  applyLibrary(await loadLibrary());
+  state.libraryStale = false;
   render();
 }
 
@@ -471,9 +472,6 @@ async function handleAction(action, payload) {
     "watch-remove": () => confirmWatchRemoval(payload.id),
     "rating-add": () => openRatingDialog(payload.id),
     "rating-delete": () => confirmRatingDeletion(payload.id, payload.ratingId),
-    "backup-export": () => exportBackup(),
-    "legacy-migrate": () => migrateLegacyLibrary(),
-    "backup-remind-later": () => dismissBackupReminder(),
     "participants-forget": () => confirmLegacyParticipantCleanup(),
     "friends-open": () => state.onNavigate("friends"),
     "friend-find": () => searchFriendByHandle(),
@@ -504,8 +502,6 @@ async function handleAction(action, payload) {
     "catalog-status-open": () => openCatalogWithFilters({ status: payload.status }),
     "roll-filter-set": () => setRollPoolFilter(payload.filter),
     "session-repeat": () => repeatSessionPool(payload.id),
-    "csv-export": () => exportLibraryCsv(),
-    "local-backup-now": () => createLocalBackup(),
     "movie-favorite-toggle": () => toggleMovieFavorite(payload.id),
     "movie-status-set": () => setMovieStatus(payload.id, payload.status),
     "selection-toggle": () => toggleSelectionMode(),
@@ -661,7 +657,6 @@ async function enterLibrary(profile) {
 
   await loadWorkspace();
   render();
-  startBackupRoutines();
   showToast(`С возвращением, ${profile.display_name ?? profile.handle}.`);
 }
 
@@ -682,7 +677,7 @@ async function signOutAccount() {
   }
 
   state.account = null;
-  state.libraryLocked = isServerConfigured();
+  state.libraryLocked = true;
   closeWorkspace();
   state.accountPanel = {
     open: false,
@@ -702,6 +697,8 @@ async function signOutAccount() {
 // После выхода в памяти не должно остаться ни записей, ни начатой сессии:
 // следующий вход соберёт всё заново.
 function closeWorkspace() {
+  resetLibraryStore().catch(() => {});
+  state.libraryStale = false;
   state.modalView = null;
   state.library = {
     movies: [],
@@ -709,6 +706,7 @@ function closeWorkspace() {
     franchises: [],
     participants: [],
     rollSessions: [],
+    settings: {},
   };
   state.statistics = {
     movieCount: 0,
@@ -1043,21 +1041,6 @@ function repeatSessionPool(sessionId) {
   showToast(dropped
     ? `Пул повторён, ${dropped} уже просмотрено и исключено`
     : "Пул повторён");
-}
-
-async function exportLibraryCsv() {
-  const csv = buildLibraryCsv(state.library);
-  // BOM нужен, чтобы Excel открыл кириллицу без танцев с кодировками.
-  const blob = new Blob([`\ufeff${csv}`], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `cinevault-${new Date().toISOString().slice(0, 10)}.csv`;
-  document.body.append(link);
-  link.click();
-  link.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-  showToast("CSV выгружен.");
 }
 
 // Массовые операции работают только в каталоге и только над тем, что человек
@@ -1425,15 +1408,6 @@ function buildCommands() {
       run: () => state.onNavigate("wheel"),
     },
     {
-      id: "action-backup",
-      group: "Действия",
-      label: "Скачать резервную копию",
-      hint: "Экспорт библиотеки в JSON",
-      icon: "download",
-      keywords: "бэкап backup экспорт json",
-      run: () => state.onAction("backup-export", {}),
-    },
-    {
       id: "action-theme",
       group: "Действия",
       label: state.theme === "dark" ? "Включить светлую тему" : "Включить тёмную тему",
@@ -1486,18 +1460,6 @@ async function handleControl(control, payload) {
       "savesEnabledAboveRemaining",
       (value) => clampNumber(value.value, 1, 99, 3),
     ],
-    "setting-backup-days": [
-      "backupReminderDays",
-      (value) => clampNumber(value.value, 1, 365, 30),
-    ],
-    "setting-auto-backup": [
-      "autoBackupDays",
-      (value) => (value.checked ? 7 : 0),
-    ],
-    "setting-auto-backup-days": [
-      "autoBackupDays",
-      (value) => clampNumber(value.value, 1, 90, 7),
-    ],
   };
   if (settingControls[control]) {
     const [key, read] = settingControls[control];
@@ -1530,158 +1492,6 @@ async function handleControl(control, payload) {
     render();
     return;
   }
-
-  if (control === "backup-import" && payload.files?.[0]) {
-    await importBackupFile(payload.files[0]);
-    return;
-  }
-  if (control === "table-import" && payload.files?.[0]) {
-    await importTableFile(payload.files[0]);
-  }
-}
-
-async function refreshLocalBackupStatus() {
-  try {
-    const status = await getLocalBackupStatus();
-    state.localBackup = { ...status, error: null };
-  } catch (error) {
-    state.localBackup = {
-      directory: "",
-      files: [],
-      lastSavedAt: null,
-      error: error instanceof Error ? error.message : String(error),
-    };
-  }
-  render();
-}
-
-// Копия делается молча: пользователь узнаёт о ней в настройках, а не всплывашкой
-// при каждом запуске.
-async function runScheduledBackup() {
-  const days = Number(state.library.settings.autoBackupDays ?? 0);
-  if (!Number.isFinite(days) || days <= 0) return;
-  if (state.library.movies.length === 0) return;
-
-  const last = state.library.settings.lastAutoBackupAt
-    ?? state.localBackup.lastSavedAt;
-  if (last) {
-    const elapsedDays = (Date.now() - new Date(last).getTime()) / 86_400_000;
-    if (Number.isFinite(elapsedDays) && elapsedDays < days) return;
-  }
-
-  await createLocalBackup({ silent: true });
-}
-
-async function createLocalBackup({ silent = false } = {}) {
-  const result = await saveLocalBackup(createBackup(state.library));
-  await saveSetting("lastAutoBackupAt", result.savedAt);
-  await reloadLibrary();
-  await refreshLocalBackupStatus();
-  if (!silent) {
-    showToast("Копия сохранена на диск.");
-  }
-  return result;
-}
-
-async function exportBackup() {
-  const backup = createBackup(state.library);
-  const json = JSON.stringify(backup, null, 2);
-  const blob = new Blob([json], { type: "application/json;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  const date = new Date().toISOString().slice(0, 10);
-  link.href = url;
-  link.download = `cinevault-backup-${date}.json`;
-  document.body.append(link);
-  link.click();
-  link.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-  await saveSetting("lastBackupAt", new Date().toISOString());
-  await saveSetting("backupReminderDismissedUntil", null);
-  await reloadLibrary();
-  showToast("Резервная копия сохранена.");
-}
-
-async function importBackupFile(file) {
-  const incoming = parseBackup(await file.text());
-  const merged = mergeLibraries(state.library, incoming);
-  await persistMergedLibrary(merged);
-  await reloadLibrary();
-  showToast("Резервная копия импортирована.");
-  openDialog({
-    title: "Импорт завершён",
-    submitLabel: "Готово",
-    body: `
-      <p class="confirmation-text">Резервная копия объединена с текущей
-      библиотекой. Совпадающие фильмы не дублировались.</p>
-    `,
-    onSubmit: async () => {},
-  });
-}
-
-async function migrateLegacyLibrary() {
-  const incoming = readLegacyLocalStorage(localStorage);
-  const merged = mergeLibraries(state.library, incoming);
-  await persistMergedLibrary(merged);
-  localStorage.setItem("cinevault_legacy_migrated", "1");
-  state.legacyDataFound = false;
-  await reloadLibrary();
-  showToast("Старая библиотека перенесена.");
-  openDialog({
-    title: "Миграция завершена",
-    submitLabel: "Готово",
-    body: `
-      <p class="confirmation-text">Старая библиотека Movie Manager
-      объединена с CineVault. Исходные ключи localStorage оставлены без
-      изменений как дополнительная страховка.</p>
-    `,
-    onSubmit: async () => {},
-  });
-}
-
-async function importTableFile(file) {
-  const extension = file.name.split(".").pop()?.toLocaleLowerCase("ru-RU");
-  let rows;
-  if (extension === "xlsx") {
-    const response = await fetch("/api/import-xlsx", {
-      method: "POST",
-      headers: {
-        "Content-Type":
-          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      },
-      body: file,
-    });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(payload.error ?? "Не удалось прочитать XLSX-файл.");
-    }
-    rows = payload.rows;
-  } else {
-    rows = parseDelimitedText(await readTextFile(file));
-  }
-
-  const incoming = tableRowsToLibrary(rows);
-  const merged = mergeLibraries(state.library, incoming);
-  await persistMergedLibrary(merged);
-  await reloadLibrary();
-  showToast(`Импортировано строк: ${rows.length}.`);
-  openDialog({
-    title: "Таблица импортирована",
-    submitLabel: "Готово",
-    body: `
-      <p class="confirmation-text">Добавлено и объединено строк: ${rows.length}.
-      Списки, франшизы, просмотренные фильмы и колонки оценок перенесены.</p>
-    `,
-    onSubmit: async () => {},
-  });
-}
-
-async function dismissBackupReminder() {
-  const days = state.library.settings.backupReminderDays ?? 30;
-  const dismissedUntil = createReminderDismissalDate(days);
-  await saveSetting("backupReminderDismissedUntil", dismissedUntil);
-  await reloadLibrary();
-  showToast(`Напоминание отложено на ${days} дней.`);
 }
 
 function openSessionDetails(sessionId) {
@@ -1711,28 +1521,6 @@ function openSessionDetails(sessionId) {
     `,
     onSubmit: async () => {},
   });
-}
-
-async function persistMergedLibrary(library) {
-  const storeEntries = [
-    [STORE_NAMES.categories, library.categories],
-    [STORE_NAMES.movies, library.movies],
-    [STORE_NAMES.franchises, library.franchises],
-    [STORE_NAMES.participants, library.participants],
-    [STORE_NAMES.rollSessions, library.rollSessions],
-  ];
-  await commitLibraryChanges(
-    [
-      ...storeEntries.flatMap(([storeName, values]) =>
-        values.map((value) => ({ type: "put", storeName, value }))
-      ),
-      ...Object.entries(library.settings ?? {}).map(([key, value]) => ({
-        type: "put",
-        storeName: STORE_NAMES.settings,
-        value: { key, value },
-      })),
-    ],
-  );
 }
 
 function openWatchDateDialog(movieId) {
@@ -2967,6 +2755,24 @@ function nextPosition(items, field) {
 
 function showUnexpectedError(error) {
   console.error(error);
+  // Расхождение версий — не поломка: библиотеку правили с другого устройства.
+  // Показываем это словами и перечитываем её, а не оставляем экран с чужим
+  // текстом ошибки Postgres.
+  if (isLibraryConflict(error)) {
+    openDialog({
+      title: "Библиотека изменилась",
+      submitLabel: "Обновить",
+      body: `
+        <p class="confirmation-text">Библиотеку изменили на другом устройстве,
+        поэтому последнее действие не сохранено. Обновите её и повторите.</p>
+      `,
+      onSubmit: async () => {
+        await reloadLibrary();
+      },
+    });
+    return;
+  }
+
   openDialog({
     title: "Произошла ошибка",
     submitLabel: "Закрыть",
@@ -3015,15 +2821,6 @@ function dateInputToIso(value) {
   ).toISOString();
 }
 
-async function readTextFile(file) {
-  const bytes = await file.arrayBuffer();
-  try {
-    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-  } catch {
-    return new TextDecoder("windows-1251").decode(bytes);
-  }
-}
-
 function describeSessionEvent(event) {
   const descriptions = {
     "session-started": `Сессия началась: ${event.participantCount} участников`,
@@ -3052,15 +2849,4 @@ function formatTimeValue(value) {
     minute: "2-digit",
     second: "2-digit",
   }).format(new Date(value));
-}
-
-function detectLegacyData() {
-  try {
-    return (
-      localStorage.getItem("cinevault_legacy_migrated") !== "1" &&
-      LEGACY_STORAGE_KEYS.some((key) => localStorage.getItem(key) !== null)
-    );
-  } catch {
-    return false;
-  }
 }

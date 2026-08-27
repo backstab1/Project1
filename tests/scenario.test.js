@@ -2,10 +2,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  createBackup,
-  parseBackup,
-} from "../src/domain/backup.js";
-import {
   createCategory,
   createFranchise,
   createMovie,
@@ -102,19 +98,4 @@ test("полный сценарий от библиотеки до резерв�
   } else {
     assert.deepEqual(watchedMovieIds, [session.winner.id]);
   }
-
-  const completedLibrary = {
-    ...library,
-    movies: library.movies.map((movie) =>
-      watchCommands.find((command) => command.value.id === movie.id)?.value ??
-      movie
-    ),
-    rollSessions: [session],
-  };
-  const restored = parseBackup(
-    JSON.stringify(createBackup(completedLibrary)),
-  );
-
-  assert.equal(restored.movies.length, 4);
-  assert.equal(restored.rollSessions[0].winner.id, session.winner.id);
 });
