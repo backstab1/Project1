@@ -1361,7 +1361,11 @@ function movieCard(movie, category, franchise, index = 0, options = {}) {
             data-id="${movie.id}" aria-label="Отметить просмотренным"
             title="Отметить просмотренным">${icon("check")}</button>`}
         <button class="icon-btn icon-btn--glass" type="button" data-action="movie-edit"
-          data-id="${movie.id}" aria-label="Редактировать">${icon("edit")}</button>
+          data-id="${movie.id}" aria-label="Редактировать"
+          title="Редактировать">${icon("edit")}</button>
+        <button class="icon-btn icon-btn--glass icon-btn--danger" type="button"
+          data-action="movie-delete" data-id="${movie.id}"
+          aria-label="Удалить" title="Удалить">${icon("trash")}</button>
       </div>
 
       <div class="movie-card__caption">

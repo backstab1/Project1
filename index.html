@@ -28,9 +28,19 @@
   </head>
   <body>
     <div id="app">
-      <div class="boot-screen" role="status">
-        <div class="boot-screen__mark">CV</div>
-        <p>Открываем CineVault…</p>
+      <div class="boot" role="status" aria-live="polite">
+        <span class="boot__halo" aria-hidden="true"></span>
+        <span class="boot__stage" aria-hidden="true">
+          <span class="boot__ring"></span>
+          <span class="boot__mark"><b>CV</b></span>
+        </span>
+        <p class="boot__word" aria-hidden="true">
+          <span style="--i:0">C</span><span style="--i:1">i</span><span style="--i:2">n</span
+          ><span style="--i:3">e</span><span style="--i:4">V</span><span style="--i:5">a</span
+          ><span style="--i:6">u</span><span style="--i:7">l</span><span style="--i:8">t</span>
+        </p>
+        <span class="boot__bar" aria-hidden="true"></span>
+        <p class="sr-only">Открываем CineVault…</p>
       </div>
     </div>
     <script type="module" src="./src/main.js"></script>

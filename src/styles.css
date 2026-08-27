@@ -1037,40 +1037,184 @@ strong {
 
 /* ------------------------------------------------- 4. Каркас приложения */
 
-.boot-screen {
+/* Заставка загрузки.
+ *
+ * Она висит секунду и задаёт тон всему остальному, поэтому собрана из того
+ * же, из чего собран продукт: кольцо повторяет колесо кинорулетки, знак —
+ * плитку каталога, а слово проявляется по буквам, как титры. Всё на CSS:
+ * модуль приложения к этому моменту ещё не загружен. */
+.boot {
+  position: relative;
   display: grid;
   min-height: 100vh;
   place-content: center;
   justify-items: center;
-  gap: 1.1rem;
-  color: var(--text-dim);
+  gap: 1.6rem;
+  overflow: hidden;
 }
 
-.boot-screen__mark {
+/* Мягкое пятно за знаком — единственное место, где подсветка уместна:
+   на пустом холсте ей нечего размывать. */
+.boot__halo {
+  position: absolute;
+  width: 32rem;
+  height: 32rem;
+  background: radial-gradient(circle, var(--accent-glow), transparent 62%);
+  filter: blur(70px);
+  opacity: 0;
+  animation: boot-halo 2.6s var(--ease-out) forwards;
+  pointer-events: none;
+}
+
+.boot__stage {
   position: relative;
   display: grid;
-  width: 78px;
-  height: 78px;
+  width: 7.5rem;
+  height: 7.5rem;
   place-content: center;
-  border-radius: var(--r-lg);
-  background: var(--surface-3);
-  box-shadow: var(--shadow-glow);
-  color: #fff;
+}
+
+/* Кольцо: сектор акцента бежит по окружности, как указатель по колесу.
+   Маска вырезает середину, поэтому это волосяная дуга, а не диск. */
+.boot__ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg 200deg,
+    color-mix(in srgb, var(--accent) 35%, transparent) 300deg,
+    var(--accent) 352deg,
+    transparent 360deg
+  );
+  mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 2px));
+  animation: boot-spin 1.5s linear infinite, boot-ring-in 0.7s var(--ease-out) backwards;
+}
+
+/* Второе кольцо-след: тоньше, медленнее и в обратную сторону — движение
+   перестаёт быть механическим. */
+.boot__ring::after {
+  position: absolute;
+  border-radius: 50%;
+  content: "";
+  inset: 0.45rem;
+  background: conic-gradient(
+    from 180deg,
+    transparent 0deg 280deg,
+    color-mix(in srgb, var(--accent) 45%, transparent) 350deg,
+    transparent 360deg
+  );
+  mask: radial-gradient(farthest-side, transparent calc(100% - 1px), #000 calc(100% - 1px));
+  animation: boot-spin 2.6s linear infinite reverse;
+}
+
+.boot__mark {
+  display: grid;
+  width: 4.6rem;
+  height: 4.6rem;
+  place-content: center;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  animation: boot-mark-in 0.75s var(--ease-spring) backwards;
+}
+
+.boot__mark b {
+  display: block;
+  color: var(--text);
   font-family: var(--font-display);
-  font-size: var(--fs-2xl);
+  font-size: var(--fs-xl);
   font-weight: 500;
-  letter-spacing: 0.02em;
-  animation: boot-pulse 2.1s var(--ease-out) infinite;
+  letter-spacing: 0.04em;
+  /* Буквы знака проявляются на полтакта позже самой плитки. */
+  animation: boot-fade 0.5s ease 0.2s backwards;
 }
 
-.boot-screen p {
-  font-size: var(--fs-base);
-  letter-spacing: 0.02em;
+/* Слово набирается по букве — как титр, а не как подпись под спиннером. */
+.boot__word {
+  display: flex;
+  gap: 0.06em;
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: var(--fs-lg);
+  font-weight: 500;
+  letter-spacing: 0.28em;
+  text-indent: 0.28em;
 }
 
-@keyframes boot-pulse {
-  0%, 100% { transform: translateY(0) scale(1); box-shadow: var(--shadow-glow); }
-  50% { transform: translateY(-6px) scale(1.03); box-shadow: 0 28px 60px var(--accent-glow); }
+.boot__word span {
+  display: inline-block;
+  animation: boot-letter 0.55s var(--ease-out) backwards;
+  animation-delay: calc(0.35s + var(--i) * 55ms);
+}
+
+/* Полоса без процентов: сколько осталось, приложение не знает, а честная
+   бегущая засечка это и не обещает. */
+.boot__bar {
+  position: relative;
+  overflow: hidden;
+  width: 8.5rem;
+  height: 2px;
+  border-radius: var(--r-pill);
+  background: var(--surface-3);
+  animation: boot-fade 0.5s ease 0.9s backwards;
+}
+
+.boot__bar::after {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 38%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  content: "";
+  animation: boot-sweep 1.4s var(--ease-out) infinite;
+}
+
+@keyframes boot-spin {
+  to { transform: rotate(1turn); }
+}
+
+@keyframes boot-ring-in {
+  from { opacity: 0; transform: scale(0.82); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes boot-mark-in {
+  from { opacity: 0; transform: scale(0.7); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes boot-letter {
+  from { opacity: 0; transform: translateY(0.5em); filter: blur(4px); }
+  to { opacity: 1; transform: none; filter: none; }
+}
+
+@keyframes boot-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes boot-halo {
+  from { opacity: 0; transform: scale(0.9); }
+  to { opacity: 0.55; transform: scale(1); }
+}
+
+@keyframes boot-sweep {
+  from { transform: translateX(-110%); }
+  to { transform: translateX(300%); }
+}
+
+/* Меньше движения: заставка остаётся собранной картинкой без вращения,
+   бега и проявления. */
+@media (prefers-reduced-motion: reduce) {
+  .boot__halo { opacity: 0.4; animation: none; }
+  .boot__ring,
+  .boot__ring::after,
+  .boot__mark,
+  .boot__mark b,
+  .boot__word span,
+  .boot__bar { animation: none; }
+  .boot__bar::after { animation: boot-sweep 2.4s linear infinite; }
 }
 
 .app {
@@ -2241,7 +2385,19 @@ strong {
 
 .movie-grid[data-density="dense"] .movie-card__caption h3 { font-size: var(--fs-sm); }
 .movie-grid[data-density="dense"] .movie-card__caption p { display: none; }
-.movie-grid[data-density="dense"] .movie-card__tools { display: none; }
+
+/* В плотной плитке кнопки те же, только мельче: прятать их было нечестно —
+   этот вид стоит по умолчанию, и без них карточка теряла все действия. */
+.movie-grid[data-density="dense"] .movie-card__tools { gap: 0.15rem; }
+.movie-grid[data-density="dense"] .movie-card__tools .icon-btn {
+  width: 1.55rem;
+  height: 1.55rem;
+}
+
+.movie-grid[data-density="dense"] .movie-card__tools .icon-btn svg {
+  width: 0.85rem;
+  height: 0.85rem;
+}
 
 /* Карточка — это постер. Подпись, метки и кнопки лежат поверх него, поэтому
    плитка читается как полка с обложками, а не как таблица с картинками. */
