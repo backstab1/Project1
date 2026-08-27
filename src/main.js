@@ -428,6 +428,17 @@ function handleBrokenPoster(event) {
   image.replaceWith(fallback);
 }
 
+// Язычок настоящего колеса отскакивает на каждом секторе. Здесь то же самое,
+// но классом: анимация живёт в CSS и молчит при «меньше движения».
+function nudgePointer(pointer) {
+  if (!pointer) return;
+  pointer.classList.remove("is-ticking");
+  // Перезапуск анимации требует принудительной перерисовки между снятием и
+  // установкой класса, иначе браузер склеит их в одно изменение.
+  void pointer.offsetWidth;
+  pointer.classList.add("is-ticking");
+}
+
 async function reloadLibrary() {
   applyLibrary(await loadLibrary());
   state.libraryStale = false;
@@ -1731,13 +1742,18 @@ async function spinActiveSession() {
   try {
     const nextSession = spinSession(state.activeSession);
     const canvas = document.querySelector("#wheel-canvas");
+    const pointer = document.querySelector(".wheel-pointer");
     await animateWheel(
       canvas,
       state.activeSession.pool,
       nextSession.pendingIndex,
       {
+        // В одиночной игре обороты выбираются здесь; в совместной сессии они
+        // придут из события журнала вместе с общим временем старта.
+        turns: 5 + Math.floor(Math.random() * 4),
         soundEnabled: state.library.settings.soundEnabled !== false,
         reducedMotion: state.library.settings.reducedMotion === true,
+        onTick: () => nudgePointer(pointer),
       },
     );
     state.activeSession = nextSession;

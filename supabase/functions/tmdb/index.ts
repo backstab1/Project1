@@ -20,7 +20,10 @@ const SEARCH_LIMIT = 12;
 
 const CORS = {
   "Access-Control-Allow-Origin": Deno.env.get("APP_ORIGIN") ?? "*",
-  "Access-Control-Allow-Headers": "authorization, content-type",
+  // supabase-js добавляет к запросу свои заголовки: без них preflight
+  // не проходит, и функция недоступна из браузера вовсе.
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 

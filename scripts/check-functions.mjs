@@ -128,6 +128,22 @@ async function main() {
       `в журнале: ${JSON.stringify(spinEvent?.payload)}`,
     );
 
+    // Совместная сессия обязана крутиться одинаково у всех: и результат, и
+    // число оборотов, и момент старта задаёт сервер.
+    const startAt = Date.parse(spinEvent?.payload?.startAt ?? "");
+    check(
+      "сервер назначает общий момент старта",
+      Number.isFinite(startAt) && Math.abs(startAt - Date.now()) < 60_000,
+      `startAt: ${spinEvent?.payload?.startAt}`,
+    );
+    check(
+      "сервер задаёт число оборотов и длительность",
+      Number.isInteger(spinEvent?.payload?.turns) &&
+        spinEvent.payload.turns >= 5 &&
+        Number.isInteger(spinEvent?.payload?.duration),
+      `оборотов: ${spinEvent?.payload?.turns}, длительность: ${spinEvent?.payload?.duration}`,
+    );
+
     const guestSave = await act(guest, "save-used", { participantId: "p2" });
     check("гость тратит свой сейв", !guestSave.error, guestSave.error?.message);
 

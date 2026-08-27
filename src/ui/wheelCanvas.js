@@ -1,12 +1,22 @@
 /**
  * Отрисовка колеса кинорулетки.
  *
- * Колесо — не игрушечная рулетка из четырёх цветов, а часть той же системы,
- * что и остальной интерфейс: кольцо сегментов в двух тонах темы, тонкие
- * зазоры между ними и пустая середина, где стоит втулка. Цвета берутся из
- * токенов CSS, поэтому обе темы получаются сами собой и не расходятся с
- * карточками рядом.
+ * Колесо — главный экран вечера, и выглядеть оно должно соответственно. Два
+ * тона темы, которыми оно рисовалось раньше, читались как таблица, свёрнутая
+ * в круг: ни одного повода смотреть. Теперь каждый сектор берёт собственный
+ * оттенок по названию фильма — ровно тот же, каким каталог рисует карточку без
+ * обложки. Колесо стало цветным, но не чужим: оттенки те же, что уже есть на
+ * экране рядом.
+ *
+ * Объём даёт не тень под кругом, а три слоя: обод с металлическим переходом,
+ * блик по верхней половине и затемнение к втулке. Победитель после остановки
+ * подсвечивается, остальные гаснут.
+ *
+ * Цвета берутся из токенов CSS, поэтому обе темы получаются сами собой и не
+ * расходятся с карточками рядом.
  */
+
+import { titleHue } from "./titleColor.js";
 
 const FALLBACK_TOKENS = Object.freeze({
   dark: {
@@ -28,6 +38,24 @@ const FALLBACK_TOKENS = Object.freeze({
     text: "#1c143e",
     textMuted: "#58527a",
     canvas: "#f4f2fb",
+  },
+});
+
+// Те же значения, которыми styles.css рисует заглушку карточки без обложки.
+// Держим их здесь одним местом: разойдутся — колесо и каталог станут разными
+// приложениями.
+const SECTOR = Object.freeze({
+  // Насыщеннее, чем заглушка карточки: та лежит под текстом и обязана быть
+  // тихой, а колесо смотрят целиком и в упор.
+  dark: {
+    outer: [54, 44], inner: [48, 26],
+    divider: "rgba(255, 255, 255, 0.24)",
+    text: "#ffffff", shadow: "rgba(0, 0, 0, 0.45)",
+  },
+  light: {
+    outer: [58, 66], inner: [54, 52],
+    divider: "rgba(24, 20, 48, 0.16)",
+    text: "#16142e", shadow: "rgba(255, 255, 255, 0.5)",
   },
 });
 
@@ -62,78 +90,226 @@ export function drawWheel(canvas, pool, rotation = 0, options = {}) {
     ?? "dark";
   canvas.dataset.theme = theme;
   const tokens = readTokens(theme);
+  const palette = SECTOR[theme] ?? SECTOR.dark;
+  const highlight = Number.isInteger(options.highlightIndex)
+    ? options.highlightIndex
+    : -1;
 
   const context = canvas.getContext("2d");
   const size = prepareCanvas(canvas, context);
   const center = size / 2;
-  const outer = center - size * 0.02;
+  const rim = center - size * 0.02;
+  const outer = rim - size * 0.026;
   const inner = outer * 0.3;
   const arc = (Math.PI * 2) / pool.length;
-  // Зазор считается в пикселях и переводится в радианы по внешнему радиусу:
-  // на многолюдном колесе постоянный угол съедал бы сами сектора. Щель между
-  // секторами важнее чередования цветов: при нечётном числе участников два
-  // одинаковых сектора всё равно читаются как разные.
-  const gap = Math.min(arc * 0.14, (size * 0.014) / outer);
 
   context.clearRect(0, 0, size, size);
 
-  pool.forEach((item, index) => {
-    const start = index * arc + rotation - Math.PI / 2 + gap / 2;
-    const end = start + arc - gap;
-    const accented = index % 2 === 0;
+  drawRim(context, center, rim, outer, tokens, theme);
 
+  pool.forEach((item, index) => {
+    // Секторы смыкаются вплотную: чёрные клинья между ними читались как
+    // трещины в круге. Границу держит светлый волосок по краю сектора.
+    const start = index * arc + rotation - Math.PI / 2;
+    const end = start + arc;
+    const hue = titleHue(item.title);
+    const dimmed = highlight >= 0 && highlight !== index;
+
+    context.save();
     context.beginPath();
     context.arc(center, center, outer, start, end);
     context.arc(center, center, inner, end, start, true);
     context.closePath();
-    context.fillStyle = accented ? tokens.accent : tokens.surfaceAlt;
+
+    // Переход идёт от обода к втулке: светлее у края, глубже к центру —
+    // так кольцо выглядит выпуклым, а подписи не спорят с фоном.
+    const gradient = context.createRadialGradient(
+      center, center, inner,
+      center, center, outer,
+    );
+    gradient.addColorStop(0, hsl(hue + 18, palette.inner[0], palette.inner[1]));
+    gradient.addColorStop(1, hsl(hue, palette.outer[0], palette.outer[1]));
+    context.fillStyle = gradient;
+    context.globalAlpha = dimmed ? 0.22 : 1;
     context.fill();
+
+    if (highlight === index) {
+      context.globalAlpha = 1;
+      context.strokeStyle = tokens.accent;
+      context.lineWidth = Math.max(2, size * 0.007);
+      context.stroke();
+    }
+    context.restore();
 
     const middle = start + (end - start) / 2;
     const flipped = Math.cos(middle) < 0;
     context.save();
     context.translate(center, center);
     context.rotate(flipped ? middle + Math.PI : middle);
-    context.fillStyle = accented ? "#ffffff" : tokens.text;
-    context.font = `500 ${getFontSize(pool.length, size)}px "Segoe UI", system-ui, sans-serif`;
+    context.globalAlpha = dimmed ? 0.3 : 1;
+    context.fillStyle = palette.text;
+    // Тень под подписью: оттенки секторов разной светлоты, и без неё текст
+    // то тонет, то режет глаз.
+    context.shadowColor = palette.shadow;
+    context.shadowBlur = size * 0.012;
+    context.font = `600 ${getFontSize(pool.length, size)}px "Segoe UI", system-ui, sans-serif`;
     context.textAlign = flipped ? "left" : "right";
     context.textBaseline = "middle";
     // Подпись живёт в кольце между втулкой и ободом. Ширину считаем по факту,
     // а не по числу символов: иначе длинное название заезжало на втулку.
-    const padding = size * 0.022;
+    const padding = size * 0.042;
     const band = outer - inner - padding * 2;
     const label = fitText(context, item.title, band);
     context.fillText(label, flipped ? -(outer - padding) : outer - padding, 0);
     context.restore();
   });
 
-  // Тонкие обводки: внешняя очерчивает круг, внутренняя отделяет втулку.
+  // Разделители — отдельным проходом поверх всех заливок. Внутри цикла
+  // граница сектора закрашивалась следующим соседом, и волосок оставался
+  // виден только у последнего.
+  context.save();
+  context.strokeStyle = palette.divider;
+  context.lineWidth = Math.max(1, size * 0.0022);
+  for (let index = 0; index < pool.length; index += 1) {
+    const angle = index * arc + rotation - Math.PI / 2;
+    context.beginPath();
+    context.moveTo(
+      center + Math.cos(angle) * inner,
+      center + Math.sin(angle) * inner,
+    );
+    context.lineTo(
+      center + Math.cos(angle) * outer,
+      center + Math.sin(angle) * outer,
+    );
+    context.stroke();
+  }
+  context.restore();
+
+  drawGloss(context, center, outer, inner, theme);
+  drawHub(context, center, inner, size, tokens, theme);
+}
+
+// Обод: узкое кольцо с переходом сверху вниз. Он же прячет края секторов,
+// поэтому зазоры не выглядят обрывами.
+function drawRim(context, center, rim, outer, tokens, theme) {
+  const gradient = context.createLinearGradient(
+    center - rim, center - rim, center + rim, center + rim,
+  );
+  if (theme === "light") {
+    gradient.addColorStop(0, "#ffffff");
+    gradient.addColorStop(0.45, "#e8e5f3");
+    gradient.addColorStop(1, "#b9b4cc");
+  } else {
+    gradient.addColorStop(0, "rgba(255, 255, 255, 0.42)");
+    gradient.addColorStop(0.45, "rgba(255, 255, 255, 0.14)");
+    gradient.addColorStop(1, "rgba(255, 255, 255, 0.06)");
+  }
+
+  context.save();
+  // Круг лежит не на плоскости, а над ней: мягкая тень отделяет его от фона.
+  context.shadowColor = theme === "light"
+    ? "rgba(28, 20, 62, 0.22)"
+    : "rgba(0, 0, 0, 0.55)";
+  context.shadowBlur = (rim - outer) * 2.6;
+  context.shadowOffsetY = (rim - outer) * 0.5;
+  context.beginPath();
+  context.arc(center, center, rim, 0, Math.PI * 2);
+  context.arc(center, center, outer, Math.PI * 2, 0, true);
+  context.closePath();
+  context.fillStyle = gradient;
+  context.fill();
+  context.restore();
+
+  // Два волоска: снаружи очерчивает оправу, внутри отделяет её от секторов.
+  context.save();
   context.strokeStyle = tokens.border;
   context.lineWidth = 1;
+  context.beginPath();
+  context.arc(center, center, rim, 0, Math.PI * 2);
+  context.stroke();
   context.beginPath();
   context.arc(center, center, outer, 0, Math.PI * 2);
   context.stroke();
+  context.restore();
+}
 
-  // Втулка: та же поверхность, что у карточек, с волоском по краю.
+// Блик по верхней половине: одна дуга низкой прозрачности. Без него кольцо
+// плоское, с ним — стеклянное.
+function drawGloss(context, center, outer, inner, theme) {
+  const gradient = context.createLinearGradient(
+    center - outer, center - outer, center + outer * 0.2, center + outer * 0.6,
+  );
+  gradient.addColorStop(0, theme === "light"
+    ? "rgba(255, 255, 255, 0.62)"
+    : "rgba(255, 255, 255, 0.22)");
+  gradient.addColorStop(0.55, "rgba(255, 255, 255, 0.04)");
+  gradient.addColorStop(1, "rgba(255, 255, 255, 0)");
+
+  context.save();
+  context.beginPath();
+  context.arc(center, center, outer, 0, Math.PI * 2);
+  context.arc(center, center, inner, Math.PI * 2, 0, true);
+  context.closePath();
+  context.fillStyle = gradient;
+  context.fill();
+  context.restore();
+}
+
+// Втулка: поверхность карточки, тонкое кольцо и монограмма. Монограмма
+// появляется только когда колесо достаточно велико, чтобы её было видно.
+function drawHub(context, center, inner, size, tokens, theme) {
+  context.save();
   context.beginPath();
   context.arc(center, center, inner, 0, Math.PI * 2);
-  context.fillStyle = tokens.surface;
+  const gradient = context.createRadialGradient(
+    center, center - inner * 0.4, inner * 0.1,
+    center, center, inner,
+  );
+  gradient.addColorStop(0, theme === "light" ? "#ffffff" : tokens.surfaceAlt);
+  gradient.addColorStop(1, tokens.surface);
+  context.fillStyle = gradient;
   context.fill();
   context.strokeStyle = tokens.border;
   context.lineWidth = 1;
   context.stroke();
 
   context.beginPath();
-  context.arc(center, center, size * 0.018, 0, Math.PI * 2);
-  context.fillStyle = tokens.accent;
-  context.fill();
+  context.arc(center, center, inner * 0.78, 0, Math.PI * 2);
+  context.strokeStyle = tokens.accentSoft;
+  context.lineWidth = Math.max(1, size * 0.003);
+  context.stroke();
+
+  if (inner > size * 0.09) {
+    context.fillStyle = tokens.textMuted;
+    context.font = `700 ${Math.round(inner * 0.44)}px "Segoe UI", system-ui, sans-serif`;
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+    context.globalAlpha = 0.75;
+    context.fillText("CV", center, center + inner * 0.02);
+  }
+  context.restore();
 }
 
+/**
+ * Вращение с торможением.
+ *
+ * Интрига живёт в последних секундах: колесо должно доползать до сектора, а не
+ * подъезжать к нему. Поэтому торможение не одно на весь путь — сначала короткий
+ * разгон, потом длинный выбег пятой степени, и последние градусы проходят почти
+ * ползком.
+ *
+ * `startAt` и `turns` приходят снаружи, из события журнала: в совместной сессии
+ * все браузеры обязаны крутить одинаково и начинать одновременно. Локальная
+ * игра просто не передаёт их.
+ */
 export function animateWheel(canvas, pool, selectedIndex, options = {}) {
   const {
-    duration = 3400,
+    duration = 7200,
+    turns = 6,
+    startAt = null,
     soundEnabled = true,
     reducedMotion: forcedReducedMotion = false,
+    onTick = null,
   } = options;
 
   if (!canvas || pool.length < 2) {
@@ -143,8 +319,7 @@ export function animateWheel(canvas, pool, selectedIndex, options = {}) {
   const arc = (Math.PI * 2) / pool.length;
   const selectedCenter = selectedIndex * arc + arc / 2;
   const targetBase = normalizeAngle(-selectedCenter);
-  const totalRotation = Math.PI * 2 * 8 + targetBase;
-  const startedAt = performance.now();
+  const totalRotation = Math.PI * 2 * turns + targetBase;
   const audio = soundEnabled ? createAudioFeedback() : SILENT_AUDIO;
   // Настройка приложения имеет приоритет над системной, но не отменяет её.
   const reducedMotion = forcedReducedMotion || globalThis.matchMedia?.(
@@ -153,31 +328,59 @@ export function animateWheel(canvas, pool, selectedIndex, options = {}) {
   let previousSegment = -1;
 
   if (reducedMotion) {
-    drawWheel(canvas, pool, targetBase);
+    drawWheel(canvas, pool, targetBase, { highlightIndex: selectedIndex });
     audio.finish();
     return Promise.resolve();
   }
 
+  // Общее время старта: у всех участников сессии колесо трогается в один и тот
+  // же момент по часам, а не «когда доставили событие».
+  const begins = startAt ? new Date(startAt).getTime() : Date.now();
+
   return new Promise((resolve) => {
-    const frame = (now) => {
-      const progress = Math.min(1, (now - startedAt) / duration);
-      const eased = 1 - Math.pow(1 - progress, 4);
-      const rotation = totalRotation * eased;
+    const frame = () => {
+      const elapsed = Date.now() - begins;
+      if (elapsed < 0) {
+        drawWheel(canvas, pool, 0);
+        requestAnimationFrame(frame);
+        return;
+      }
+
+      const progress = Math.min(1, elapsed / duration);
+      const rotation = totalRotation * spinEasing(progress);
       drawWheel(canvas, pool, rotation);
+
       const segment = Math.floor(rotation / arc);
       if (segment !== previousSegment) {
         previousSegment = segment;
         audio.tick();
+        onTick?.();
       }
+
       if (progress < 1) {
         requestAnimationFrame(frame);
       } else {
+        drawWheel(canvas, pool, targetBase, { highlightIndex: selectedIndex });
         audio.finish();
         resolve();
       }
     };
     requestAnimationFrame(frame);
   });
+}
+
+// Разгон и выбег одной кривой, без склейки кусков: в начале вес у плавного
+// входа в скорость, к концу — у выбега пятой степени. Последняя секунда
+// проходит доли сектора, и по щелчкам слышно, как колесо решает.
+function spinEasing(progress) {
+  const t = Math.min(1, Math.max(0, progress));
+  const soft = t * t * (3 - 2 * t);
+  const tail = 1 - Math.pow(1 - t, 5);
+  return soft * (1 - t) + tail * t;
+}
+
+function hsl(hue, saturation, lightness) {
+  return `hsl(${((hue % 360) + 360) % 360} ${saturation}% ${lightness}%)`;
 }
 
 function prepareCanvas(canvas, context) {

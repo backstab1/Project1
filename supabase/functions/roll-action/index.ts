@@ -18,9 +18,16 @@ import {
 
 const CORS = {
   "Access-Control-Allow-Origin": Deno.env.get("APP_ORIGIN") ?? "*",
-  "Access-Control-Allow-Headers": "authorization, content-type",
+  // supabase-js добавляет к запросу свои заголовки: без них preflight
+  // не проходит, и функция недоступна из браузера вовсе.
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
+
+// Сколько длится вращение и насколько вперёд назначается общий старт.
+const SPIN_DURATION_MS = 7200;
+const SPIN_LEAD_MS = 350;
 
 const ALLOWED = new Set<string>([
   LOG_EVENTS.started,
@@ -141,7 +148,16 @@ Deno.serve(async (request) => {
     if (!state || state.pool.length === 0) {
       return json(409, { error: "В колесе некого выбирать." });
     }
-    payload.index = crypto.getRandomValues(new Uint32Array(1))[0] % state.pool.length;
+    const random = crypto.getRandomValues(new Uint32Array(2));
+    payload.index = random[0] % state.pool.length;
+    // Вращение задаёт сервер целиком: не только чем закончится, но и сколько
+    // оборотов и когда начать. Иначе у каждого участника колесо крутилось бы
+    // по-своему, а «синхронно» превратилось бы в «примерно одинаково».
+    payload.turns = 5 + (random[1] % 4);
+    payload.duration = SPIN_DURATION_MS;
+    // Небольшая фора на доставку события: к этому моменту его успевают
+    // получить все, и колесо трогается у всех разом по общим часам.
+    payload.startAt = new Date(Date.now() + SPIN_LEAD_MS).toISOString();
   }
 
   const candidate = {

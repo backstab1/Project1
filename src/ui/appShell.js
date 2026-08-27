@@ -11,6 +11,7 @@ import {
 } from "../domain/libraryRules.js";
 import { setupDialog } from "./dialog.js";
 import { POSTER_SIZES, moviePosterUrl } from "../domain/posters.js";
+import { titleHue } from "./titleColor.js";
 import { drawWheel } from "./wheelCanvas.js";
 import { selectEnrichmentCandidates } from "../domain/tmdbEnrichment.js";
 import {
@@ -1355,15 +1356,6 @@ function posterFill(movie) {
     <span class="movie-card__art movie-card__art--empty" style="--hue:${titleHue(movie.title)}">
       <span>${escapeHtml(movie.title)}</span>
     </span>`;
-}
-
-function titleHue(value) {
-  const text = String(value ?? "");
-  let hash = 0;
-  for (let index = 0; index < text.length; index += 1) {
-    hash = (hash * 31 + text.charCodeAt(index)) % 360;
-  }
-  return hash;
 }
 
 // Список каталога — тот же перечень, что и в остальных разделах, только с

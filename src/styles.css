@@ -2883,26 +2883,53 @@ strong {
 
 .wheel-frame--preview { width: min(100%, 24rem); }
 
+/* Без обрезки по кругу: колесо рисует собственную тень под ободом, и
+   border-radius срезал бы её ровно по краю. */
 .wheel-frame canvas {
   width: 100%;
   height: 100%;
-  border-radius: 50%;
 }
 
-/* Указатель — тонкий клин в акцентном цвете: золотая стрелка спорила
-   с фиолетовым кольцом и тянула на себя всё внимание. */
+/* Указатель — язычок над ободом: тонкий клин на круглом основании. Он же
+   отбивает такт вращения, отклоняясь на каждом пройденном секторе. */
 .wheel-pointer {
   position: absolute;
   z-index: 2;
-  top: -0.5rem;
+  top: -0.75rem;
   left: 50%;
-  width: 0.85rem;
-  height: 1.15rem;
-  background: var(--accent-strong);
+  width: 1.05rem;
+  height: 1.7rem;
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--accent-strong) 70%, white),
+    var(--accent-strong));
   clip-path: polygon(50% 100%, 0 0, 100% 0);
-  filter: drop-shadow(0 3px 8px rgba(0, 0, 0, 0.35));
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.45));
+  transform: translateX(-50%);
+  transform-origin: 50% 0;
+}
+
+.wheel-pointer::after {
+  content: "";
+  position: absolute;
+  top: -0.32rem;
+  left: 50%;
+  width: 0.62rem;
+  height: 0.62rem;
+  border-radius: 50%;
+  background: var(--accent-strong);
+  box-shadow: 0 0 0 3px var(--surface), 0 2px 6px rgba(0, 0, 0, 0.4);
   transform: translateX(-50%);
 }
+
+.wheel-pointer.is-ticking { animation: pointer-tick 110ms ease-out; }
+
+@keyframes pointer-tick {
+  0% { transform: translateX(-50%) rotate(0deg); }
+  35% { transform: translateX(-50%) rotate(11deg); }
+  100% { transform: translateX(-50%) rotate(0deg); }
+}
+
+[data-motion="reduced"] .wheel-pointer.is-ticking { animation: none; }
 
 .wheel-status {
   position: relative;
