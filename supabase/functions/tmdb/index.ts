@@ -14,25 +14,11 @@
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
+import { jsonResponse, preflight } from "../_shared/cors.ts";
+
 const TMDB_API_ROOT = "https://api.themoviedb.org/3";
 const DAILY_LIMIT = Number(Deno.env.get("TMDB_DAILY_LIMIT") ?? "300");
 const SEARCH_LIMIT = 12;
-
-const CORS = {
-  "Access-Control-Allow-Origin": Deno.env.get("APP_ORIGIN") ?? "*",
-  // supabase-js добавляет к запросу свои заголовки: без них preflight
-  // не проходит, и функция недоступна из браузера вовсе.
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
-
-function json(status: number, body: unknown) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...CORS, "Content-Type": "application/json" },
-  });
-}
 
 async function tmdbRequest(path: string, params: Record<string, string>) {
   const token = Deno.env.get("TMDB_READ_TOKEN");
@@ -77,14 +63,14 @@ async function tmdbRequest(path: string, params: Record<string, string>) {
 }
 
 Deno.serve(async (request) => {
-  if (request.method === "OPTIONS") return new Response(null, { headers: CORS });
+  if (request.method === "OPTIONS") return preflight(request);
   if (request.method !== "POST") {
-    return json(405, { error: "Метод не поддерживается." });
+    return jsonResponse(request, 405, { error: "Метод не поддерживается." });
   }
 
   const authorization = request.headers.get("Authorization") ?? "";
   if (!authorization.startsWith("Bearer ")) {
-    return json(401, { error: "Требуется вход в аккаунт." });
+    return jsonResponse(request, 401, { error: "Требуется вход в аккаунт." });
   }
 
   const url = Deno.env.get("SUPABASE_URL")!;
@@ -96,14 +82,14 @@ Deno.serve(async (request) => {
 
   const { data: userData, error: userError } = await caller.auth.getUser();
   if (userError || !userData.user) {
-    return json(401, { error: "Сессия недействительна." });
+    return jsonResponse(request, 401, { error: "Сессия недействительна." });
   }
 
   let body: { action?: string; query?: string; year?: string | number; tmdbId?: string | number };
   try {
     body = await request.json();
   } catch {
-    return json(400, { error: "Тело запроса нечитаемо." });
+    return jsonResponse(request, 400, { error: "Тело запроса нечитаемо." });
   }
 
   const action = String(body.action ?? "");
@@ -111,11 +97,11 @@ Deno.serve(async (request) => {
   // Состояние подключения квоту не тратит: его спрашивает каждый запуск
   // приложения, а к самому TMDB этот ответ не ходит.
   if (action === "status") {
-    return json(200, { configured: Boolean(Deno.env.get("TMDB_READ_TOKEN")) });
+    return jsonResponse(request, 200, { configured: Boolean(Deno.env.get("TMDB_READ_TOKEN")) });
   }
 
   if (action !== "search" && action !== "movie") {
-    return json(400, { error: "Неизвестное действие." });
+    return jsonResponse(request, 400, { error: "Неизвестное действие." });
   }
 
   // Аргументы разбираются до квоты: на кривом запросе к TMDB мы не ходим,
@@ -123,10 +109,10 @@ Deno.serve(async (request) => {
   const query = String(body.query ?? "").trim();
   const tmdbId = Number(body.tmdbId);
   if (action === "search" && !query) {
-    return json(400, { error: "Введите название фильма для поиска." });
+    return jsonResponse(request, 400, { error: "Введите название фильма для поиска." });
   }
   if (action === "movie" && (!Number.isInteger(tmdbId) || tmdbId <= 0)) {
-    return json(400, { error: "Некорректный идентификатор фильма TMDB." });
+    return jsonResponse(request, 400, { error: "Некорректный идентификатор фильма TMDB." });
   }
 
   const { data: left, error: quotaError } = await caller.rpc("take_tmdb_quota", {
@@ -134,11 +120,11 @@ Deno.serve(async (request) => {
   });
   if (quotaError) {
     if (quotaError.code === "PT429") {
-      return json(429, {
+      return jsonResponse(request, 429, {
         error: `Дневной лимит запросов к TMDB исчерпан: ${DAILY_LIMIT} за сутки. Попробуйте завтра.`,
       });
     }
-    return json(500, { error: "Не удалось учесть запрос к TMDB." });
+    return jsonResponse(request, 500, { error: "Не удалось учесть запрос к TMDB." });
   }
 
   // Уборка старых суток — раз в сутки, на первом запросе пользователя.
@@ -162,14 +148,14 @@ Deno.serve(async (request) => {
     if (year) params.primary_release_year = year;
 
     const result = await tmdbRequest("/search/movie", params);
-    if (result.status !== 200) return json(result.status, result.body);
+    if (result.status !== 200) return jsonResponse(request, result.status, result.body);
 
     const results = Array.isArray((result.body as { results?: unknown[] }).results)
       ? (result.body as { results: unknown[] }).results.slice(0, SEARCH_LIMIT)
       : [];
-    return json(200, { results, quotaLeft: Number(left) });
+    return jsonResponse(request, 200, { results, quotaLeft: Number(left) });
   }
 
   const result = await tmdbRequest(`/movie/${tmdbId}`, {});
-  return json(result.status, result.body);
+  return jsonResponse(request, result.status, result.body);
 });

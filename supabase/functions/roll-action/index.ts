@@ -10,20 +10,13 @@
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
+import { jsonResponse, preflight } from "../_shared/cors.ts";
+
 import {
   LOG_EVENTS,
   applyRollEvent,
   buildSessionFromLog,
 } from "../../../src/domain/rollSessionLog.js";
-
-const CORS = {
-  "Access-Control-Allow-Origin": Deno.env.get("APP_ORIGIN") ?? "*",
-  // supabase-js добавляет к запросу свои заголовки: без них preflight
-  // не проходит, и функция недоступна из браузера вовсе.
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
 
 // Сколько длится вращение и насколько вперёд назначается общий старт.
 const SPIN_DURATION_MS = 7200;
@@ -47,20 +40,13 @@ const HOST_ONLY = new Set<string>([
   LOG_EVENTS.restore,
 ]);
 
-function json(status: number, body: unknown) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...CORS, "Content-Type": "application/json" },
-  });
-}
-
 Deno.serve(async (request) => {
-  if (request.method === "OPTIONS") return new Response(null, { headers: CORS });
-  if (request.method !== "POST") return json(405, { error: "Метод не поддерживается." });
+  if (request.method === "OPTIONS") return preflight(request);
+  if (request.method !== "POST") return jsonResponse(request, 405, { error: "Метод не поддерживается." });
 
   const authorization = request.headers.get("Authorization") ?? "";
   if (!authorization.startsWith("Bearer ")) {
-    return json(401, { error: "Требуется вход в аккаунт." });
+    return jsonResponse(request, 401, { error: "Требуется вход в аккаунт." });
   }
 
   const url = Deno.env.get("SUPABASE_URL")!;
@@ -72,20 +58,20 @@ Deno.serve(async (request) => {
     auth: { persistSession: false },
   });
   const { data: userData, error: userError } = await caller.auth.getUser();
-  if (userError || !userData.user) return json(401, { error: "Сессия недействительна." });
+  if (userError || !userData.user) return jsonResponse(request, 401, { error: "Сессия недействительна." });
   const actorId = userData.user.id;
 
   let body: { sessionId?: string; action?: string; payload?: Record<string, unknown> };
   try {
     body = await request.json();
   } catch {
-    return json(400, { error: "Тело запроса нечитаемо." });
+    return jsonResponse(request, 400, { error: "Тело запроса нечитаемо." });
   }
 
   const sessionId = String(body.sessionId ?? "");
   const action = String(body.action ?? "");
   if (!sessionId || !ALLOWED.has(action)) {
-    return json(400, { error: "Неизвестный ход." });
+    return jsonResponse(request, 400, { error: "Неизвестный ход." });
   }
 
   const admin = createClient(url, serviceKey, { auth: { persistSession: false } });
@@ -95,9 +81,9 @@ Deno.serve(async (request) => {
     .select("id, host_id, status")
     .eq("id", sessionId)
     .maybeSingle();
-  if (sessionError) return json(500, { error: "Сессия недоступна." });
-  if (!session) return json(404, { error: "Сессия не найдена." });
-  if (session.status !== "active") return json(409, { error: "Сессия уже завершена." });
+  if (sessionError) return jsonResponse(request, 500, { error: "Сессия недоступна." });
+  if (!session) return jsonResponse(request, 404, { error: "Сессия не найдена." });
+  if (session.status !== "active") return jsonResponse(request, 409, { error: "Сессия уже завершена." });
 
   const { data: membership } = await admin
     .from("roll_session_members")
@@ -106,10 +92,10 @@ Deno.serve(async (request) => {
     .eq("user_id", actorId)
     .maybeSingle();
   if (session.host_id !== actorId && !membership) {
-    return json(403, { error: "Вы не участник этой сессии." });
+    return jsonResponse(request, 403, { error: "Вы не участник этой сессии." });
   }
   if (HOST_ONLY.has(action) && session.host_id !== actorId) {
-    return json(403, { error: "Этот ход делает ведущий." });
+    return jsonResponse(request, 403, { error: "Этот ход делает ведущий." });
   }
 
   const { data: events, error: eventsError } = await admin
@@ -117,7 +103,7 @@ Deno.serve(async (request) => {
     .select("seq, type, payload, created_at, actor_id")
     .eq("session_id", sessionId)
     .order("seq", { ascending: true });
-  if (eventsError) return json(500, { error: "Журнал недоступен." });
+  if (eventsError) return jsonResponse(request, 500, { error: "Журнал недоступен." });
 
   let state;
   try {
@@ -126,7 +112,7 @@ Deno.serve(async (request) => {
     );
   } catch (error) {
     console.error("roll-action: журнал не собирается", error);
-    return json(500, { error: "Журнал сессии повреждён." });
+    return jsonResponse(request, 500, { error: "Журнал сессии повреждён." });
   }
 
   const at = new Date().toISOString();
@@ -136,17 +122,17 @@ Deno.serve(async (request) => {
   // и переписать начало задним числом нельзя.
   if (action === LOG_EVENTS.started) {
     if (state) {
-      return json(409, { error: "Сессия уже начата." });
+      return jsonResponse(request, 409, { error: "Сессия уже начата." });
     }
     payload.sessionId = sessionId;
   } else if (!state) {
-    return json(409, { error: "Сессия ещё не начата." });
+    return jsonResponse(request, 409, { error: "Сессия ещё не начата." });
   }
 
   // Случайность — единственное, чего нет в запросе клиента и не может быть.
   if (action === LOG_EVENTS.spin) {
     if (!state || state.pool.length === 0) {
-      return json(409, { error: "В колесе некого выбирать." });
+      return jsonResponse(request, 409, { error: "В колесе некого выбирать." });
     }
     const random = crypto.getRandomValues(new Uint32Array(2));
     payload.index = random[0] % state.pool.length;
@@ -173,7 +159,7 @@ Deno.serve(async (request) => {
   try {
     nextState = applyRollEvent(state, candidate);
   } catch (error) {
-    return json(409, { error: (error as Error).message });
+    return jsonResponse(request, 409, { error: (error as Error).message });
   }
 
   const { error: insertError } = await admin.from("roll_events").insert({
@@ -185,7 +171,7 @@ Deno.serve(async (request) => {
   });
   if (insertError) {
     console.error("roll-action: событие не записано", insertError);
-    return json(500, { error: "Ход не записан." });
+    return jsonResponse(request, 500, { error: "Ход не записан." });
   }
 
   // Свёрнутый снимок нужен тем, кто присоединится посреди сессии и не станет
@@ -199,5 +185,5 @@ Deno.serve(async (request) => {
     })
     .eq("id", sessionId);
 
-  return json(200, { at, action, payload });
+  return jsonResponse(request, 200, { at, action, payload });
 });
