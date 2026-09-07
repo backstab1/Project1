@@ -209,7 +209,11 @@ export function calculateFranchiseRating(franchise, movieById) {
   return Math.round((total / movieRatings.length) * 10) / 10;
 }
 
-function resolveWatchState(input) {
+// Статус и дата просмотра — одна величина с двух сторон, и разъехаться они
+// не имеют права: база держит это ограничением, а не пожеланием. Наружу
+// вынесено, чтобы правила, собирающие записи руками, считали пару так же,
+// как createMovie.
+export function resolveWatchState(input) {
   const watchedAt = normalizeOptionalDate(input.watchedAt);
   const requested = input.status;
 

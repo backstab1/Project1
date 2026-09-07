@@ -20,6 +20,7 @@ import {
   movieFromRow,
   participantFromRow,
 } from "../src/data/rowMapping.js";
+import { buildWinnerWatchCommands } from "../src/domain/libraryRules.js";
 
 const url = process.env.SUPABASE_URL;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -416,8 +417,37 @@ async function main() {
       JSON.stringify(afterBatch.franchises[0]?.movieIds),
     );
 
+    // Победитель колеса --------------------------------------------------
+    //
+    // База держит пару «статус — дата просмотра» ограничением, и запись
+    // победителя однажды падала об него целиком: правило проставляло дату,
+    // не трогая статус. Проверяем тем же кодом, которым ходит приложение.
+
+    const winnerCommands = buildWinnerWatchCommands(
+      { movies: afterBatch.movies, franchises: afterBatch.franchises, categories: [] },
+      { type: "movie", id: dune.id, title: dune.title },
+      new Date().toISOString(),
+    );
+    const winner = await owner.client.rpc("apply_library_changes", {
+      commands: winnerCommands.map((command) => commandToPayload(command, owner.id)),
+      expected_revision: afterBatch.revision,
+    });
+    check("победитель колеса записывается", !winner.error, winner.error?.message);
+
+    const watched = await owner.client
+      .from("movies")
+      .select("status, watched_at")
+      .eq("id", dune.id)
+      .maybeSingle();
+    check(
+      "у победителя статус и дата просмотра согласованы",
+      watched.data?.status === "watched" && Boolean(watched.data?.watched_at),
+      JSON.stringify(watched.data),
+    );
+
     // Устаревшая ревизия ------------------------------------------------
 
+    const staleRevision = revision;
     const stale = await owner.client.rpc("apply_library_changes", {
       commands: [
         commandToPayload(
@@ -434,7 +464,7 @@ async function main() {
           owner.id,
         ),
       ],
-      expected_revision: revision,
+      expected_revision: staleRevision,
     });
     check(
       "пакет с устаревшей ревизией отвергается",

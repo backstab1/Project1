@@ -6,6 +6,7 @@
 // на запись во всю карточку. Разница живёт здесь и больше нигде.
 
 import { STORE_NAMES } from "../config.js";
+import { resolveWatchState } from "../domain/entities.js";
 
 export const TABLES = Object.freeze({
   [STORE_NAMES.movies]: "movies",
@@ -22,6 +23,11 @@ function nullable(value) {
 }
 
 export function movieToRow(movie, ownerId) {
+  // Статус и дата просмотра уезжают в базу только согласованной парой: там
+  // это ограничение таблицы. Правила выше считают её сами, но шов с базой —
+  // последнее место, где расхождение ещё можно поймать без потери данных.
+  const watch = resolveWatchState(movie);
+
   return {
     id: movie.id,
     owner_id: ownerId,
@@ -36,8 +42,8 @@ export function movieToRow(movie, ownerId) {
     tags: movie.tags ?? [],
     notes: movie.notes ?? "",
     is_favorite: Boolean(movie.isFavorite),
-    status: movie.status,
-    watched_at: movie.watchedAt ?? null,
+    status: watch.status,
+    watched_at: watch.watchedAt,
     cover_url: movie.coverUrl ?? "",
     poster_path: movie.posterPath || null,
     release_year: movie.releaseYear ?? null,

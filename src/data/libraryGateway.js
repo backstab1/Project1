@@ -43,6 +43,20 @@ export class LibraryConflictError extends Error {
 // то есть 409 Conflict. Обычной ошибкой Postgres это не является.
 export const CONFLICT_CODE = "PT409";
 
+// PostgREST отдаёт ошибку простым объектом, а не Error. Такой объект,
+// долетев до диалога, показывался пользователю как «[object Object]» —
+// сообщение, из которого нельзя понять ровно ничего. Поэтому всё, что уходит
+// наверх, становится настоящей ошибкой с текстом от базы.
+function asError(error, fallback) {
+  if (error instanceof Error) return error;
+  const parts = [error?.message, error?.details, error?.hint]
+    .map((part) => String(part ?? "").trim())
+    .filter(Boolean);
+  const wrapped = new Error(parts.join(". ") || fallback);
+  if (error?.code) wrapped.code = error.code;
+  return wrapped;
+}
+
 export function isLibraryConflict(error) {
   return error instanceof LibraryConflictError || error?.code === CONFLICT_CODE;
 }
@@ -83,7 +97,7 @@ export async function loadLibrary() {
       client.from("user_settings").select("data, revision").maybeSingle(),
     ]);
 
-  if (settings.error) throw settings.error;
+  if (settings.error) throw asError(settings.error, "Настройки не читаются.");
   // Строки настроек у нового аккаунта ещё нет: его библиотека пуста, а
   // ревизия начинается с нуля — с ней же её заведёт первая запись.
   cachedRevision = Number(settings.data?.revision ?? 0);
@@ -189,13 +203,13 @@ async function commit(commands) {
   });
   if (error) {
     if (error.code === CONFLICT_CODE) throw new LibraryConflictError();
-    throw error;
+    throw asError(error, "Библиотека не сохранена.");
   }
   cachedRevision = Number(data);
 }
 
 async function select(client, table, columns, refine = (query) => query) {
   const { data, error } = await refine(client.from(table).select(columns));
-  if (error) throw error;
+  if (error) throw asError(error, `Таблица «${table}» недоступна.`);
   return data ?? [];
 }

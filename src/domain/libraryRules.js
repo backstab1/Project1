@@ -1,5 +1,5 @@
 import { STORE_NAMES } from "../config.js";
-import { normalizeText } from "./entities.js";
+import { normalizeText, resolveWatchState } from "./entities.js";
 
 export function getNextPosition(items, parentId, parentField = "categoryId") {
   const positions = items
@@ -290,7 +290,9 @@ export function buildWinnerWatchCommands(library, winner, watchedAt) {
       storeName: STORE_NAMES.movies,
       value: {
         ...movie,
-        watchedAt: timestamp,
+        // Статус идёт вместе с датой: раньше здесь проставлялась только дата,
+        // и запись победителя падала об ограничение базы.
+        ...resolveWatchState({ ...movie, watchedAt: timestamp }),
         updatedAt: timestamp,
       },
     }));

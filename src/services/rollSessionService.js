@@ -125,10 +125,11 @@ export async function watchSession(sessionId, handlers = {}) {
   const events = new Map();
   let stopped = false;
 
-  const publish = () => {
+  const publish = (latest = null) => {
     if (stopped) return;
     try {
-      onState?.(buildSessionFromLog([...events.values()]));
+      const ordered = [...events.values()].sort((a, b) => a.seq - b.seq);
+      onState?.(buildSessionFromLog(ordered), latest);
     } catch (error) {
       onError?.(error);
     }
@@ -163,7 +164,8 @@ export async function watchSession(sessionId, handlers = {}) {
         filter: `session_id=eq.${sessionId}`,
       },
       (message) => {
-        if (remember(toLogEvent(message.new))) publish();
+        const event = toLogEvent(message.new);
+        if (remember(event)) publish(event);
       },
     )
     .subscribe((status) => {
@@ -176,6 +178,22 @@ export async function watchSession(sessionId, handlers = {}) {
     stopped = true;
     client.removeChannel(channel);
   };
+}
+
+// Куда меня позвали: активные сессии, где я значусь участником. Ведущий
+// видит свои сессии и так, поэтому здесь только чужие.
+export async function listSessionInvites(userId) {
+  const client = await getSupabaseClient();
+  const { data, error } = await client
+    .from("roll_session_members")
+    .select("session_id, roll_sessions!inner(id, host_id, status)")
+    .eq("user_id", userId)
+    .eq("roll_sessions.status", "active");
+  if (error) throw error;
+
+  return (data ?? [])
+    .map((row) => ({ id: row.session_id, hostId: row.roll_sessions?.host_id }))
+    .filter((invite) => invite.hostId && invite.hostId !== userId);
 }
 
 export async function actInSession(sessionId, action, payload = {}) {

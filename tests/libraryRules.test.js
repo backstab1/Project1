@@ -10,6 +10,7 @@ import {
   moveWithinGroup,
   reorderFranchiseMovie,
 } from "../src/domain/libraryRules.js";
+import { createMovie } from "../src/domain/entities.js";
 
 test("дубликат фильма определяется по названию и году", () => {
   const movies = [
@@ -176,4 +177,41 @@ test("победа франшизы назначает одну дату все�
     ["a", "b"],
   );
   assert.ok(commands.every((command) => command.value.watchedAt === watchedAt));
+});
+
+test("победа колеса отмечает фильм просмотренным вместе со статусом", () => {
+  const movie = createMovie({ id: "m1", title: "Дюна", status: "queued" });
+  const library = { movies: [movie], franchises: [], categories: [] };
+  const watchedAt = "2026-08-27T20:00:00.000Z";
+
+  const [command] = buildWinnerWatchCommands(
+    library,
+    { type: "movie", id: "m1", title: "Дюна" },
+    watchedAt,
+  );
+
+  // База держит пару «статус — дата» ограничением: дата без статуса роняла
+  // запись победителя целиком.
+  assert.equal(command.value.watchedAt, watchedAt);
+  assert.equal(command.value.status, "watched");
+});
+
+test("победа франшизы отмечает все её фильмы и не трогает чужие", () => {
+  const first = createMovie({ id: "m1", title: "Первый" });
+  const second = createMovie({ id: "m2", title: "Второй" });
+  const other = createMovie({ id: "m3", title: "Чужой" });
+  const library = {
+    movies: [first, second, other],
+    franchises: [{ id: "f1", movieIds: ["m1", "m2"] }],
+    categories: [],
+  };
+
+  const commands = buildWinnerWatchCommands(
+    library,
+    { type: "franchise", id: "f1", title: "Сага" },
+    "2026-08-27T20:00:00.000Z",
+  );
+
+  assert.deepEqual(commands.map((command) => command.value.id).sort(), ["m1", "m2"]);
+  assert.ok(commands.every((command) => command.value.status === "watched"));
 });

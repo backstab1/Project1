@@ -82,6 +82,13 @@ import {
 } from "./domain/friends.js";
 import { signOut } from "./services/authService.js";
 import {
+  actInSession,
+  createSharedSession,
+  listSessionInvites,
+  loadSharedSession,
+  watchSession,
+} from "./services/rollSessionService.js";
+import {
   acceptFriendRequest,
   blockUser,
   findProfileByHandle,
@@ -200,6 +207,15 @@ const state = {
     notice: "",
     busy: false,
     autofocus: false,
+  },
+  // Совместная сессия колеса: комната, за которой мы сейчас наблюдаем, и
+  // приглашения от друзей. Пока sessionId пуст, колесо крутится локально.
+  shared: {
+    sessionId: null,
+    hostId: null,
+    unwatch: null,
+    invites: [],
+    error: "",
   },
   // Библиотека принадлежит аккаунту: без входа открыта только витрина.
   libraryLocked: true,
@@ -340,6 +356,7 @@ async function loadWorkspace() {
   // Друзья не должны ронять библиотеку: сервер может быть недоступен, а
   // каталог лежит рядом и открывается без него.
   await refreshFriends();
+  await refreshSessionInvites();
   applyMotionPreference();
 }
 
@@ -467,6 +484,8 @@ async function handleAction(action, payload) {
       moveFranchiseMember(payload.id, payload.movieId, -1),
     "franchise-member-down": () =>
       moveFranchiseMember(payload.id, payload.movieId, 1),
+    "roll-join": () => joinSharedSession(payload.id),
+    "roll-leave": () => leaveSharedSession(),
     "roll-shuffle": () => shuffleRollDraft(),
     "roll-configure": () => openRollConfiguration(),
     "roll-spin": () => spinActiveSession(),
@@ -703,6 +722,10 @@ async function signOutAccount() {
 // После выхода в памяти не должно остаться ни записей, ни начатой сессии:
 // следующий вход соберёт всё заново.
 function closeWorkspace() {
+  // Выход из аккаунта закрывает и комнату: подписка живёт от имени сессии,
+  // а без неё Realtime всё равно перестанет отдавать события.
+  detachSharedSession().catch(() => {});
+  state.shared = { ...state.shared, invites: [] };
   resetLibraryStore().catch(() => {});
   state.libraryStale = false;
   state.modalView = null;
@@ -1563,11 +1586,9 @@ function confirmWatchRemoval(movieId) {
     "Вернуть фильм в каталог?",
     `Дата просмотра «${movie.title}» будет удалена. Существующие оценки сохранятся.`,
     async () => {
-      await saveMovie({
-        ...movie,
-        watchedAt: null,
-        updatedAt: new Date().toISOString(),
-      });
+      // Через createMovie, а не сырым объектом: статус обязан обнулиться
+      // вместе с датой просмотра, иначе пара разъедется и запись не пройдёт.
+      await saveMovie(createMovie({ ...movie, watchedAt: null, status: null }));
       await reloadLibrary();
     },
     "Вернуть",
@@ -1719,14 +1740,191 @@ function openRollConfiguration() {
         throw new Error("Отметьте хотя бы одного игрока.");
       }
 
+      const savesEnabledAboveRemaining = formData.get("saveThreshold");
+      const guestIds = participants
+        .map((participant) => participant.userId)
+        .filter((userId) => userId && userId !== state.account?.id);
+
+      // Друг среди игроков — значит колесо нужно показать и ему. Отдельной
+      // галочки «играть вместе» нет: состав и есть ответ на этот вопрос.
+      if (guestIds.length > 0) {
+        await startSharedSession({
+          pool: state.rollDraftPool,
+          participants,
+          savesEnabledAboveRemaining,
+          guestIds,
+        });
+        return;
+      }
+
       state.activeSession = createRollSession({
         pool: state.rollDraftPool,
         participants,
-        savesEnabledAboveRemaining: formData.get("saveThreshold"),
+        savesEnabledAboveRemaining,
       });
       render();
     },
   });
+}
+
+// Совместная комната ----------------------------------------------------
+//
+// Локальная сессия живёт в памяти вкладки, совместная — в журнале на сервере.
+// Отличие ровно одно: ход не меняет состояние сам, а просит об этом сервер и
+// ждёт события. Поэтому обработчики ниже расходятся в одной строке, а не в
+// двух копиях логики колеса.
+
+function isSharedSession() {
+  return Boolean(state.shared.sessionId);
+}
+
+function isSessionHost() {
+  return state.shared.hostId === state.account?.id;
+}
+
+async function startSharedSession({ pool, participants, savesEnabledAboveRemaining, guestIds }) {
+  const sessionId = await createSharedSession({
+    pool,
+    participants,
+    savesEnabledAboveRemaining,
+    guestIds,
+  });
+  await attachSharedSession(sessionId, state.account?.id);
+  showToast("Комната открыта: друзья видят колесо у себя.");
+}
+
+async function attachSharedSession(sessionId, hostId = null) {
+  await detachSharedSession();
+
+  const session = await loadSharedSession(sessionId);
+  state.shared = {
+    ...state.shared,
+    sessionId,
+    hostId: hostId ?? session?.hostId ?? null,
+    error: "",
+  };
+
+  state.shared.unwatch = await watchSession(sessionId, {
+    onState: (snapshot, latest) => {
+      applySharedState(snapshot, latest).catch(showUnexpectedError);
+    },
+    onError: (error) => {
+      console.error(error);
+      state.shared = { ...state.shared, error: "Связь с комнатой потеряна." };
+      render();
+    },
+  });
+}
+
+async function detachSharedSession() {
+  state.shared.unwatch?.();
+  state.shared = {
+    ...state.shared,
+    sessionId: null,
+    hostId: null,
+    unwatch: null,
+    error: "",
+  };
+}
+
+// Состояние приходит собранным из журнала. Крутить колесо нужно, только если
+// последним событием был спин: при дочитывании журнала после переподключения
+// приходит то же состояние, но повторять анимацию уже незачем.
+async function applySharedState(session, latest) {
+  if (!session) return;
+
+  state.activeSession = session;
+  if (session.status === "completed") {
+    await completeSharedSession(session);
+    return;
+  }
+
+  if (latest?.type === "spin" && !state.isSpinning) {
+    await runSharedSpin(session, latest.payload ?? {});
+    return;
+  }
+  render();
+}
+
+async function runSharedSpin(session, payload) {
+  state.isSpinning = true;
+  render();
+  try {
+    const canvas = document.querySelector("#wheel-canvas");
+    const pointer = document.querySelector(".wheel-pointer");
+    await animateWheel(canvas, session.originalPool ? session.pool : session.pool, payload.index, {
+      turns: payload.turns,
+      duration: payload.duration,
+      // Общий момент старта: у всех участников колесо трогается разом, а
+      // опоздавшее событие не откатывает вращение к началу.
+      startAt: payload.startAt,
+      soundEnabled: state.library.settings.soundEnabled !== false,
+      reducedMotion: state.library.settings.reducedMotion === true,
+      onTick: () => nudgePointer(pointer),
+    });
+  } finally {
+    state.isSpinning = false;
+    render();
+  }
+}
+
+// Итог сессии в библиотеку записывает ведущий: библиотека у каждого своя, и
+// гость не должен отмечать фильмы у себя за чужим столом.
+async function completeSharedSession(session) {
+  const wasHost = isSessionHost();
+  await detachSharedSession();
+  await refreshSessionInvites();
+
+  if (wasHost) {
+    await finishRollSession(session);
+    return;
+  }
+
+  state.activeSession = null;
+  render();
+  openDialog({
+    title: "Победитель определён",
+    submitLabel: "Понятно",
+    body: `
+      <div class="winner-dialog">
+        <div class="winner-dialog__trophy">★</div>
+        <p class="eyebrow">${session.winner?.type === "franchise" ? "Франшиза" : "Фильм"}</p>
+        <h3>${escapeHtml(session.winner?.title ?? "—")}</h3>
+        <p>Сессию вёл ваш друг: в его библиотеке фильм уже отмечен просмотренным.</p>
+      </div>
+    `,
+    onSubmit: async () => {},
+  });
+}
+
+async function refreshSessionInvites() {
+  if (!state.account?.id) {
+    state.shared = { ...state.shared, invites: [] };
+    return;
+  }
+  try {
+    state.shared = {
+      ...state.shared,
+      invites: await listSessionInvites(state.account.id),
+    };
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+async function joinSharedSession(sessionId) {
+  await attachSharedSession(sessionId);
+  state.view = "wheel";
+  render();
+  showToast("Вы в комнате: колесо крутит ведущий.");
+}
+
+async function leaveSharedSession() {
+  await detachSharedSession();
+  state.activeSession = null;
+  await refreshSessionInvites();
+  render();
+  showToast("Вы вышли из комнаты. Сессия продолжается без вас.");
 }
 
 async function spinActiveSession() {
@@ -1737,6 +1935,14 @@ async function spinActiveSession() {
   ) {
     return;
   }
+
+  // В комнате крутит сервер: он один решает, что выпало. Колесо здесь
+  // тронется, когда придёт событие — у всех сразу.
+  if (isSharedSession()) {
+    await actInSession(state.shared.sessionId, "spin");
+    return;
+  }
+
   state.isSpinning = true;
   render();
   try {
@@ -1765,17 +1971,35 @@ async function spinActiveSession() {
 
 async function rerollActiveSession() {
   if (!state.activeSession) return;
+
+  if (isSharedSession()) {
+    // Перекрутка в комнате — тоже ход журнала: сначала отмена результата,
+    // потом новый спин от сервера.
+    await actInSession(state.shared.sessionId, "reroll");
+    await actInSession(state.shared.sessionId, "spin");
+    return;
+  }
+
   state.activeSession = rerollSession(state.activeSession);
   render();
   await spinActiveSession();
 }
 
-function savePendingParticipant(participantId) {
+async function savePendingParticipant(participantId) {
+  if (isSharedSession()) {
+    await actInSession(state.shared.sessionId, "save-used", { participantId });
+    return;
+  }
   state.activeSession = useSave(state.activeSession, participantId);
   render();
 }
 
 async function eliminatePendingParticipant() {
+  if (isSharedSession()) {
+    await actInSession(state.shared.sessionId, "eliminate");
+    return;
+  }
+
   const nextSession = confirmElimination(state.activeSession);
   if (nextSession.status === "completed") {
     await finishRollSession(nextSession);
@@ -1785,7 +2009,12 @@ async function eliminatePendingParticipant() {
   render();
 }
 
-function restoreRollParticipant(entityType, entityId) {
+async function restoreRollParticipant(entityType, entityId) {
+  if (isSharedSession()) {
+    await actInSession(state.shared.sessionId, "restore", { entityType, entityId });
+    return;
+  }
+
   state.activeSession = restoreEliminated(
     state.activeSession,
     entityType,
@@ -1882,7 +2111,7 @@ function handleGlobalKeydown(event) {
     }
     if (event.code === "KeyN") {
       event.preventDefault();
-      openMovieDialog();
+      openMovieDialog().catch(showUnexpectedError);
       return;
     }
     if (event.code === "KeyR") {
@@ -1926,7 +2155,14 @@ function isShortcutContext(event) {
   return !["INPUT", "SELECT", "TEXTAREA"].includes(active?.tagName);
 }
 
-function openMovieDialog(movieId = null) {
+async function openMovieDialog(movieId = null) {
+  // Состояние TMDB проверяется при запуске приложения, но одна неудачная
+  // проверка не должна запирать поиск до перезагрузки страницы: связь могла
+  // пропасть на секунду. Поэтому перед открытием карточки спрашиваем ещё раз.
+  if (!state.tmdbStatus.configured) {
+    await refreshTmdbStatus();
+  }
+
   const movie = state.library.movies.find((item) => item.id === movieId);
   const categoryOptions = buildCategoryOptions(movie?.categoryId);
 
@@ -2241,7 +2477,7 @@ function openEnrichmentSummary(results) {
 
   document.querySelectorAll("[data-enrich-fix]").forEach((button) => {
     button.addEventListener("click", () => {
-      openMovieDialog(button.dataset.enrichFix);
+      openMovieDialog(button.dataset.enrichFix).catch(showUnexpectedError);
     });
   });
 }
