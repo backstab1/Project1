@@ -3,17 +3,15 @@
 // Глухого экрана входа на старте больше нет. Гость попадает на витрину и сам
 // решает, когда открыть кабинет внизу справа. Полноэкранный экран остаётся для
 // двух случаев, где выбора действительно нет: смена пароля по ссылке из письма
-// и обмен приглашения на профиль после подтверждения почты.
+// и создание профиля после подтверждения почты.
 
 import { isServerConfigured } from "../config.js";
 import {
   describeAuthError,
   normalizeDisplayName,
   normalizeHandle,
-  normalizeInviteCode,
   validateDisplayName,
   validateHandle,
-  validateInviteCode,
   validatePassword,
   validatePasswordReset,
   validateSignIn,
@@ -23,7 +21,7 @@ import {
   ensureProfile,
   getSession,
   isRecoveryEntry,
-  redeemInvite,
+  createProfile,
   requestPasswordReset,
   signIn,
   signOut,
@@ -33,7 +31,7 @@ import {
 import { renderAuthScreen } from "./authScreen.js";
 
 // Режимы, в которых человека нельзя пустить дальше формы: без нового пароля
-// сессия непригодна, без приглашения нет профиля, а значит и библиотеки.
+// сессия непригодна, без имени пользователя нет профиля, а значит и библиотеки.
 const BLOCKING_MODES = new Set(["recovery", "profile"]);
 
 export function isAuthPreview() {
@@ -153,7 +151,7 @@ async function resolveEntryPoint() {
 
   return {
     mode: "profile",
-    notice: "Почта подтверждена. Остался код приглашения.",
+    notice: "Почта подтверждена. Осталось имя пользователя.",
   };
 }
 
@@ -178,7 +176,7 @@ async function submitSignIn(values) {
 
   return {
     mode: "profile",
-    notice: "Вы вошли. Остался код приглашения.",
+    notice: "Вы вошли. Осталось имя пользователя.",
     clearValues: true,
   };
 }
@@ -234,16 +232,13 @@ async function submitRecovery(values) {
 
 async function submitProfile(values) {
   const errors = {};
-  const invite = validateInviteCode(values.inviteCode);
   const handle = validateHandle(values.handle);
   const displayName = validateDisplayName(values.displayName);
-  if (invite) errors.inviteCode = invite;
   if (handle) errors.handle = handle;
   if (displayName) errors.displayName = displayName;
   if (Object.keys(errors).length > 0) return { errors };
 
-  const profile = await redeemInvite({
-    inviteCode: normalizeInviteCode(values.inviteCode),
+  const profile = await createProfile({
     handle: normalizeHandle(values.handle),
     displayName: normalizeDisplayName(values.displayName),
   });

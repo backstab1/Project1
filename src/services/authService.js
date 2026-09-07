@@ -1,9 +1,9 @@
 // Работа с аккаунтом: вход, регистрация, профиль, восстановление пароля.
 //
-// Приглашение обменивается на профиль только после первого успешного входа —
-// раньше просто некому: до подтверждения почты сессии нет, а redeem_invite
-// требует auth.uid(). Поэтому код и имя запоминаются на устройстве и
-// применяются, как только сессия появилась.
+// Профиль создаётся только после первого успешного входа — раньше просто
+// некому: до подтверждения почты сессии нет, а create_profile требует
+// auth.uid(). Поэтому имя пользователя запоминается на устройстве и
+// применяется, как только сессия появилась.
 
 import { getSupabaseClient } from "./supabaseClient.js";
 
@@ -31,7 +31,7 @@ export async function signIn({ email, password }) {
   return data.session;
 }
 
-export async function signUp({ email, password, handle, displayName, inviteCode }) {
+export async function signUp({ email, password, handle, displayName }) {
   const client = await getSupabaseClient();
   const { data, error } = await client.auth.signUp({
     email,
@@ -43,7 +43,7 @@ export async function signUp({ email, password, handle, displayName, inviteCode 
   });
   if (error) throw error;
 
-  rememberPendingProfile({ handle, displayName, inviteCode });
+  rememberPendingProfile({ handle, displayName });
 
   // Если подтверждение почты выключено, сессия приходит сразу — тогда профиль
   // можно создать не откладывая.
@@ -85,10 +85,9 @@ export async function loadProfile() {
   return data ?? null;
 }
 
-export async function redeemInvite({ inviteCode, handle, displayName }) {
+export async function createProfile({ handle, displayName }) {
   const client = await getSupabaseClient();
-  const { data, error } = await client.rpc("redeem_invite", {
-    p_code: inviteCode,
+  const { data, error } = await client.rpc("create_profile", {
     p_handle: handle,
     p_display_name: displayName,
   });
@@ -98,7 +97,7 @@ export async function redeemInvite({ inviteCode, handle, displayName }) {
 }
 
 // Возвращает профиль, если он есть или может быть создан из запомненного
-// приглашения. null означает «нужно спросить код у человека».
+// имени. null означает «нужно спросить имя пользователя».
 export async function ensureProfile() {
   const existing = await loadProfile();
   if (existing) {
@@ -109,24 +108,7 @@ export async function ensureProfile() {
   const pending = readPendingProfile();
   if (!pending) return null;
 
-  return redeemInvite(pending);
-}
-
-export async function createInvite() {
-  const client = await getSupabaseClient();
-  const { data, error } = await client.rpc("create_invite");
-  if (error) throw error;
-  return data;
-}
-
-export async function listInvites() {
-  const client = await getSupabaseClient();
-  const { data, error } = await client
-    .from("invites")
-    .select("code, used_by, used_at, expires_at")
-    .order("created_at", { ascending: false });
-  if (error) throw error;
-  return data ?? [];
+  return createProfile(pending);
 }
 
 // Удаление аккаунта требует прав, которых у браузера нет и не должно быть,
@@ -160,7 +142,7 @@ function readPendingProfile() {
     const raw = localStorage.getItem(PENDING_PROFILE_KEY);
     if (!raw) return null;
     const value = JSON.parse(raw);
-    if (!value?.inviteCode || !value?.handle || !value?.displayName) return null;
+    if (!value?.handle || !value?.displayName) return null;
     return value;
   } catch {
     return null;

@@ -12,6 +12,8 @@
 
 import { createClient } from "@supabase/supabase-js";
 
+import { createProbeUser } from "./lib/probe-user.mjs";
+
 import { STORE_NAMES } from "../src/config.js";
 import {
   categoryFromRow,
@@ -45,33 +47,6 @@ function stamp() {
   return Math.random().toString(36).slice(2, 8);
 }
 
-async function createUser(handle) {
-  const email = `lib-${handle}-${stamp()}@cinevault.test`;
-  const password = `pwd-${stamp()}-${stamp()}`;
-  const { data, error } = await admin.auth.admin.createUser({
-    email,
-    password,
-    email_confirm: true,
-  });
-  if (error) throw new Error(`создание пользователя: ${error.message}`);
-
-  const code = `L${stamp().toUpperCase().padEnd(7, "X").slice(0, 7)}`;
-  const invite = await admin.from("invites").insert({ code }).select().single();
-  if (invite.error) throw new Error(`приглашение: ${invite.error.message}`);
-
-  const client = createClient(url, anonKey, { auth: { persistSession: false } });
-  const signIn = await client.auth.signInWithPassword({ email, password });
-  if (signIn.error) throw new Error(`вход: ${signIn.error.message}`);
-
-  const profile = await client.rpc("redeem_invite", {
-    p_code: code,
-    p_handle: handle,
-    p_display_name: handle,
-  });
-  if (profile.error) throw new Error(`redeem_invite: ${profile.error.message}`);
-
-  return { id: data.user.id, client, handle };
-}
 
 // Библиотека в форме приложения: именно её собирает domain/entities.js, и
 // именно так её увидит браузер после чтения из базы.
@@ -277,6 +252,12 @@ async function readLibrary(client, ownerId) {
 
 function byTitle(movies, title) {
   return movies.find((movie) => movie.title === title);
+}
+
+function createUser(handle) {
+  return createProbeUser({
+    admin, url, anonKey, createClient, prefix: "lib", handle,
+  });
 }
 
 async function main() {

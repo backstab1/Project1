@@ -4,9 +4,7 @@ import assert from "node:assert/strict";
 import {
   describeAuthError,
   normalizeHandle,
-  normalizeInviteCode,
   validateHandle,
-  validateInviteCode,
   validatePassword,
   validateSignIn,
   validateSignUp,
@@ -38,15 +36,6 @@ test("имя пользователя не начинается и не зака
   assert.equal(validateHandle("il"), "Имя короче трёх символов.");
 });
 
-test("код приглашения переживает пробелы и дефисы", () => {
-  assert.equal(normalizeInviteCode("cine-vlt1"), "CINEVLT1");
-  assert.equal(validateInviteCode(" cine vlt1 "), null);
-  assert.equal(
-    validateInviteCode("CINE"),
-    "Код состоит из восьми латинских букв и цифр.",
-  );
-});
-
 test("пароль короче восьми символов не проходит", () => {
   assert.equal(validatePassword("1234567"), "Пароль короче 8 символов.");
   assert.equal(validatePassword("        "), "Пароль не может состоять из пробелов.");
@@ -60,7 +49,6 @@ test("регистрация собирает все ошибки сразу, а
     passwordRepeat: "456",
     handle: "_",
     displayName: "",
-    inviteCode: "",
   });
 
   assert.equal(result.valid, false);
@@ -68,7 +56,6 @@ test("регистрация собирает все ошибки сразу, а
     "displayName",
     "email",
     "handle",
-    "inviteCode",
     "password",
   ]);
 });
@@ -80,7 +67,6 @@ test("несовпадение паролей ловится отдельно о
     passwordRepeat: "другой пароль",
     handle: "ilya",
     displayName: "Илья",
-    inviteCode: "CINEVLT1",
   });
 
   assert.equal(result.valid, false);
@@ -94,7 +80,6 @@ test("верная регистрация возвращает нормализ�
     passwordRepeat: "достаточно длинный",
     handle: "@Ilya_K",
     displayName: "  Илья   К  ",
-    inviteCode: "cine-vlt1",
   });
 
   assert.equal(result.valid, true);
@@ -103,7 +88,6 @@ test("верная регистрация возвращает нормализ�
     password: "достаточно длинный",
     handle: "ilya_k",
     displayName: "Илья К",
-    inviteCode: "CINEVLT1",
   });
 });
 

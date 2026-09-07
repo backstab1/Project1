@@ -39,7 +39,6 @@ if (!url || !serviceKey) {
 // таблица идёт после той, на которую ссылается.
 const TABLES = [
   "profiles",
-  "invites",
   "user_settings",
   "categories",
   "movies",

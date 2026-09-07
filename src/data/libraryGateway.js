@@ -57,6 +57,35 @@ function asError(error, fallback) {
   return wrapped;
 }
 
+// Проект на бесплатном тарифе поднимается по требованию и первые секунды
+// после пробуждения рвёт соединения: ответ не доходит, хотя запрос дошёл.
+// Это не поломка, а состояние среды, и одного повтора обычно хватает.
+const TRANSIENT = ["fetch failed", "terminated", "Failed to fetch", "NetworkError"];
+
+function isTransient(error) {
+  const text = `${error?.message ?? ""} ${error?.cause?.code ?? ""}`;
+  return TRANSIENT.some((mark) => text.includes(mark));
+}
+
+/**
+ * Повтор один раз при обрыве связи.
+ *
+ * Для чтения это безусловно безопасно. Для записи — тоже, и вот почему: пакет
+ * уходит вместе с ревизией библиотеки. Если первый запрос всё-таки дошёл до
+ * базы, ревизия уже сдвинулась, и повтор будет отвергнут как конфликт, а не
+ * применён вторым разом. Приложение покажет «библиотека изменилась» —
+ * неприятно, но честно, и данные при этом целы.
+ */
+async function withRetry(action) {
+  try {
+    return await action();
+  } catch (error) {
+    if (!isTransient(error)) throw error;
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    return action();
+  }
+}
+
 export function isLibraryConflict(error) {
   return error instanceof LibraryConflictError || error?.code === CONFLICT_CODE;
 }
@@ -197,10 +226,10 @@ async function commit(commands) {
   const client = await getSupabaseClient();
   const ownerId = await getOwnerId();
 
-  const { data, error } = await client.rpc("apply_library_changes", {
+  const { data, error } = await withRetry(() => client.rpc("apply_library_changes", {
     commands: commands.map((command) => commandToPayload(command, ownerId)),
     expected_revision: cachedRevision,
-  });
+  }));
   if (error) {
     if (error.code === CONFLICT_CODE) throw new LibraryConflictError();
     throw asError(error, "Библиотека не сохранена.");
@@ -209,7 +238,8 @@ async function commit(commands) {
 }
 
 async function select(client, table, columns, refine = (query) => query) {
-  const { data, error } = await refine(client.from(table).select(columns));
+  const { data, error } = await withRetry(() =>
+    refine(client.from(table).select(columns)));
   if (error) throw asError(error, `Таблица «${table}» недоступна.`);
   return data ?? [];
 }

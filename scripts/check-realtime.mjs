@@ -11,6 +11,8 @@
 
 import { createClient } from "@supabase/supabase-js";
 
+import { createProbeUser } from "./lib/probe-user.mjs";
+
 import { buildSessionFromLog } from "../src/domain/rollSessionLog.js";
 
 const url = process.env.SUPABASE_URL;
@@ -36,29 +38,6 @@ function stamp() {
   return Math.random().toString(36).slice(2, 8);
 }
 
-async function createUser(handle) {
-  const email = `rt-${handle}-${stamp()}@cinevault.test`;
-  const password = `pwd-${stamp()}-${stamp()}`;
-  const { data, error } = await admin.auth.admin.createUser({
-    email, password, email_confirm: true,
-  });
-  if (error) throw new Error(`создание пользователя: ${error.message}`);
-
-  const code = `R${stamp().toUpperCase().padEnd(7, "X").slice(0, 7)}`;
-  const invite = await admin.from("invites").insert({ code }).select().single();
-  if (invite.error) throw new Error(`приглашение: ${invite.error.message}`);
-
-  const client = createClient(url, anonKey, { auth: { persistSession: false } });
-  const signIn = await client.auth.signInWithPassword({ email, password });
-  if (signIn.error) throw new Error(`вход: ${signIn.error.message}`);
-
-  const profile = await client.rpc("redeem_invite", {
-    p_code: code, p_handle: handle, p_display_name: handle,
-  });
-  if (profile.error) throw new Error(`redeem_invite: ${profile.error.message}`);
-
-  return { id: data.user.id, client, handle };
-}
 
 function poolOf(...titles) {
   return titles.map((title, index) => ({
@@ -84,6 +63,12 @@ function waitFor(predicate, box, limitMs) {
         resolve({ event: null, waited: Date.now() - started });
       }
     }, 20);
+  });
+}
+
+function createUser(handle) {
+  return createProbeUser({
+    admin, url, anonKey, createClient, prefix: "rt", handle,
   });
 }
 

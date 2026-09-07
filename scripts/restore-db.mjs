@@ -46,7 +46,6 @@ const USER_COLUMNS = new Set([
   "actor_id",
   "added_by",
   "created_by",
-  "used_by",
   "rater_user_id",
   "requester_id",
   "addressee_id",

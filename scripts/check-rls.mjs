@@ -7,6 +7,8 @@
 
 import { createClient } from "@supabase/supabase-js";
 
+import { createProbeUser } from "./lib/probe-user.mjs";
+
 const url = process.env.SUPABASE_URL;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const anonKey = process.env.SUPABASE_ANON_KEY;
@@ -39,33 +41,10 @@ function stamp() {
   return Math.random().toString(36).slice(2, 8);
 }
 
-async function createUser(handle) {
-  const email = `rls-${handle}-${stamp()}@cinevault.test`;
-  const password = `pwd-${stamp()}-${stamp()}`;
-
-  const { data, error } = await admin.auth.admin.createUser({
-    email,
-    password,
-    email_confirm: true,
+function createUser(handle) {
+  return createProbeUser({
+    admin, url, anonKey, createClient, prefix: "rls", handle,
   });
-  if (error) throw new Error(`Не удалось создать пользователя: ${error.message}`);
-
-  const code = `T${stamp().toUpperCase().padEnd(7, "X").slice(0, 7)}`;
-  const invite = await admin.from("invites").insert({ code }).select().single();
-  if (invite.error) throw new Error(`Приглашение: ${invite.error.message}`);
-
-  const client = createClient(url, anonKey, { auth: { persistSession: false } });
-  const signIn = await client.auth.signInWithPassword({ email, password });
-  if (signIn.error) throw new Error(`Вход: ${signIn.error.message}`);
-
-  const profile = await client.rpc("redeem_invite", {
-    p_code: code,
-    p_handle: handle,
-    p_display_name: handle,
-  });
-  if (profile.error) throw new Error(`redeem_invite: ${profile.error.message}`);
-
-  return { id: data.user.id, email, client, handle };
 }
 
 async function main() {
@@ -262,30 +241,15 @@ async function main() {
       "событие записано из клиента",
     );
 
-    // Приглашения.
-    const invite = await alice.client.rpc("create_invite");
-    check("пользователь создаёт приглашение", !invite.error, invite.error?.message);
-
-    const foreignInvites = await bob.client.from("invites").select("code");
-    const seesAlicesCode =
-      !foreignInvites.error &&
-      foreignInvites.data.some((row) => row.code === invite.data?.code);
-    check("чужие приглашения не видны", !seesAlicesCode, "код виден постороннему");
     // Удаление аккаунта — часть продукта, а не только уборка за тестом.
-    // Раньше оно падало: обнуление invites.used_by ломало ограничение, и
-    // человек не мог удалить свой аккаунт.
     const removal = await admin.auth.admin.deleteUser(bob.id);
     check("аккаунт удаляется вместе со всеми данными", !removal.error, removal.error?.message);
 
-    const usedInvite = await admin
-      .from("invites")
-      .select("code, used_at")
-      .not("used_at", "is", null)
-      .limit(1);
+    const gone = await admin.from("invites").select("code").limit(1);
     check(
-      "погашенное приглашение не возвращается в оборот после удаления",
-      !usedInvite.error && usedInvite.data.length > 0,
-      "код снова числится свободным",
+      "таблицы приглашений больше нет",
+      Boolean(gone.error),
+      "invites всё ещё доступна",
     );
 
     const orphan = await admin.from("profiles").select("id").eq("id", bob.id);

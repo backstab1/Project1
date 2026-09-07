@@ -11,6 +11,8 @@
 
 import { createClient } from "@supabase/supabase-js";
 
+import { createProbeUser } from "./lib/probe-user.mjs";
+
 const url = process.env.SUPABASE_URL;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const anonKey = process.env.SUPABASE_ANON_KEY;
@@ -34,29 +36,6 @@ function stamp() {
   return Math.random().toString(36).slice(2, 8);
 }
 
-async function createUser(handle) {
-  const email = `tmdb-${handle}-${stamp()}@cinevault.test`;
-  const password = `pwd-${stamp()}-${stamp()}`;
-  const { data, error } = await admin.auth.admin.createUser({
-    email, password, email_confirm: true,
-  });
-  if (error) throw new Error(`создание пользователя: ${error.message}`);
-
-  const code = `T${stamp().toUpperCase().padEnd(7, "X").slice(0, 7)}`;
-  const invite = await admin.from("invites").insert({ code }).select().single();
-  if (invite.error) throw new Error(`приглашение: ${invite.error.message}`);
-
-  const client = createClient(url, anonKey, { auth: { persistSession: false } });
-  const signIn = await client.auth.signInWithPassword({ email, password });
-  if (signIn.error) throw new Error(`вход: ${signIn.error.message}`);
-
-  const profile = await client.rpc("redeem_invite", {
-    p_code: code, p_handle: handle, p_display_name: handle,
-  });
-  if (profile.error) throw new Error(`redeem_invite: ${profile.error.message}`);
-
-  return { id: data.user.id, client, token: signIn.data.session.access_token };
-}
 
 // Прямой вызов по HTTP: код ответа функции виден целиком, а не только через
 // обёртку supabase-js.
@@ -73,6 +52,12 @@ async function callRaw(token, body) {
   });
   const payload = await response.json().catch(() => ({}));
   return { status: response.status, payload };
+}
+
+function createUser(handle) {
+  return createProbeUser({
+    admin, url, anonKey, createClient, prefix: "tmdb", handle,
+  });
 }
 
 async function main() {

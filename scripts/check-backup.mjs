@@ -10,6 +10,8 @@
 // этом не трогаются — копия для восстановления урезается до одного аккаунта.
 
 import { createClient } from "@supabase/supabase-js";
+
+import { createProbeUser } from "./lib/probe-user.mjs";
 import { spawn } from "node:child_process";
 import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -55,29 +57,6 @@ function run(script, args = [], env = {}) {
   });
 }
 
-async function createUser(handle) {
-  const email = `backup-${handle}-${stamp()}@cinevault.test`;
-  const password = `pwd-${stamp()}-${stamp()}`;
-  const { data, error } = await admin.auth.admin.createUser({
-    email, password, email_confirm: true,
-  });
-  if (error) throw new Error(`создание пользователя: ${error.message}`);
-
-  const code = `B${stamp().toUpperCase().padEnd(7, "X").slice(0, 7)}`;
-  const invite = await admin.from("invites").insert({ code }).select().single();
-  if (invite.error) throw new Error(`приглашение: ${invite.error.message}`);
-
-  const client = createClient(url, anonKey, { auth: { persistSession: false } });
-  const signIn = await client.auth.signInWithPassword({ email, password });
-  if (signIn.error) throw new Error(`вход: ${signIn.error.message}`);
-
-  const profile = await client.rpc("redeem_invite", {
-    p_code: code, p_handle: handle, p_display_name: handle,
-  });
-  if (profile.error) throw new Error(`redeem_invite: ${profile.error.message}`);
-
-  return { id: data.user.id, email, client };
-}
 
 // Копия снимается со всего проекта, но возвращать чужое мы не станем: для
 // восстановления остаётся только то, что принадлежит временному аккаунту.
@@ -91,10 +70,6 @@ function narrowToUser(dump, userId) {
 
   const tables = {};
   for (const [table, rows] of Object.entries(dump.tables ?? {})) {
-    // Приглашение переживает удаление аккаунта: `used_by` обнуляется, а строка
-    // остаётся у проекта. В библиотеку пользователя она не входит, и вставлять
-    // её заново — гарантированное столкновение по ключу.
-    if (table === "invites") continue;
     const kept = rows.filter(mine);
     if (kept.length) tables[table] = kept;
   }
@@ -104,6 +79,12 @@ function narrowToUser(dump, userId) {
     accounts: (dump.accounts ?? []).filter((account) => account.id === userId),
     tables,
   };
+}
+
+function createUser(handle) {
+  return createProbeUser({
+    admin, url, anonKey, createClient, prefix: "backup", handle,
+  });
 }
 
 async function main() {

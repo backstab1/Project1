@@ -7,7 +7,6 @@
 // Тот же шаблон, что в схеме: только строчная латиница, цифры и подчёркивание.
 // Кириллическая «а» и латинская «a» не должны давать двух неразличимых имён.
 const HANDLE_PATTERN = /^[a-z0-9][a-z0-9_]{1,18}[a-z0-9]$/;
-const INVITE_PATTERN = /^[A-Z0-9]{8}$/;
 
 export const PASSWORD_MIN_LENGTH = 8;
 export const DISPLAY_NAME_MAX_LENGTH = 60;
@@ -21,14 +20,6 @@ export function normalizeHandle(value) {
     .trim()
     .replace(/^@+/, "")
     .toLowerCase();
-}
-
-// Код диктуют голосом и переписывают руками, поэтому пробелы и дефисы внутри
-// не считаются ошибкой.
-export function normalizeInviteCode(value) {
-  return String(value ?? "")
-    .toUpperCase()
-    .replace(/[\s-]+/g, "");
 }
 
 export function normalizeDisplayName(value) {
@@ -77,15 +68,6 @@ export function validateDisplayName(value) {
   return null;
 }
 
-export function validateInviteCode(value) {
-  const code = normalizeInviteCode(value);
-  if (!code) return "Нужен код приглашения.";
-  if (!INVITE_PATTERN.test(code)) {
-    return "Код состоит из восьми латинских букв и цифр.";
-  }
-  return null;
-}
-
 export function validateSignIn(input = {}) {
   const errors = {};
   const email = validateEmail(input.email);
@@ -106,7 +88,6 @@ export function validateSignUp(input = {}) {
     password: validatePassword(input.password),
     handle: validateHandle(input.handle),
     displayName: validateDisplayName(input.displayName),
-    inviteCode: validateInviteCode(input.inviteCode),
   };
   for (const [field, message] of Object.entries(checks)) {
     if (message) errors[field] = message;
@@ -123,7 +104,6 @@ export function validateSignUp(input = {}) {
       password: String(input.password ?? ""),
       handle: normalizeHandle(input.handle),
       displayName: normalizeDisplayName(input.displayName),
-      inviteCode: normalizeInviteCode(input.inviteCode),
     },
   };
 }
@@ -147,8 +127,6 @@ const KNOWN_ERRORS = [
   [/user already registered/i, "Аккаунт с такой почтой уже есть."],
   [/password should be at least/i, `Пароль короче ${PASSWORD_MIN_LENGTH} символов.`],
   [/rate limit|too many requests/i, "Слишком много попыток. Подождите минуту."],
-  [/код приглашения не найден/i, "Код приглашения не найден."],
-  [/код приглашения уже использован/i, "Этот код уже использован."],
   [/срок действия кода истёк/i, "Срок действия кода истёк."],
   [/profiles_handle_key|duplicate key.*handle/i, "Такое имя пользователя уже занято."],
   [/profiles_handle_check/i, "Имя пользователя не подходит по формату."],

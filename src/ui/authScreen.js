@@ -18,9 +18,9 @@ export const AUTH_MODES = {
   },
   signup: {
     title: "Создать аккаунт",
-    lead: "Регистрация по приглашению — попросите код у того, кто уже здесь.",
+    lead: "Почта, пароль и имя пользователя — этого достаточно.",
     submit: "Создать аккаунт",
-    fields: ["displayName", "handle", "email", "password", "passwordRepeat", "inviteCode"],
+    fields: ["displayName", "handle", "email", "password", "passwordRepeat"],
   },
   reset: {
     title: "Восстановление пароля",
@@ -36,9 +36,9 @@ export const AUTH_MODES = {
   },
   profile: {
     title: "Ещё один шаг",
-    lead: "Код приглашения превращает аккаунт в библиотеку.",
+    lead: "Осталось имя, под которым вас увидят друзья.",
     submit: "Открыть библиотеку",
-    fields: ["inviteCode", "handle", "displayName"],
+    fields: ["handle", "displayName"],
   },
 };
 
@@ -62,12 +62,6 @@ export const AUTH_FIELDS = {
     type: "text",
     autocomplete: "name",
     placeholder: "Илья",
-  },
-  inviteCode: {
-    label: "Код приглашения",
-    type: "text",
-    autocomplete: "one-time-code",
-    placeholder: "CINEVLT1",
   },
 };
 
@@ -122,7 +116,7 @@ export function renderAuthScreen(root, state) {
             <div class="auth__links">${renderLinks(mode, state.cancellable)}</div>
           </section>
           <p class="wl-meta auth__meta">
-            <span><i class="wl-dot"></i>Аккаунт по коду приглашения</span>
+            <span><i class="wl-dot"></i>Регистрация открыта</span>
             <span><i class="wl-dot"></i>Версия ${APP_VERSION}</span>
             <span><i class="wl-dot"></i>Интерфейс полностью на русском</span>
           </p>
@@ -185,7 +179,7 @@ function renderLinks(mode, cancellable = false) {
   };
 
   // С витрины на форму приходят по своей воле, поэтому нужен и путь обратно.
-  // На обязательных шагах (новый пароль, приглашение) уходить некуда.
+  // На обязательных шагах (новый пароль, имя пользователя) уходить некуда.
   const items = [...(links[mode] ?? [])];
   if (cancellable && mode !== "recovery" && mode !== "profile") {
     items.push(["cancel", "Вернуться на витрину"]);
