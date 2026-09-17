@@ -248,6 +248,11 @@ const state = {
       history.pushState(null, "", `#${view}`);
     }
     render();
+    // На колесе гостю важно видеть свежие приглашения без перезахода в
+    // аккаунт: комнату мог открыть друг уже после входа.
+    if (view === "wheel" && !isSharedSession()) {
+      refreshSessionInvites().then(render).catch((error) => console.error(error));
+    }
   },
   onAction(action, payload) {
     handleAction(action, payload).catch(showUnexpectedError);

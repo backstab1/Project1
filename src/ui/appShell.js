@@ -1589,7 +1589,16 @@ function renderWheel(container, state) {
   const progress = total ? Math.round((session.eliminated.length / (total - 1)) * 100) : 0;
   const savesLocked = session.pool.length <= session.savesEnabledAboveRemaining;
 
+  // В комнате крутит и подтверждает только ведущий — сервер отобьёт чужой ход
+  // как «Этот ход делает ведущий». Скрываем эти кнопки у гостя, чтобы вместо
+  // модалки с ошибкой был понятный статус «Ждём хода ведущего».
+  const shared = state.shared ?? {};
+  const inRoom = Boolean(shared.sessionId);
+  const isHost = inRoom && shared.hostId && shared.hostId === state.account?.id;
+  const isGuest = inRoom && !isHost;
+
   container.innerHTML = `
+    ${inRoom ? renderRoomBanner(shared, isHost) : ""}
     <div class="wheel-layout">
       <section class="wheel-stage ${state.isSpinning ? "is-spinning" : ""}">
         <div class="wheel-stage__glow" aria-hidden="true"></div>
@@ -1603,7 +1612,9 @@ function renderWheel(container, state) {
           ${pending ? `
             <p class="eyebrow eyebrow--danger">Кандидат на выбывание</p>
             <h2>${escapeHtml(pending.title)}</h2>
-            <p class="muted">Подтвердите выбывание, потратьте сейв или перекрутите колесо.</p>
+            <p class="muted">${isGuest
+              ? "Подтверждает или отменяет ведущий. Сейв можно потратить."
+              : "Подтвердите выбывание, потратьте сейв или перекрутите колесо."}</p>
           ` : `
             <p class="eyebrow">В колесе осталось</p>
             <h2>${session.pool.length}
@@ -1613,13 +1624,19 @@ function renderWheel(container, state) {
         </div>
 
         <div class="wheel-actions">
-          ${pending ? `
+          ${pending ? (isGuest ? `
+            <span class="wheel-actions__wait">${icon("wheel")}<span>Ждём хода ведущего…</span></span>
+          ` : `
             <button class="btn btn--glass btn--lg" type="button" data-action="roll-reroll">
               ${icon("refresh")}<span>Перекрутить</span>
             </button>
             <button class="btn btn--danger btn--lg" type="button" data-action="roll-confirm-elimination">
               ${icon("close")}<span>Подтвердить выбывание</span>
             </button>
+          `) : (isGuest ? `
+            <span class="wheel-actions__wait">${icon("wheel")}<span>${state.isSpinning
+              ? "Колесо вращается…"
+              : "Ждём, когда ведущий крутанёт колесо…"}</span></span>
           ` : `
             <button class="btn btn--primary btn--spin" type="button" data-action="roll-spin"
               ${state.isSpinning ? "disabled" : ""}>
@@ -1627,7 +1644,7 @@ function renderWheel(container, state) {
               <span>${state.isSpinning ? "Колесо вращается…" : "Крутить"}</span>
               ${state.isSpinning ? "" : "<kbd>Space</kbd>"}
             </button>
-          `}
+          `)}
         </div>
 
         <div class="wheel-progress">
@@ -1679,15 +1696,79 @@ function renderWheel(container, state) {
             ${session.eliminated.map((item) => `
               <div class="eliminated-list__row">
                 <span>${escapeHtml(item.title)}</span>
-                <button class="icon-btn icon-btn--sm" type="button" data-action="roll-restore"
-                  data-id="${item.id}" data-entity-type="${item.type}"
-                  aria-label="Вернуть в колесо">${icon("refresh")}</button>
+                ${isGuest ? "" : `
+                  <button class="icon-btn icon-btn--sm" type="button" data-action="roll-restore"
+                    data-id="${item.id}" data-entity-type="${item.type}"
+                    aria-label="Вернуть в колесо">${icon("refresh")}</button>`}
               </div>
             `).join("") || '<p class="muted">Пока никто не выбыл.</p>'}
           </div>
         </section>
       </aside>
     </div>
+  `;
+}
+
+function renderRoomBanner(shared, isHost) {
+  const error = shared.error
+    ? `<p class="muted room-banner__error">${escapeHtml(shared.error)}</p>`
+    : "";
+  const hostLabel = isHost
+    ? "Вы ведущий"
+    : shared.host
+      ? `Ведущий · ${escapeHtml(describeInviteHost(shared.host))}`
+      : "Ведущий · друг";
+  return `
+    <section class="notice notice--accent room-banner">
+      <span class="notice__icon">${icon("wheel")}</span>
+      <div>
+        <p class="eyebrow">${isHost ? "Комната открыта" : "Вы в комнате"}</p>
+        <h3>${hostLabel}</h3>
+        <p class="muted">${isHost
+          ? "Гости видят колесо у себя и повторяют вращение по общим часам."
+          : "Колесо крутит ведущий, у вас оно повторяет вращение по общим часам."}</p>
+        ${error}
+      </div>
+      <div class="notice__actions">
+        <button class="btn btn--ghost btn--sm" type="button" data-action="roll-leave">
+          ${icon("close")}<span>${isHost ? "Закрыть комнату" : "Покинуть комнату"}</span>
+        </button>
+      </div>
+    </section>
+  `;
+}
+
+function describeInviteHost(host) {
+  const name = String(host?.display_name ?? "").trim();
+  if (name) return name;
+  const handle = String(host?.handle ?? "").trim();
+  return handle ? `@${handle}` : "друг";
+}
+
+function renderInviteBanner(invites) {
+  const heading = invites.length === 1
+    ? `${escapeHtml(describeInviteHost(invites[0].host))} зовёт вас в комнату`
+    : `Вас зовут в ${invites.length} ${pluralize(invites.length, ["комнату", "комнаты", "комнат"])}`;
+  return `
+    <section class="notice notice--accent invite-banner">
+      <span class="notice__icon">${icon("wheel")}</span>
+      <div>
+        <p class="eyebrow">Приглашение в кинорулетку</p>
+        <h3>${heading}</h3>
+        <p class="muted">Ведущий соберёт колесо и крутанёт его сам — у вас оно
+        повторит вращение по общим часам.</p>
+      </div>
+      <div class="notice__actions">
+        ${invites.map((invite) => `
+          <button class="btn btn--primary btn--sm" type="button"
+            data-action="roll-join" data-id="${escapeAttribute(invite.id)}">
+            ${icon("play")}<span>${invites.length === 1
+              ? "Войти в комнату"
+              : `Войти · ${escapeHtml(describeInviteHost(invite.host))}`}</span>
+          </button>
+        `).join("")}
+      </div>
+    </section>
   `;
 }
 
@@ -1700,8 +1781,10 @@ function renderWheelSetup(container, state) {
   const poolTags = collectLibraryTags(
     state.library.movies.filter((movie) => !movie.watchedAt),
   );
+  const invites = state.shared?.invites ?? [];
 
   container.innerHTML = `
+    ${invites.length ? renderInviteBanner(invites) : ""}
     <div class="toolbar">
       <div class="toolbar__count">
         <p class="eyebrow">Подготовка сессии</p>

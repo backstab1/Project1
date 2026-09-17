@@ -2972,6 +2972,33 @@ strong {
   gap: 0.7rem;
 }
 
+.wheel-actions__wait {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.85rem 1.4rem;
+  border-radius: var(--r-md);
+  border: 1px dashed var(--border-strong);
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.wheel-actions__wait svg {
+  width: 1.15rem;
+  height: 1.15rem;
+  animation: slow-spin 9s linear infinite;
+}
+
+.room-banner,
+.invite-banner {
+  margin-bottom: 1rem;
+}
+
+.room-banner__error {
+  margin-top: 0.35rem;
+  color: var(--danger, var(--text-muted));
+}
+
 .btn--spin {
   padding: 0.95rem 2rem;
   font-size: var(--fs-lg);

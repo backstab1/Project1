@@ -181,7 +181,9 @@ export async function watchSession(sessionId, handlers = {}) {
 }
 
 // Куда меня позвали: активные сессии, где я значусь участником. Ведущий
-// видит свои сессии и так, поэтому здесь только чужие.
+// видит свои сессии и так, поэтому здесь только чужие. Имя ведущего идёт
+// вторым запросом по тем же причинам, что и в friendsService: внешний ключ
+// смотрит в auth.users, вложить профиль одним PostgREST-запросом нельзя.
 export async function listSessionInvites(userId) {
   const client = await getSupabaseClient();
   const { data, error } = await client
@@ -191,9 +193,21 @@ export async function listSessionInvites(userId) {
     .eq("roll_sessions.status", "active");
   if (error) throw error;
 
-  return (data ?? [])
+  const invites = (data ?? [])
     .map((row) => ({ id: row.session_id, hostId: row.roll_sessions?.host_id }))
     .filter((invite) => invite.hostId && invite.hostId !== userId);
+
+  const hostIds = [...new Set(invites.map((invite) => invite.hostId))];
+  if (hostIds.length === 0) return invites;
+
+  const { data: profiles, error: profilesError } = await client
+    .from("profiles")
+    .select("id, handle, display_name")
+    .in("id", hostIds);
+  if (profilesError) throw profilesError;
+
+  const byId = new Map((profiles ?? []).map((profile) => [profile.id, profile]));
+  return invites.map((invite) => ({ ...invite, host: byId.get(invite.hostId) ?? null }));
 }
 
 export async function actInSession(sessionId, action, payload = {}) {
